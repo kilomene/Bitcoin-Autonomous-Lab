@@ -36,6 +36,7 @@ def collect():
         "nvcc_path": nvcc,
         "nvcc_version": version,
         "cuda_library_built": os.path.isfile(engine_mod.LIB_PATH),
+        "c_library_built": os.path.isfile(engine_mod.C_LIB_PATH),
         "driver_library_present": bool(driver_libs),
         "nvidia_device_nodes": len(glob.glob("/dev/nvidia[0-9]*")),
         "compute_engine": eng.describe(),
