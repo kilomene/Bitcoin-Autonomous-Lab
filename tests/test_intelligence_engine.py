@@ -70,6 +70,10 @@ def main():
     print(f"ok: service synced {store.block_count()} blocks to tip {tip}")
 
     # 2. Real spend: mempool, fee, confirmation, block analysis.
+    # Drain any mempool leftovers from other suites sharing this
+    # chain, so the block below contains exactly this test's spend.
+    if rpc.call("getmempoolinfo")["size"]:
+        rpc.call("generatetoaddress", 1, address)
     dest = wallet.call("getnewaddress", "", "bech32")
     txid = wallet.call("sendtoaddress", dest, 0.5)
     insp = TxInspector(rpc)
@@ -99,7 +103,9 @@ def main():
     assert analysis["tx_count"] == 2, analysis
     assert analysis["fees_agree"] is True, analysis
     assert analysis["total_fees_sats_from_txs"] == view["fee_sats"]
-    assert analysis["subsidy_sats"] == 5_000_000_000  # regtest era 0
+    from mining.pow import coinbase_subsidy
+    assert analysis["subsidy_sats"] == coinbase_subsidy(
+        analysis["height"], 150)  # regtest halving interval is 150
     evidence["spend_tx"] = {
         "txid": txid, "fee_sats": view["fee_sats"], "vsize": view["vsize"],
         "vin": len(view["vin"]), "vout": len(view["vout"]),
