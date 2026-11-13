@@ -157,6 +157,15 @@ class MiningEngine:
     def get_template(self):
         return self.rpc.call("getblocktemplate", {"rules": ["segwit"]})
 
+    def wait_template(self, longpollid, timeout_s=70):
+        """GBT longpoll: Core holds this call until the template
+        changes (new block or new mempool state) or the longpoll
+        window passes, then returns the fresh template. This is how
+        production miners avoid hammering the node for work."""
+        client = self.rpc.with_timeout(timeout_s + 15)
+        return client.call("getblocktemplate",
+                           {"rules": ["segwit"], "longpollid": longpollid})
+
     def build_candidate(self, template, extranonce_int=0):
         txs_raw = []
         txids = []
