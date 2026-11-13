@@ -14,7 +14,12 @@ so the visibility decision is the owner's alone.
 
 - Task 001 (foundation, Regtest integration): complete and tested.
   See docs/TASK-001.md and evidence/regtest/task001-evidence.json.
-- Task 002 (Blockchain Intelligence Engine): next.
+- Task 002 (Blockchain Intelligence Engine): complete and tested.
+  SQLite block and transaction storage, a monitoring service with
+  reorganization handling, transaction intelligence with exact fee
+  accounting, and block analysis with independent merkle and PoW
+  verification. See docs/TASK-002.md and
+  evidence/regtest/task002-evidence.json.
 - Mainnet mining experiments from the initial build are paused by
   owner instruction for this phase. Their session logs remain in
   evidence/ as historical record, with limits stated in
