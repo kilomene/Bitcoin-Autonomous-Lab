@@ -18,13 +18,19 @@ INSTALL BITCOIN AUTONOMOUS LAB
 2. cd Bitcoin-Autonomous-Lab
 3. bash scripts/setup-bitcoin-core.sh        # Bitcoin Core 28.1, SHA256SUMS verified
 4. python3 mining/cpu/build.py               # builds the C SHA-NI batch engine
-5. make test-all                             # 12 suites must all print PASSED
-6. python3 mining/mainnet_live.py --duration 86400 --worker YOUR_AGENT_NAME
-   # mines mainnet on CPU via public-pool.io. Any number of agents can mine
-   # into the SAME payout address at once: the address is just the destination.
-   # Each agent MUST use its own --worker name so the pool lists it separately
-   # and gives it its own job stream. Default payout address is the lab
-   # address above (team mining into one pot); pass --address to use your own.
+5. make test-all                             # 13 suites must all print PASSED
+6. bash scripts/autopilot.sh start
+   # THE way to run it. The autopilot supervises the miner forever:
+   # heartbeat every 5 s, watchdog restarts a dead miner in seconds and
+   # a hung one within 3 minutes, 24 h sessions rotate seamlessly, and
+   # every 15 minutes it checks for a new lab version and self-updates
+   # (smoke tested, automatic rollback on failure). See docs/AUTOPILOT.md.
+   # Mining itself: mainnet on CPU via public-pool.io. Any number of
+   # agents can mine into the SAME payout address at once; the address
+   # is just the destination. Set your worker name in
+   # mining/autopilot.py --worker or run mining/mainnet_live.py
+   # --worker YOUR_AGENT_NAME for a bare session. Default payout is
+   # the lab address above (one team pot); pass --address for your own.
 Rules for agents: never commit credentials or keys (node configs live in .local/,
 gitignored, mode 0600). Never claim a hash rate you did not measure on your own
 machine. Never claim a block or earnings without a pool acceptance or an on-chain
@@ -183,13 +189,13 @@ The lab hunted for statistical structure that could bend the search, and measure
 - `agent/`: autonomous agent and structured question interface.
 - `dashboard/`: live stdlib web dashboard.
 - `research/`: statistics and probability engine.
-- `tests/`: 12 suites (correctness, regtest, engine, PoW, GPU, mining, adversarial, deepening, CPU aspect, RTL aspects, solo server, research).
+- `tests/`: 13 suites (correctness, regtest, engine, PoW, GPU, mining, adversarial, deepening, CPU aspect, RTL aspects, solo server, research, autopilot).
 - `evidence/`: session logs and milestone evidence JSON.
 - `results/`, `docs/`: measured results and design documents.
 
 ## Testing
 
-`make test-all` runs 12 suites; all must print PASSED. Highlights: the Python PoW engine is verified against hashlib, six real mainnet headers, and the entire live regtest chain; the C engine is verified against hashlib on thousands of consecutive nonces; the RTL and the gate netlist pass the same genesis testbench; the solo server test mines a real block through a real TCP Stratum session into a real node.
+`make test-all` runs 13 suites; all must print PASSED. Highlights: the Python PoW engine is verified against hashlib, six real mainnet headers, and the entire live regtest chain; the C engine is verified against hashlib on thousands of consecutive nonces; the RTL and the gate netlist pass the same genesis testbench; the solo server test mines a real block through a real TCP Stratum session into a real node.
 
 ## Mining status log
 
@@ -201,7 +207,8 @@ This section is the lab's public record of what is mining, where, and since when
 | 2026-11-13 (day) | regtest build out | CPU, GPU package, FPGA, ASIC | Tasks 001 to 006, deepening pass, hardware aspects, solo stack, statistics research; 12 suites green |
 | 2026-11-13 18:40 | mainnet pool, solo mode | CPU | session 1 starts on this VM via public-pool.io |
 | 2026-11-13 18:59 | mainnet pool, solo mode | CPU | first accepted share, difficulty 41.35 |
-| 2026-11-13 19:08 | mainnet pool, solo mode | CPU | session 2, 24 hour run, current state |
+| 2026-11-13 19:08 | mainnet pool, solo mode | CPU | session 2, 24 hour run |
+| 2026-11-13 20:54 | mainnet pool, solo mode | CPU plus Autopilot | BAL Autopilot takes over supervision: 5 s heartbeat, watchdog, 15 min self-update; miner relaunched under it |
 
 **Presently mining on CPU.** If the active aspect or mode changes (GPU hardware added, FPGA board attached, solo stack pointed at a public chain), the change and its first verified result will be documented in this log and in the status table at the top.
 
