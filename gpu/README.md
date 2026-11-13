@@ -1,16 +1,18 @@
-# GPU acceleration research
+# gpu/: GPU acceleration (Task 004)
 
-Status: gated, no implementation yet.
+Status: implemented. ComputeEngine (gpu/engine.py) dispatches batch
+SHA256d nonce search to CUDA when a real device exists and passes a
+CPU-verified self-test, and to the CPU otherwise, with the fallback
+reason recorded.
 
-Per the Task 001 restrictions, GPU mining work does not begin until
-the Bitcoin Core integration and Regtest milestone are complete and
-tested. This directory will hold:
+- cuda/engine.cu: batch nonce search kernel (shared kernels/sha256.h).
+- cuda/kernels/sha256.h: one SHA-256 source for device, CUDA host
+  and plain C++ host builds.
+- cuda/host_sha256.cpp: host validation binary for that source.
+- cuda/build.py: builds .local/cuda/libbal_cuda.so and host_sha256.
+- diagnostics.py: capability facts only (make cuda-diag).
 
-- Notes on the host GPU situation (the current VM has no GPU; honest
-  empty, recorded 2026-11-13).
-- CUDA and OpenCL double SHA-256 references when the phase opens.
-- Benchmarks comparing CPU SHA-NI results from mining/cpu against any
-  GPU implementation, measured the same way.
-
-Nothing in this directory is presented as working GPU mining until a
-benchmark log exists in evidence/.
+Verdict on the lab VM: CUDA Toolkit 12.9 is installed and the kernel
+compiles and validates, but the machine has no NVIDIA GPU (runtime
+error 35), so no GPU computation is claimed. Full record in
+docs/CUDA.md.
