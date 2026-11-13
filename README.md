@@ -22,7 +22,7 @@ INSTALL BITCOIN AUTONOMOUS LAB
 6. bash scripts/autopilot.sh start
    # THE way to run it. The autopilot supervises the miner forever:
    # heartbeat every 5 s, watchdog restarts a dead miner in seconds and
-   # a hung one within 3 minutes, 24 h sessions rotate seamlessly, and
+   # a hung one within 5 minutes, 24 h sessions rotate seamlessly, and
    # every 15 minutes it checks for a new lab version and self-updates
    # (smoke tested, automatic rollback on failure). See docs/AUTOPILOT.md.
    # Mining itself: mainnet on CPU via public-pool.io. Any number of
