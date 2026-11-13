@@ -30,8 +30,11 @@
 - node/: rpc_client.py (typed JSON-RPC wrapper, retries, explicit
   errors), node_manager.py (setup, start, stop, status of the
   Regtest bitcoind; config generation).
-- blockchain/: monitor.py (height, block lookups, new-block watcher).
-  Task 002 grows this into the Blockchain Intelligence Engine.
+- blockchain/: monitor.py (height, block lookups, new-block watcher)
+  plus the Task 002 Intelligence Engine: store.py (SQLite),
+  transactions.py (TxInspector), analysis.py (BlockAnalyzer with
+  independent merkle and PoW verification), service.py
+  (MonitorService with reorg handling and failure resilience).
 - mining/: pow.py (double SHA-256, nbits target math, merkle roots,
   subsidy schedule), cpu/bal_miner.c (SHA-NI CPU engine),
   stratum_client.py (paused mainnet experiment, preserved),
