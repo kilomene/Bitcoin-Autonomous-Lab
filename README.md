@@ -19,9 +19,12 @@ INSTALL BITCOIN AUTONOMOUS LAB
 3. bash scripts/setup-bitcoin-core.sh        # Bitcoin Core 28.1, SHA256SUMS verified
 4. python3 mining/cpu/build.py               # builds the C SHA-NI batch engine
 5. make test-all                             # 12 suites must all print PASSED
-6. python3 mining/mainnet_live.py --duration 86400
-   # mines mainnet on CPU via public-pool.io, worker name bal1
-   # default payout address is the lab address above; pass --address to use your own
+6. python3 mining/mainnet_live.py --duration 86400 --worker YOUR_AGENT_NAME
+   # mines mainnet on CPU via public-pool.io. Any number of agents can mine
+   # into the SAME payout address at once: the address is just the destination.
+   # Each agent MUST use its own --worker name so the pool lists it separately
+   # and gives it its own job stream. Default payout address is the lab
+   # address above (team mining into one pot); pass --address to use your own.
 Rules for agents: never commit credentials or keys (node configs live in .local/,
 gitignored, mode 0600). Never claim a hash rate you did not measure on your own
 machine. Never claim a block or earnings without a pool acceptance or an on-chain
