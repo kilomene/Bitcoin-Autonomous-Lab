@@ -36,6 +36,12 @@ so the visibility decision is the owner's alone.
   submitblock, acceptance checked against the node's best block;
   persistent stats and a decision log. See docs/MINING_ENGINE.md
   and results/RESULTS_003_006.md.
+- Deepening pass (post 006): a midstate C compute backend (about
+  2.0M H/s through the engine, raw peak above 8M), event-driven
+  monitoring with waitfornewblock and GBT longpoll, watch-only
+  address tracking with a scantxoutset cross-check, a second peered
+  regtest node, and a live web dashboard. See
+  results/RESULTS_DEEPENING.md.
 - Mainnet mining experiments from the initial build are paused by
   owner instruction for this phase. Their session logs remain in
   evidence/ as historical record, with limits stated in
