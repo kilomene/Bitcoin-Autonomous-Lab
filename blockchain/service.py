@@ -151,6 +151,35 @@ class MonitorService:
             "bestblockhash": self.rpc.get_best_block_hash(),
         }
 
+    def run_event_driven(self, max_waits=3, wait_timeout_ms=10000):
+        """Event-driven monitoring: sync, then block inside Core's
+        waitfornewblock instead of polling. Each server wakeup is
+        followed immediately by a sync, so a new block is processed
+        with milliseconds of latency rather than at the next poll.
+        Timeouts simply re-enter the wait. RPC failures are reported,
+        never raised."""
+        waits = 0
+        wakeups = 0
+        started = time.time()
+        last = self.sync_once()
+        while waits < max_waits and not self._stop:
+            try:
+                info = self.rpc.wait_for_new_block(wait_timeout_ms)
+            except (RpcConnectionError, RpcError) as exc:
+                self.store.set_sync(*self._stored_tip(), "disconnected")
+                return {"mode": "event-driven", "waits": waits,
+                        "wakeups": wakeups, "status": "disconnected",
+                        "error": str(exc)}
+            waits += 1
+            stored_tip, _ = self._stored_tip()
+            if info and info.get("height", -1) > stored_tip:
+                wakeups += 1
+                last = self.sync_once()
+        return {"mode": "event-driven", "waits": waits,
+                "wakeups": wakeups, "status": last.get("status"),
+                "seconds": time.time() - started,
+                "stored_tip": self._stored_tip()[0]}
+
     def run(self, duration_seconds=None, max_cycles=None):
         """Poll loop. Returns after duration or max_cycles, or stop()."""
         self._stop = False
