@@ -24,6 +24,11 @@ NONCE_SPACE = 1 << 32
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LIB_PATH = os.path.join(ROOT, ".local", "cuda", "libbal_cuda.so")
+C_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_batch.so")
+import os as _os
+# Measured on the lab VM (about 1.5 shared cores): 2 threads is the
+# peak; more threads thrash. Override with BAL_C_THREADS.
+C_THREADS = int(_os.environ.get("BAL_C_THREADS", "2"))
 
 
 def cpu_digest(header, nonce):
@@ -41,16 +46,59 @@ def verify_candidate(header, target, nonce, digest):
 
 
 class ComputeEngine:
-    def __init__(self, lib_path=LIB_PATH, requested="auto"):
+    def __init__(self, lib_path=LIB_PATH, requested="auto",
+                 c_lib_path=C_LIB_PATH):
         self.requested = requested
         self.backend = "cpu"
         self.fallback_reason = None
         self.device_count = 0
         self._lib = None
+        self._c_lib = None
+        self.cuda_fallback_reason = None
         if requested in ("auto", "cuda"):
             self._try_cuda(lib_path)
-        if self.backend != "cuda" and requested == "cuda":
+            self.cuda_fallback_reason = self.fallback_reason
+        if self.backend != "cuda" and requested in ("auto", "c"):
+            self._try_c(c_lib_path)
+        if self.backend == "cuda":
+            self.fallback_reason = None
+        elif self.backend == "c":
+            self.fallback_reason = self.cuda_fallback_reason
+        if requested == "cuda" and self.backend != "cuda":
             self.fallback_reason = self.fallback_reason or "CUDA requested but unavailable"
+
+    def _try_c(self, c_lib_path):
+        if not os.path.isfile(c_lib_path):
+            return
+        try:
+            lib = ctypes.CDLL(c_lib_path)
+        except OSError:
+            return
+        lib.bal_c_batch.restype = ctypes.c_int
+        lib.bal_c_batch.argtypes = [
+            ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint32,
+            ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.c_char_p]
+        header = bytes(range(80))
+        got = self._c_batch(lib, header, 1 << 255, 0, 256)
+        if got is None:
+            return
+        for nonce in range(256):
+            if got[nonce] != cpu_digest(header, nonce):
+                return
+        self._c_lib = lib
+        self.backend = "c"
+
+    def _c_batch(self, lib, header, target, start, count):
+        hashes = ctypes.create_string_buffer(32 * count)
+        flags = ctypes.create_string_buffer(count)
+        target_le = target.to_bytes(32, "little")
+        rc = lib.bal_c_batch(header, start, count, C_THREADS, target_le,
+                             hashes, flags)
+        if rc != 0:
+            return None
+        raw = hashes.raw  # one copy; per-index .raw access is O(n^2)
+        return [raw[32 * i:32 * i + 32] for i in range(count)]
 
     def _try_cuda(self, lib_path):
         if not os.path.isfile(lib_path):
@@ -103,7 +151,8 @@ class ComputeEngine:
                                 hashes, flags)
         if rc != 0:
             return None
-        return [hashes.raw[32 * i:32 * i + 32] for i in range(count)]
+        raw = hashes.raw  # one copy; per-index .raw access is O(n^2)
+        return [raw[32 * i:32 * i + 32] for i in range(count)]
 
     def batch_search(self, header, target, start, count):
         """Return (candidates, stats). Candidates are CPU verified."""
@@ -120,7 +169,11 @@ class ComputeEngine:
         if self.backend == "cuda":
             digests = self._cuda_batch(self._lib, header, target, start, count)
             if digests is None:
-                self.fallback_reason = "CUDA batch failed at runtime; fell back to CPU"
+                self.fallback_reason = "CUDA batch failed at runtime; fell back"
+                used = "c" if self._c_lib else "cpu"
+        if digests is None and (used == "c" or self.backend == "c"):
+            digests = self._c_batch(self._c_lib, header, target, start, count)
+            if digests is None:
                 used = "cpu"
         if digests is None:
             digests = [cpu_digest(header, start + i) for i in range(count)]
@@ -138,9 +191,12 @@ class ComputeEngine:
             "hashrate": count / seconds, "start": start,
         }
 
-    def benchmark(self, seconds_hint_batches=3, batch=8192):
+    def benchmark(self, seconds_hint_batches=3, batch=65536):
+        # A hard target (hit rate about 1 in 65536) keeps candidate
+        # verification from dominating the measurement; this measures
+        # raw batch hashing throughput of the selected backend.
         header = bytes(80)
-        target = (1 << 255)
+        target = (1 << 240)
         total = 0.0
         hashes = 0
         for _ in range(seconds_hint_batches):
@@ -155,4 +211,7 @@ class ComputeEngine:
             "requested": self.requested,
             "device_count": self.device_count,
             "fallback_reason": self.fallback_reason,
+            "cuda_fallback_reason": self.cuda_fallback_reason,
+            "c_backend": bool(self._c_lib),
+            "c_threads": C_THREADS,
         }
