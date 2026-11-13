@@ -20,6 +20,22 @@ so the visibility decision is the owner's alone.
   accounting, and block analysis with independent merkle and PoW
   verification. See docs/TASK-002.md and
   evidence/regtest/task002-evidence.json.
+- Task 003 (independent PoW engine): complete and tested. Pure
+  Python SHA-256 from FIPS 180-4, Core-mirroring target rules, six
+  real mainnet headers verified, and the whole live regtest chain
+  cross-verified against Core. See docs/TASK-003.md.
+- Task 004 (audit, hardening, CUDA): complete. Adversarial suite
+  green; CUDA Toolkit 12.9 installed, kernel compiles and its
+  shared SHA-256 source validates on the host CPU. This machine has
+  no GPU (CUDA runtime error 35), so the CPU backend is
+  authoritative and the fallback reason is recorded. See
+  docs/AUDIT-004.md and docs/CUDA.md.
+- Tasks 005/006 (autonomous mining engine and agent): complete and
+  verified live. getblocktemplate, self-built candidate blocks
+  (BIP34, BIP141, exact fees), ComputeEngine nonce search,
+  submitblock, acceptance checked against the node's best block;
+  persistent stats and a decision log. See docs/MINING_ENGINE.md
+  and results/RESULTS_003_006.md.
 - Mainnet mining experiments from the initial build are paused by
   owner instruction for this phase. Their session logs remain in
   evidence/ as historical record, with limits stated in
