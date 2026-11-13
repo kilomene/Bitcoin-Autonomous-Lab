@@ -15,8 +15,10 @@ import hashlib
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from stratum_miner import build_header, dsha256, target_for_difficulty, DIFF1_TARGET
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "mining"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from stratum_client import build_header, dsha256, target_for_difficulty, DIFF1_TARGET
+from mining.pow import merkle_root, target_from_nbits, difficulty_from_nbits, coinbase_subsidy
 
 GENESIS_HEADER_HEX = (
     "01000000"
@@ -86,8 +88,28 @@ def test_build_header_genesis_shape():
     print("ok: stratum header builder reproduces the genesis header exactly")
 
 
+def test_pow_module():
+    # nbits expansion and difficulty agree with the Stratum helpers.
+    assert target_from_nbits(0x1D00FFFF) == DIFF1_TARGET
+    assert abs(difficulty_from_nbits(0x1D00FFFF) - 1.0) < 1e-12
+    # Merkle root of the single genesis coinbase is its own txid.
+    coinbase_txid_internal = dsha256(bytes.fromhex(
+        "01000000010000000000000000000000000000000000000000000000000000000000000000"
+        "ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f323030392043"
+        "68616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f7574"
+        "20666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967"
+        "f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec1"
+        "12de5c384df7ba0b8d578a4c702b6bf11d5fac00000000"))
+    assert merkle_root([coinbase_txid_internal]) == coinbase_txid_internal
+    assert coinbase_subsidy(0) == 5_000_000_000
+    assert coinbase_subsidy(210000) == 2_500_000_000
+    assert coinbase_subsidy(840000) == 312_500_000
+    print("ok: mining.pow primitives (target, merkle, subsidy)")
+
+
 if __name__ == "__main__":
     test_genesis_hash()
     test_diff1_target()
     test_build_header_genesis_shape()
+    test_pow_module()
     print("ALL TESTS PASSED")
