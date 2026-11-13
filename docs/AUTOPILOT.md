@@ -15,7 +15,7 @@ bash scripts/autopilot.sh start
 | --- | --- | --- |
 | Heartbeat | every 5 s | `.local/heartbeat.json` rewritten: miner pid and state, uptime, restart count, accepted shares total, evidence freshness |
 | Watchdog (crash) | 2 s poll | miner process death detected within seconds; relaunch with capped exponential backoff |
-| Watchdog (hung) | 180 s window (3 minutes) | if the evidence log shows no new job for 180 s the miner is judged hung, killed and relaunched |
+| Watchdog (hung) | 300 s window (5 minutes) | if the evidence log shows no new job for 300 s the miner is judged hung, killed and relaunched |
 | Session rotation | 24 h sessions | the moment one session ends the next begins; mining is continuous |
 | Self-update | every 15 min | compares HEAD to origin/main; on a new version: fast-forward pull, PoW smoke test, restart miner onto new code; on smoke failure: hard rollback to the previous HEAD and the old code keeps mining |
 | Single instance | flock | a second autopilot on the same checkout exits politely; two supervisors never fight |
