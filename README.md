@@ -209,6 +209,7 @@ This section is the lab's public record of what is mining, where, and since when
 | 2026-11-13 18:59 | mainnet pool, solo mode | CPU | first accepted share, difficulty 41.35 |
 | 2026-11-13 19:08 | mainnet pool, solo mode | CPU | session 2, 24 hour run |
 | 2026-11-13 20:54 | mainnet pool, solo mode | CPU plus Autopilot | BAL Autopilot takes over supervision: 5 s heartbeat, watchdog, 15 min self-update; miner relaunched under it |
+| 2026-11-13 21:19 to 21:35 | mainnet pool, solo mode | CPU plus Autopilot | Dashboard showed 0 workers during a share dry spell; root cause proven the same hour (pool difficulty floor 1, sub-difficulty shares rejected, dashboard lists only recent credited work) and written up in docs/ROOTCAUSE_WORKERS_ZERO.md; engine verified exact against a live job; pruned mainnet node started syncing for our own solo server, the permanent fix |
 
 **Presently mining on CPU.** If the active aspect or mode changes (GPU hardware added, FPGA board attached, solo stack pointed at a public chain), the change and its first verified result will be documented in this log and in the status table at the top.
 
