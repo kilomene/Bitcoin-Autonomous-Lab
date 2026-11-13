@@ -42,6 +42,13 @@ Three cycles, tip 162 to 165, all accepted; the middle cycle
 included a real segwit spend (2 transactions, 2820 sats fees).
 Earlier the same day the engine mined across the regtest halving
 boundary at height 150, where the subsidy drops to 25 BTC.
-CPU benchmark: about 335K to 345K H/s (Python hashlib batches on
-this shared-CPU VM). The C SHA-NI engine from the mainnet phase
-remains the fast path for the Stratum client.
+
+## Performance after the deepening pass
+
+The ComputeEngine gained a midstate-optimized C backend
+(mining/cpu/bal_batch.c, OpenSSL SHA-NI): the first compression of
+each header is computed once, so a nonce costs two compressions.
+Measured on this VM: about 2.0M H/s through the full engine path
+(backend "c") against about 0.6M H/s for Python hashlib batches;
+the raw library call peaks above 8M H/s. Backend order is CUDA,
+then C, then Python; every candidate is still CPU verified.
