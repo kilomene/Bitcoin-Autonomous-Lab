@@ -11,6 +11,16 @@ Session 1 note: pool difficulty was the default 100000, because the
 client did not yet send mining.suggest_difficulty. Session 2 sent the
 suggestion and the pool set difficulty 1, its minimum.
 
+Long run note (session-20261113-longrun.jsonl): started 09:38 UTC at
+difficulty 1 to hunt the first accepted share. It was stopped by the
+operator at about 09:48 UTC when Task 001 arrived with the
+instruction not to run mainnet mining in this phase. Final recorded
+state: 20 job templates across 5 chain generations (it rolled onto
+new blocks as they arrived), best hash difficulty 0.00666, no share
+submitted, no share accepted. The log ends mid-session because the
+process was stopped, which is why it has no session_end line. This
+file is now complete as a historical record.
+
 Hashrate note: this VM is capped at about 1.5 shared CPUs and runs
 other work, so the measured rate varies by session (a quiet
 single-thread benchmark reached about 0.66 MH/s; session 1 measured
@@ -26,6 +36,14 @@ single-thread benchmark reached about 0.66 MH/s; session 1 measured
 - Best hash difficulty reached: None
 - Best hash: None
 - Shares submitted: 0, accepted: 0
+
+## evidence/session-20261113-longrun.jsonl
+- Started: 2026-11-13T09:38:59+00:00 pool public-pool.io:21496, difficulty 1 (suggested)
+- Authorized by pool: True
+- Jobs received: 20 across 5 chain generations
+- Best hash difficulty reached: 0.006663734547310557
+- Shares submitted: 0, accepted: 0
+- Ended: stopped by operator for Task 001 (see Long run note above)
 
 ## evidence/session-20261113-live2.jsonl
 - Started: 2026-11-13T09:31:20.853581+00:00 pool public-pool.io:21496 worker bc1q528egeqsvv8aa382j43edxskqw6x7zxc2xpcf3.bal1
