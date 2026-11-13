@@ -1,79 +1,57 @@
 # Bitcoin Autonomous Lab
 
-A private research lab that mines Bitcoin for real, from an ordinary
-CPU virtual machine, and proves it with evidence instead of claims.
+An autonomous Bitcoin infrastructure and mining research lab: a
+Bitcoin Core full node under programmatic control, a blockchain
+monitoring and analysis engine, Proof-of-Work research, and an
+AI-agent interface over all of it. Built task by task, tested on a
+real (Regtest) node, with evidence files for every claim.
 
-Status: private development. Evidence level reached: E2 (see
-docs/EVIDENCE-PROTOCOL.md) as of 2026-11-13: a live session connected
-to public-pool.io, was authorized, received real mainnet jobs for
-block height 975657, and hashed 85,000,000 real headers at a
-measured 0.44 MH/s. Next milestone: E3, one pool accepted share at
-the pool minimum difficulty of 1 (the client now requests that
-difficulty explicitly; without the
-request the pool assigns 100000, and a share at difficulty 1 is
-expected roughly every 3 to 10 hours at the measured rates).
+Repository status: private while the owner reviews the evidence.
+The code follows open-source standards (MIT license, CONTRIBUTING)
+so the visibility decision is the owner's alone.
 
-Lab payout address (public):
-bc1q528egeqsvv8aa382j43edxskqw6x7zxc2xpcf3
+## Current status
 
-This repository stays private until the owner reviews the evidence
-and says otherwise.
+- Task 001 (foundation, Regtest integration): complete and tested.
+  See docs/TASK-001.md and evidence/regtest/task001-evidence.json.
+- Task 002 (Blockchain Intelligence Engine): next.
+- Mainnet mining experiments from the initial build are paused by
+  owner instruction for this phase. Their session logs remain in
+  evidence/ as historical record, with limits stated in
+  docs/HONEST-LIMITS.md.
+- GPU work is gated until the Core integration milestones pass.
+  The current VM has no GPU.
 
-## What this is
-
-- A Stratum V1 client (`src/stratum_miner.py`) that connects to a real
-  public pool, receives a real mainnet block job, builds the 80-byte
-  block header, submits shares, and logs every protocol event as JSONL.
-- A CPU miner engine (`src/bal_miner.c`) that performs double SHA-256
-  over block headers. It links OpenSSL, which uses the host CPU SHA-NI
-  hardware instructions when present. The current host exposes `sha_ni`
-  (AMD EPYC 9D25, 4 cores).
-- A correctness suite (`tests/test_known_blocks.py`) that reproduces
-  the real genesis block hash from its real header, and reproduces the
-  genesis header byte for byte through the Stratum header builder.
-- A single-key wallet generator (`src/wallet_gen.py`) that gives the
-  Lab its own public payout address. The private key is written only
-  outside this repository, with 0600 permissions.
-
-## What this is not
-
-Read docs/HONEST-LIMITS.md before believing anything about returns.
-In short: this VM measured about 0.44 MH/s in its first live session
-while the Bitcoin network produces hundreds of EH/s. The Lab proves
-genuine mining and collects genuine evidence. It does not promise
-blocks, shares on demand, or profit. Anyone claiming otherwise about
-CPU mining in 2026 is selling something.
-
-## Run it
+## Quick start (Regtest)
 
 ```
-make test        # correctness proofs, including a C engine nonce search
-make bench       # live hashrate on this host
-make             # build ./bal-miner
-
-python3 src/stratum_miner.py \
-  --address <lab-btc-address> \
-  --duration 300 \
-  --evidence evidence/live-session.jsonl
+scripts/setup-bitcoin-core.sh 28.1     # download + checksum verify
+python3 -m node.node_manager start     # configures local credentials
+python3 -m agent.interface status      # live chain info as JSON
+python3 -m agent.interface generate 5  # mine 5 Regtest blocks
+make test                              # correctness proofs
+python3 tests/test_regtest_integration.py --evidence
 ```
 
-Default pool: public-pool.io on port 21496 (a public solo pool that
-accepts small miners). The payout address belongs to the Lab wallet;
-the private key never enters this repository.
+## Structure
 
-## Evidence
+- node/: Bitcoin Core integration, JSON-RPC client, node lifecycle.
+- blockchain/: block and transaction monitoring.
+- mining/: Proof-of-Work primitives, CPU engine, paused Stratum work.
+- gpu/: GPU acceleration research (gated).
+- agent/: autonomous agent interface (structured JSON answers).
+- dashboard/: monitoring snapshots and analytics.
+- tests/: known-data correctness proofs and Regtest integration tests.
+- docs/: architecture, task records, evidence protocol, honest limits.
+- scripts/: setup and operational scripts.
+- evidence/: live session logs and RPC milestone evidence.
 
-Every live run writes `evidence/*.jsonl`: connection, subscription,
-authorization result, difficulty, each job (prevhash, nbits, ntime),
-each share found with its actual difficulty, each submission, and the
-pool answer. An accepted share is recorded only when the pool itself
-answers true. Session summaries are generated from those logs, never
-written by hand.
+## Design rules
 
-## Layout
-
-- `src/` miner engine, Stratum client, wallet generator
-- `tests/` correctness proofs against known Bitcoin data
-- `docs/` design, honest limits, evidence protocol
-- `scripts/` run helpers
-- `evidence/` live session logs and summaries (no keys, ever)
+- Bitcoin Core RPC is the only source of chain truth.
+- No hardcoded secrets, ever. Node credentials are generated locally
+  into a gitignored config with 0600 permissions.
+- No simulated functionality presented as real. If it is not backed
+  by a test or an evidence file, the docs say so.
+- Full honesty about scale: read docs/HONEST-LIMITS.md before drawing
+  conclusions from any mining numbers in this repository.
