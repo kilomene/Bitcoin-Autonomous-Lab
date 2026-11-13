@@ -75,6 +75,25 @@ class BitcoinRPC:
         self.wallet = wallet
         self._id = 0
 
+    def with_timeout(self, timeout, retries=1):
+        """A clone of this client with a different HTTP timeout, for
+        blocking calls (waitfornewblock, GBT longpoll) that must hold
+        the connection open longer than a normal RPC."""
+        clone = object.__new__(BitcoinRPC)
+        clone.host, clone.port = self.host, self.port
+        clone.user, clone.password = self.user, self.password
+        clone.timeout, clone.retries = timeout, retries
+        clone.wallet = self.wallet
+        clone._id = 0
+        return clone
+
+    def wait_for_new_block(self, timeout_ms=5000):
+        """Core waitfornewblock: blocks server-side until a new block
+        arrives or the timeout passes. Returns the block info dict
+        Core reports (height and hash of the new tip)."""
+        client = self.with_timeout(timeout_ms / 1000 + 15)
+        return client.call("waitfornewblock", timeout_ms)
+
     @property
     def url(self):
         base = f"http://{self.host}:{self.port}"
