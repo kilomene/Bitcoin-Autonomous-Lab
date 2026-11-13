@@ -78,6 +78,20 @@ CREATE TABLE IF NOT EXISTS chain_events (
     kind TEXT,
     detail TEXT
 );
+CREATE TABLE IF NOT EXISTS mining_cycles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT,
+    height INTEGER,
+    accepted INTEGER NOT NULL,
+    block_hash TEXT,
+    nonce INTEGER,
+    hashes INTEGER,
+    batches INTEGER,
+    backend TEXT,
+    seconds REAL,
+    hashrate REAL,
+    reason TEXT
+);
 """
 
 
@@ -202,6 +216,26 @@ class BlockStore:
             (_now(), kind, detail))
         self.conn.commit()
         log.info("event %s: %s", kind, detail)
+
+    def record_mining_cycle(self, result):
+        self.conn.execute(
+            "INSERT INTO mining_cycles (ts, height, accepted,"
+            " block_hash, nonce, hashes, batches, backend, seconds,"
+            " hashrate, reason) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (_now(), result.get("height"),
+             1 if result.get("accepted") else 0,
+             result.get("hash"), result.get("nonce"),
+             result.get("hashes"), result.get("batches"),
+             result.get("backend"), result.get("seconds"),
+             result.get("hashrate"), result.get("reason")))
+        self.conn.commit()
+
+    def mining_summary(self):
+        row = self.conn.execute(
+            "SELECT COUNT(*), COALESCE(SUM(accepted),0),"
+            " COALESCE(SUM(hashes),0) FROM mining_cycles").fetchone()
+        return {"cycles": row[0], "accepted": row[1],
+                "total_hashes": row[2]}
 
     def events(self, kind=None, limit=50):
         if kind:
