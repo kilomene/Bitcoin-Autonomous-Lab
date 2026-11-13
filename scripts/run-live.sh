@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
-# Run one live mining session and log evidence.
-# Usage: scripts/run-live.sh <lab-btc-address> [duration-seconds]
+# PAUSED per Task 001 restrictions (no mainnet mining in this phase).
+# This script ran the pre-Task-001 mainnet Stratum sessions whose logs
+# live in evidence/. It is kept for the record and refuses to run so
+# nobody restarts mainnet mining by accident during the Regtest phase.
 set -euo pipefail
-cd "$(dirname "$0")/.."
-ADDR="${1:?lab btc address required}"
-DUR="${2:-300}"
-STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-make bal-miner >/dev/null
-python3 src/stratum_miner.py \
-  --address "$ADDR" \
-  --duration "$DUR" \
-  --threads 4 \
-  --miner ./bal-miner \
-  --evidence "evidence/session-$STAMP.jsonl"
-echo "evidence: evidence/session-$STAMP.jsonl"
+echo "run-live.sh is paused: Task 001 restricts this phase to Regtest." >&2
+echo "See docs/TASK-001.md for the current milestone." >&2
+exit 3
