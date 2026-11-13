@@ -64,9 +64,10 @@ def merkle_root(txids_internal) -> bytes:
     return level[0]
 
 
-def coinbase_subsidy(height: int) -> int:
-    """Block subsidy in satoshis for a height (era halvings)."""
-    halvings = height // 210000
+def coinbase_subsidy(height: int, halving_interval: int = 210000) -> int:
+    """Block subsidy in satoshis. The halving interval is a chain
+    parameter: 210000 on mainnet and public testnets, 150 on regtest."""
+    halvings = height // halving_interval
     if halvings >= 64:
         return 0
     return 5_000_000_000 >> halvings
