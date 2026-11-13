@@ -62,11 +62,11 @@ def main():
     diag = diagnostics.collect()
     eng = ComputeEngine()
     if diag["nvidia_device_nodes"] == 0:
-        assert eng.backend == "cpu", eng.describe()
-        assert eng.fallback_reason and "35" in eng.fallback_reason, \
-            eng.fallback_reason
-        print(f"ok: no GPU present; engine on CPU with recorded reason: "
-              f"{eng.fallback_reason}")
+        assert eng.backend in ("c", "cpu"), eng.describe()
+        assert eng.cuda_fallback_reason and "35" in eng.cuda_fallback_reason, \
+            eng.cuda_fallback_reason
+        print(f"ok: no GPU present; engine on {eng.backend} backend with "
+              f"recorded CUDA reason: {eng.cuda_fallback_reason}")
     else:
         assert eng.backend == "cuda", eng.describe()
         print("ok: GPU present and CUDA backend selected after self-test")
