@@ -79,6 +79,12 @@ class ComputeEngine:
             ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint32,
             ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p,
             ctypes.c_char_p]
+        if hasattr(lib, "bal_c_search"):
+            lib.bal_c_search.restype = ctypes.c_int
+            lib.bal_c_search.argtypes = [
+                ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint32,
+                ctypes.c_uint, ctypes.c_char_p,
+                ctypes.POINTER(ctypes.c_uint32), ctypes.c_char_p]
         header = bytes(range(80))
         got = self._c_batch(lib, header, 1 << 255, 0, 256)
         if got is None:
@@ -90,6 +96,20 @@ class ComputeEngine:
         self.backend = "c"
 
     def _c_batch(self, lib, header, target, start, count):
+        pairs = self._c_batch_flagged(lib, header, target, start, count,
+                                      want_all=True)
+        if pairs is None:
+            return None
+        digests = [b""] * count
+        for nonce, digest in pairs:
+            digests[nonce - start] = digest
+        return digests
+
+    def _c_batch_flagged(self, lib, header, target, start, count,
+                         want_all=False):
+        """Run a C batch and return only the flagged (nonce, digest)
+        pairs, located through the C flags array at C speed. This is
+        the production path: Python never rescans every digest."""
         hashes = ctypes.create_string_buffer(32 * count)
         flags = ctypes.create_string_buffer(count)
         target_le = target.to_bytes(32, "little")
@@ -97,8 +117,49 @@ class ComputeEngine:
                              hashes, flags)
         if rc != 0:
             return None
-        raw = hashes.raw  # one copy; per-index .raw access is O(n^2)
-        return [raw[32 * i:32 * i + 32] for i in range(count)]
+        raw = hashes.raw
+        flag_bytes = flags.raw
+        if want_all:
+            return [(start + i, raw[32 * i:32 * i + 32])
+                    for i in range(count)]
+        out = []
+        pos = 0
+        while True:
+            i = flag_bytes.find(b"\x01", pos)
+            if i < 0:
+                break
+            out.append((start + i, raw[32 * i:32 * i + 32]))
+            pos = i + 1
+        return out
+
+    def search_first(self, header, target, start, count):
+        """Early-exit search via bal_c_search when the C backend is
+        active: returns (nonce, digest) or None. Falls back to a
+        flagged batch scan on other backends."""
+        if len(header) != 80 or not (1 <= target < (1 << 256)):
+            raise ValueError("bad header or target")
+        if not (0 <= start and 0 < count and start + count <= NONCE_SPACE):
+            raise ValueError("nonce range out of bounds")
+        if self.backend == "c" and hasattr(self._c_lib, "bal_c_search"):
+            out_nonce = ctypes.c_uint32(0)
+            out_digest = ctypes.create_string_buffer(32)
+            target_le = target.to_bytes(32, "little")
+            rc = self._c_lib.bal_c_search(header, start, count,
+                                          C_THREADS, target_le,
+                                          ctypes.byref(out_nonce),
+                                          out_digest)
+            if rc == 1:
+                nonce = out_nonce.value
+                digest = out_digest.raw
+                if verify_candidate(header, target, nonce, digest):
+                    return nonce, digest
+                return None  # C said hit but CPU disagrees: trust CPU
+            if rc == 0:
+                return None
+        cands, _ = self.batch_search(header, target, start, count)
+        if cands:
+            return cands[0]["nonce"], bytes.fromhex(cands[0]["hash"])[::-1]
+        return None
 
     def _try_cuda(self, lib_path):
         if not os.path.isfile(lib_path):
@@ -164,21 +225,33 @@ class ComputeEngine:
         if not (1 <= target < (1 << 256)):
             raise ValueError("target out of range")
         t0 = time.time()
-        digests = None
+        candidates = []
         used = self.backend
+        if self.backend == "c":
+            pairs = self._c_batch_flagged(self._c_lib, header, target,
+                                          start, count)
+            if pairs is None:
+                used = "cpu"
+            else:
+                for nonce, d in pairs:
+                    if verify_candidate(header, target, nonce, d):
+                        candidates.append({"nonce": nonce,
+                                           "hash": d[::-1].hex(),
+                                           "backend": "c"})
+                seconds = max(time.time() - t0, 1e-9)
+                return candidates, {
+                    "backend": used, "hashes": count, "seconds": seconds,
+                    "hashrate": count / seconds, "start": start,
+                }
+        digests = None
         if self.backend == "cuda":
             digests = self._cuda_batch(self._lib, header, target, start, count)
             if digests is None:
                 self.fallback_reason = "CUDA batch failed at runtime; fell back"
-                used = "c" if self._c_lib else "cpu"
-        if digests is None and (used == "c" or self.backend == "c"):
-            digests = self._c_batch(self._c_lib, header, target, start, count)
-            if digests is None:
                 used = "cpu"
         if digests is None:
             digests = [cpu_digest(header, start + i) for i in range(count)]
             used = "cpu"
-        candidates = []
         for i, d in enumerate(digests):
             if int.from_bytes(d, "little") <= target:
                 nonce = start + i
