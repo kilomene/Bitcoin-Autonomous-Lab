@@ -11,6 +11,29 @@ test: bal-miner
 test-regtest:
 	python3 tests/test_regtest_integration.py
 
+test-engine:
+	python3 tests/test_intelligence_engine.py
+
+test-pow:
+	python3 tests/test_pow_engine.py
+
+test-gpu:
+	python3 tests/test_gpu_compute.py
+
+test-mining:
+	python3 tests/test_mining_engine.py
+
+test-adversarial:
+	python3 tests/test_adversarial.py
+
+test-all: test test-regtest test-engine test-pow test-gpu test-mining test-adversarial
+
+cuda-build:
+	python3 gpu/cuda/build.py
+
+cuda-diag:
+	python3 -m gpu.diagnostics
+
 bench: bal-miner
 	./bal-miner bench 5 4
 
