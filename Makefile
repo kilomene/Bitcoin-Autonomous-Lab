@@ -41,7 +41,10 @@ test-solo:
 test-research:
 	python3 tests/test_research.py
 
-test-all: test test-regtest test-engine test-pow test-gpu test-mining test-adversarial test-deepening test-cpu test-rtl test-solo test-research
+test-autopilot:
+	python3 tests/test_autopilot.py
+
+test-all: test test-regtest test-engine test-pow test-gpu test-mining test-adversarial test-deepening test-cpu test-rtl test-solo test-research test-autopilot
 
 cuda-build:
 	python3 gpu/cuda/build.py
