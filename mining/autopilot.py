@@ -29,8 +29,8 @@ rhythm:
   --auto-update when running the module directly.
 
 Sensitivity profile (owner-specified): heartbeat every 5 s,
-watchdog crash detection on a 2 s poll, hung-miner window 180 s
-(3 minutes), update check every 15 minutes.
+watchdog crash detection on a 2 s poll, hung-miner window 300 s
+(5 minutes), update check every 15 minutes.
 
 Stop: SIGTERM or SIGINT to the autopilot, or `touch
 .local/autopilot.stop` (checked every poll). Status:
@@ -58,7 +58,7 @@ LOG_PATH = os.path.join(LOCAL, "autopilot.log")
 EVIDENCE = os.path.join(ROOT, "evidence", "mainnet-live.jsonl")
 
 POLL_S = float(os.environ.get("BAL_AP_POLL_S", "2"))
-STALE_S = float(os.environ.get("BAL_AP_STALE_S", "180"))
+STALE_S = float(os.environ.get("BAL_AP_STALE_S", "300"))
 HEARTBEAT_S = float(os.environ.get("BAL_AP_HEARTBEAT_S", "5"))
 UPDATE_CHECK_S = float(os.environ.get("BAL_AP_UPDATE_CHECK_S", "900"))
 BACKOFF_START_S = 2.0
