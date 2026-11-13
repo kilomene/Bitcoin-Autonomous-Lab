@@ -29,7 +29,13 @@ test-adversarial:
 test-deepening:
 	python3 tests/test_deepening.py
 
-test-all: test test-regtest test-engine test-pow test-gpu test-mining test-adversarial test-deepening
+test-cpu:
+	python3 tests/test_cpu_aspect.py
+
+test-rtl:
+	python3 tests/test_rtl_aspects.py
+
+test-all: test test-regtest test-engine test-pow test-gpu test-mining test-adversarial test-deepening test-cpu test-rtl
 
 cuda-build:
 	python3 gpu/cuda/build.py
