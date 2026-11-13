@@ -48,7 +48,9 @@ class BlockAnalyzer:
         merkle_ok, merkle_computed = self.verify_merkle(block)
         pow_ok = self.verify_pow(block)
 
-        subsidy = coinbase_subsidy(block["height"])
+        chain = self.rpc.get_blockchain_info()["chain"]
+        subsidy = coinbase_subsidy(
+            block["height"], 150 if chain == "regtest" else 210000)
         coinbase = block["tx"][0]
         coinbase_out = sum(int(round(o["value"] * 100_000_000))
                            for o in coinbase["vout"])
