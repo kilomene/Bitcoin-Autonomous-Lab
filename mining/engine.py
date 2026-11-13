@@ -245,12 +245,12 @@ class MiningEngine:
                             "height": cand["height"], "hashes": total_hashes,
                             "batches": batches,
                             "backend": self.compute.backend}
-                found, stats = self.compute.batch_search(
+                hit = self.compute.search_first(
                     cand["header"], cand["target"], start, self.batch_size)
-                total_hashes += stats["hashes"]
+                total_hashes += self.batch_size
                 batches += 1
-                if found:
-                    sol = found[0]
+                if hit:
+                    sol = {"nonce": hit[0]}
                     header = cand["header"][:76] + struct.pack(
                         "<I", sol["nonce"])
                     block = header + cand["body"]
@@ -264,7 +264,7 @@ class MiningEngine:
                         "height": cand["height"], "hash": block_hash,
                         "nonce": sol["nonce"], "hashes": total_hashes,
                         "batches": batches, "extranonce_rounds": extranonce + 1,
-                        "backend": stats["backend"],
+                        "backend": self.compute.backend,
                         "seconds": time.time() - started,
                         "hashrate": total_hashes / max(time.time() - started, 1e-9),
                         "tx_count": cand["tx_count"], "fees": cand["fees"],
