@@ -25,9 +25,68 @@ log = logging.getLogger("bal.agent")
 
 
 class AgentInterface:
-    def __init__(self, rpc=None):
+    def __init__(self, rpc=None, store=None):
         self.rpc = rpc or BitcoinRPC()
         self.chain = ChainMonitor(self.rpc)
+        self._store = store
+
+    # Task 002: Blockchain Intelligence Engine questions.
+    @property
+    def _engine_store(self):
+        if self._store is None:
+            from blockchain.store import BlockStore
+            self._store = BlockStore()
+        return self._store
+
+    def latest_block_hash(self):
+        return {"bestblockhash": self.rpc.get_best_block_hash(),
+                "height": self.chain.height()}
+
+    def latest_blocks(self, count=10):
+        blocks = self.chain.latest_blocks(count)
+        return {"count": len(blocks), "blocks": [
+            {"height": b["height"], "hash": b["hash"], "time": b["time"],
+             "tx_count": len(b.get("tx", [])),
+             "previousblockhash": b.get("previousblockhash")}
+            for b in blocks]}
+
+    def analyze_block(self, ref):
+        from blockchain.analysis import BlockAnalyzer
+        if isinstance(ref, str) and ref.isdigit():
+            ref = int(ref)
+        return BlockAnalyzer(self.rpc).analyze(ref)
+
+    def block_tx_count(self, ref=None):
+        if ref is None:
+            b = self.chain.latest_block()
+        elif isinstance(ref, str) and ref.isdigit():
+            b = self.chain.block_by_height(int(ref))
+        else:
+            b = self.chain.block_by_hash(ref)
+        return {"hash": b["hash"], "height": b["height"],
+                "tx_count": len(b.get("tx", []))}
+
+    def network_difficulty(self):
+        info = self.chain.info()
+        return {"difficulty": info["difficulty"], "chain": info["chain"],
+                "blocks": info["blocks"]}
+
+    def mempool_status(self):
+        from blockchain.transactions import TxInspector
+        return TxInspector(self.rpc).mempool_snapshot()
+
+    def inspect_transaction(self, txid):
+        from blockchain.transactions import TxInspector
+        return TxInspector(self.rpc).inspect(txid)
+
+    def has_new_block(self, since_height):
+        from blockchain.service import MonitorService
+        return MonitorService(self.rpc, self._engine_store).has_new_block(
+            int(since_height))
+
+    def sync_status(self):
+        from blockchain.service import MonitorService
+        return MonitorService(self.rpc, self._engine_store).status()
 
     def node_status(self):
         info = self.chain.info()
@@ -90,6 +149,24 @@ def main(argv):
         print(json.dumps(agent.get_block(argv[1]), indent=2))
     elif cmd == "generate":
         print(json.dumps(agent.generate_blocks(int(argv[1])), indent=2))
+    elif cmd == "latesthash":
+        print(json.dumps(agent.latest_block_hash(), indent=2))
+    elif cmd == "blocks":
+        print(json.dumps(agent.latest_blocks(int(argv[1]) if len(argv) > 1 else 10), indent=2))
+    elif cmd == "analyze":
+        print(json.dumps(agent.analyze_block(argv[1]), indent=2))
+    elif cmd == "txcount":
+        print(json.dumps(agent.block_tx_count(argv[1] if len(argv) > 1 else None), indent=2))
+    elif cmd == "difficulty":
+        print(json.dumps(agent.network_difficulty(), indent=2))
+    elif cmd == "mempool":
+        print(json.dumps(agent.mempool_status(), indent=2))
+    elif cmd == "tx":
+        print(json.dumps(agent.inspect_transaction(argv[1]), indent=2))
+    elif cmd == "newblock":
+        print(json.dumps(agent.has_new_block(int(argv[1])), indent=2))
+    elif cmd == "sync":
+        print(json.dumps(agent.sync_status(), indent=2))
     else:
         print(f"unknown command: {cmd}", file=sys.stderr)
         return 2
