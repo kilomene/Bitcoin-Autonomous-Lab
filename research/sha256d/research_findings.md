@@ -397,3 +397,22 @@ are REJECTED (established negative); the
 price list is the discovery cost model's
 resolution table. Full record:
 phase6/EXPERIMENT_RESULTS.md, EXP-019.
+
+## Pointer: EXP-020 full-round rewriting (2026-11-14)
+
+EXP-020 (Y-014, Y-015) ran both discovery
+engines over the full round plus the schedule
+cone and closed it: the extracted graph costs
+28 vector ops per steady-state round in the
+AVX-512 vocabulary and an independently
+assembled lower bound is also 28, so the
+incumbent's graph is optimal in that
+vocabulary. The one op below the emitted
+production code is a codegen gap (gcc emits
+Maj as two ternlogs where the proven form is
+one); its gated variant kernel benchmarked at
+a pooled adjusted log-ratio of +0.0493 (CI
+-0.067 to +0.167), not significant, so no
+verified improvement and no integration.
+Full record: phase6/EXPERIMENT_RESULTS.md,
+EXP-020.
