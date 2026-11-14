@@ -16,7 +16,61 @@ behind them). The eight mandated questions are
 answered in section 4, drawing only on sections 1
 to 3. No ceiling is declared without its derivation.
 
-## 1. MEASURED
+CORRECTION NOTE (Phase 6, 2026-11-14). Three claims
+in the original text were broader than their
+evidence and are corrected in place below, with the
+original wording preserved in this note:
+
+1. The original section 2.1 called 125 rounds a
+   "hard floor" and stated that "equivalent
+   computation graphs evaluate the same 125 round
+   functions per nonce". That is not proven. 125 is
+   the count of conventional round evaluations
+   remaining per nonce in the conventional
+   implementation after 67 rounds of
+   template-reusable work. It is not a proven
+   universal computational lower bound on every
+   mathematically equivalent implementation.
+   Whether alternative computation graphs,
+   representations, algebraic identities or
+   instruction-level formulations can reduce the
+   actual work is an open research question (Phase
+   6, Workstream A). The companion facts stand: no
+   known equivalent graph reduces the work today,
+   reduced-round and statistical shortcuts remain
+   rejected on this lab's measurements (R-01), and
+   every candidate must still produce the exact
+   digest.
+2. The original section 1.2 stated "Memory is not
+   the constraint" on the basis of DRAM traffic.
+   Low DRAM traffic proves only that DRAM bandwidth
+   is not the constraint. Register pressure, spills
+   and stack traffic are measured first-order costs
+   in this programme (EXP-005, EXP-006, EXP-011);
+   see the corrected bullet in section 1.2 and the
+   Phase 6 MEMORY corrections in
+   ../phase6/PHASE6_RESEARCH_PLAN.md.
+3. The models of section 2 are estimates for
+   particular implementation shapes under labelled
+   assumptions. They are not universal maxima for
+   every possible CPU software implementation.
+   Section 2 now carries per-set category labels,
+   and section 2.6 collects every unproven
+   assumption in one place.
+
+Category key (Phase 6): every quantitative statement
+in this report belongs to one of six categories:
+[MEASURED] measured performance on this machine;
+[STATIC] static instruction counts from binaries or
+source; [DYNAMIC-EST] estimated dynamic instruction
+counts; [MODEL] theoretical throughput models;
+[ARCH-BOUND] architecture-specific bounds, valid
+only under their stated conditions; [ASSUMED]
+unproven assumptions. Section headers and set
+headers carry the labels; section 2.6 lists the
+[ASSUMED] items.
+
+## 1. MEASURED [MEASURED; STATIC where marked]
 
 ### 1.1 Rates actually observed
 
@@ -81,16 +135,31 @@ constant of the machine.
 - Candidate confirmation by hashlib costs about
   1.1 us per candidate, about 2.8 percent of one
   core at regtest density and 6.5M H/s (EXP-009).
-- Memory is not the constraint: digest stores run
-  about 106 MB/s against a measured copy floor of
-  2.739 GB/s (EXP-000/009, machine probe).
+- DRAM bandwidth is not the constraint: digest
+  stores run about 106 MB/s against a measured copy
+  floor of 2.739 GB/s (EXP-000/009, machine probe).
+  CORRECTED (Phase 6): this says nothing about
+  memory costs in general. Register pressure,
+  register spills and stack traffic are measured
+  first-order costs in exactly the kernels this
+  report prices: the 4 and 6 stream walkers carry
+  a 1,536-byte frame with 790 xmm stack ops
+  (EXP-005); the hand-scheduled variant's schedule
+  store and reload round trip cost what the spills
+  it removed had cost (EXP-006); the dual-batch
+  MB state is memory-backed at 48 vmovdqa64 per
+  dual body (EXP-011). Still open and unmeasured:
+  L1 load and store port pressure, instruction
+  cache behaviour of the unrolled bodies, and
+  vector to scalar transfer costs at group
+  boundaries (Y-029, Y-054).
 - The guest reports a constant 1,497.75 MHz; no
   cpufreq interface and no performance counters
   exist inside the guest (machine probe).
 
 ## 2. THEORETICAL (derivations shown, assumptions labelled)
 
-### 2.1 The fixed work per hash
+### 2.1 The conventional evaluation's per-nonce round count
 
 SHA-256d applies three 64-round compressions per
 hash. Per template, block 1 (64 rounds) is computed
@@ -102,15 +171,26 @@ word depending on it is W18). Proven in
 mathematical_foundations.md and
 header_and_midstate_analysis.md; not an assumption.
 
-Per-nonce work therefore has a hard floor of
-192 - 67 = 125 rounds: 61 rounds of block 2 plus 64
-rounds of the outer compression. No representation
-change removes rounds; equivalent computation
-graphs evaluate the same 125 round functions per
-nonce. This is the single fact that bounds
-everything below.
+In the conventional implementation, the per-nonce
+work after that proven precomputation is
+192 - 67 = 125 conventional round evaluations: 61
+rounds of block 2 plus 64 rounds of the outer
+compression. CORRECTED (Phase 6): this is a count
+of round evaluations in the conventional evaluation
+order, not a proven lower bound on the work of
+every equivalent implementation. An equivalent
+computation graph must produce the identical
+digest; whether one can do so with materially
+fewer primitive operations, through algebraic
+restructuring, different representations, or
+instruction-level formulations, is not settled by
+the round count and is the open question Phase 6
+Workstream A exists to investigate. What bounds
+the models below is therefore stated per model:
+each set prices a particular implementation shape,
+and none of them is a bound on all shapes.
 
-### 2.2 Assumption set A: measured instruction mix at an assumed IPC
+### 2.2 Assumption set A: measured instruction mix at an assumed IPC [STATIC + MODEL + ASSUMED]
 
 Basis (measured): the H-02 hot function executes
 494 instructions per nonce (EXP-002 static count of
@@ -131,7 +211,7 @@ Derivation: cycles per hash = 494 / IPC.
 Set A band: about 6 to 24 MH/s per core for a
 kernel of the H-02 shape.
 
-### 2.3 Assumption set B: SHA256RNDS2 issue bound
+### 2.3 Assumption set B: SHA256RNDS2 issue bound [ARCH-BOUND, conditional + ASSUMED]
 
 Basis (measured): the H-02 implementation executes
 63 SHA256RNDS2 per nonce (31 for block 2, 32 for
@@ -147,8 +227,10 @@ Derivation: hashes per second per core <= clock / 63.
 - At 1.5 GHz: 23.8 MH/s.
 - At 3.0 GHz: 47.6 MH/s.
 
-This is an absolute bound for any kernel using this
-round packing on one core; loosening the packing to
+This is a bound for any kernel using this round
+packing on one core (an architecture-specific
+bound, conditional on the packing, not a bound on
+other formulations); loosening the packing to
 the instruction's full four-round form at most
 halves the RNDS2 count, giving an outer envelope of
 about 95 MH/s at 3.0 GHz under the same generous
@@ -166,7 +248,7 @@ is how measured kernels approach the issue bound
 from this latency bound; EXP-003's stream scaling
 is the experimental signature of exactly this gap.
 
-### 2.4 Assumption set C: multi-buffer instruction-count bound
+### 2.4 Assumption set C: multi-buffer instruction-count bound [STATIC + DYNAMIC-EST + MODEL + ASSUMED]
 
 Basis (counted from avx512_mb.c source and
 spot-checked against objdump): per round, per
@@ -218,7 +300,8 @@ in this family is mostly clock and cap, not code.
 
 Three different derivations (instruction mix,
 dedicated-instruction issue, vector op census)
-place one core's ceiling in the low tens of MH/s:
+place one core's ceiling, for the implementation
+shapes they price, in the low tens of MH/s:
 roughly 6 to 25 MH/s at defensible assumptions,
 with 47.6 MH/s as a deliberately generous outer
 bound for the SHA-NI packing and about 95 MH/s as
@@ -226,9 +309,34 @@ the loosest envelope. The best measured per-worker
 rate (3.30M H/s, EXP-003) sits about 2x below the
 low end of the bands and about 6x below the
 planning figure of 20 MH/s used in
-PERFORMANCE_ROADMAP.md. That factor, roughly one
-order of magnitude at the very most, is the entire
-remaining software prize on one core.
+PERFORMANCE_ROADMAP.md. CORRECTED (Phase 6): the
+original text called that factor "the entire
+remaining software prize on one core". It is the
+remaining prize within the implementation families
+these models price. A computation graph outside
+those families is not priced by any set here; its
+existence or nonexistence is an open question, not
+a corollary of this arithmetic.
+
+### 2.6 Unproven assumptions, collected [ASSUMED]
+
+Every input to section 2 that is assumed rather
+than measured, in one place: sustained IPC of 2 to
+4 on the measured instruction mix; a 3.0 GHz
+physical clock behind the guest's constant
+1,497.75 MHz report; SHA256RNDS2 throughput of one
+per cycle and latency of about 4 cycles on this
+core class; sustained vector arithmetic issue of 1
+to 2 ops per cycle, including whether 512-bit ops
+are double-pumped on the host (the guest does not
+expose the host microarchitecture generation); the
+10 to 15 percent group-overhead estimate in set C;
+and the use of the H-02 hot function's static
+instruction count as its dynamic count to first
+order. The measured inputs are listed in section
+1 and in Q5; every number in section 2 that moves
+when an item on this list moves is a model output,
+not a measurement.
 
 ### 2.6 Requirements for the targets, per assumption set
 
@@ -260,16 +368,28 @@ The following are possibilities, not estimates.
 None has a measurement behind it on this machine,
 and none is used anywhere in section 2.
 
-- A computation graph that evaluates the 125
-  per-nonce rounds with materially fewer primitive
-  operations than the current ~240 vector ops or
-  494 scalar instructions per hash. The Boolean
-  cone is already at its proven minima (EXP-012);
-  the schedule decomposition ideas (Y-065, Y-075)
-  are the only registered directions that even
-  claim to reduce op counts, and both are
-  UNPROVEN BREAKTHROUGH tier until their carry
-  derivations exist.
+- A computation graph that evaluates the per-nonce
+  work with materially fewer primitive operations
+  than the current ~240 vector ops or 494 scalar
+  instructions per hash. The Boolean cone is
+  already at its proven minima (EXP-012). UPDATE
+  (Phase 6, EXP-016): the two registered directions
+  that claimed op-count reduction through nonce
+  structure, Y-065 (nonce-affine schedule
+  decomposition) and Y-075 (round-3 delta
+  decomposition), have now had their carry
+  derivations done, and both are refuted as work
+  reductions (the affine separation survives
+  exactly for schedule words W18 and W19 and dies
+  at W20; the state delta form is exact after
+  round 3 only and is consumed nonlinearly by
+  round 4). They move from this section's "could
+  reduce op counts" to the rejected record
+  (../phase6/REJECTED_APPROACHES.md). The general
+  question, whether some other equivalent graph
+  reduces the work, remains open and speculative;
+  no registered direction currently claims it with
+  a derivation.
 - Exploiting structure in SHA-256 beyond
   representation: none is known that preserves
   exactness at full rounds, and the lab's own
@@ -286,9 +406,10 @@ and none is used anywhere in section 2.
 
 ### Q1. What limits the current CPU implementation?
 
-In order of measured importance: (1) the fixed
-125-round per-nonce workload (section 2.1) executed
-as a dependency chain that a single stream cannot
+In order of measured importance: (1) the
+conventional evaluation's 125 remaining round
+evaluations per nonce (section 2.1) executed as a
+dependency chain that a single stream cannot
 parallelize (section 2.3's latency companion);
 (2) the VM cap of about 1.5 effective CPUs, which
 bounds the whole guest regardless of kernel;
@@ -320,11 +441,18 @@ under this VM's contention.
 
 ### Q3. Which limitations arise from the CPU's physical execution architecture?
 
-The 192-round algorithm structure itself (64 rounds
-x 3 compressions, 125 per nonce after proven
-precomputation); the per-round dependency chain
-(T1 feeds e, which feeds the next round's Ch and
-Sigma1); the latency and throughput of the SHA
+The algorithm's definition as three 64-round
+compressions. The definition fixes the function;
+the conventional evaluation of it leaves 125 round
+evaluations per nonce after proven precomputation
+and carries a per-round dependency chain (T1 feeds
+e, which feeds the next round's Ch and Sigma1).
+That chain is a property of the conventional
+evaluation: an alternative computation graph would
+have its own dependency structure, which would
+have to be derived, not inherited from this one.
+What no graph escapes is the silicon underneath:
+the latency and throughput of the SHA
 round instructions; vector op issue width,
 including whether 512-bit ops are double-pumped
 on this core (unobservable here, hence the range
@@ -381,9 +509,15 @@ the SHA and vector pipes are genuinely disjoint
 here. Together these plausibly buy a factor of
 about 1.5 to 3x per core over the best measured
 kernel, landing inside set C's band. Nothing
-registered plausibly buys 10x per core; the
-op-count reductions that would (Y-065, Y-075) are
-UNPROVEN BREAKTHROUGH tier. Pipeline work (X-059
+registered plausibly buys 10x per core. UPDATE
+(Phase 6, EXP-016): the two registered op-count
+reduction claims (Y-065, Y-075) were derived and
+are refuted as work reductions, so the honest
+statement is stronger in one direction and weaker
+in another: no registered approach buys 10x per
+core, and the search for one is a genuinely open
+problem (Phase 6 Workstream A), not a gap with a
+named candidate waiting. Pipeline work (X-059
 class) moves end-to-end rates by single-digit
 percent at current kernel speeds, more as kernels
 speed up (EXP-009's interaction).
@@ -427,8 +561,17 @@ Named plainly:
   parity in the SHA-NI family) and K+W folding as
   implemented (EXP-014: no gain in three sessions):
   neither moves the rate it would need to move.
-- Any approach whose mechanism requires fewer
-  than the algorithm's 192 rounds of work per
-  hash: the round count is the definition of the
-  function being computed, not an implementation
-  choice.
+- Any approach that computes fewer than the full
+  function: reduced-round evaluation, statistical
+  screening, or any graph that does not produce
+  the exact digest (R-01, R-02). CORRECTED
+  (Phase 6): the original text claimed that any
+  mechanism requiring fewer than 192 rounds of
+  work is excluded by definition. The precise
+  statement is that an implementation must
+  compute the exact function the 192-round
+  definition specifies; whether an equivalent
+  graph can do that with less work is an open
+  research question (section 2.1), and no such
+  graph is known. What is excluded is not
+  "fewer rounds" but "a different function".
