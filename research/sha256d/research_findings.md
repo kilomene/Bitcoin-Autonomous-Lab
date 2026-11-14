@@ -353,3 +353,25 @@ raises out of ComputeEngine instead of falling back)
 and one pre-existing accounting note on the live
 status counter are recorded with reproducers. Full
 audit: phase6/POST_INTEGRATION_AUDIT.md.
+
+## Pointer: audit defect D-1 fixed (2026-11-14)
+
+The audit's defect D-1 is resolved: _try_v512 in
+gpu/engine.py and _smoke_v512 in mining/cpu/build.py
+now guard every v512 kernel entry point with hasattr
+checks, so a symbol-incomplete libbal_v512.so is
+rejected as a whole with the missing entry points
+named and selection falls back to C (reproducer
+verified before and after; the stale mainnet_live.py
+docstring, note N-2, is corrected in the same pass;
+note N-1 is untouched by design). A permanent
+regression gate (test_incomplete_library_fallback)
+runs inside tests/test_avx512_integration.py. Full
+test-all: 20 of 21 targets pass, only the
+pre-existing test-rtl environment failure remains.
+The live miner was not restarted; the deployed
+library is complete, so D-1 was unreachable in the
+running deployment, and the fix lands on the next
+natural restart. Resolution record:
+phase6/POST_INTEGRATION_AUDIT.md, resolution section
+of 2026-11-14.
