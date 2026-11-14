@@ -132,3 +132,21 @@ The direct SHA-NI kernel is built, proven correct, and
 faster by median in every session; on a VM this noisy the
 honest verdict is "repeat the decision run in a quieter
 window", not a production swap on overlapping ranges.
+
+## Pointer: the extreme optimization tree (2026-11-14)
+
+The Grand Research Mandate's first assignment (investigation
+and documentation only) is recorded in
+research/sha256d/extreme_optimization/: a master plan, the
+mathematical map, CPU execution and memory analyses, a
+reverse-engineering review, a ranked family comparison,
+116 new X-series hypotheses, the permanent experiment
+format with EXP-000 to EXP-003 backfilled, a bottleneck
+analysis (including the mainnet_live.py uncounted-span
+leftover, filed as a pipeline fix direction), a performance
+roadmap whose target assessment concludes that 500 GH/s
+and 140 TH/s are aggregate-fleet scale (about 25,000 and
+about 7 million cores at the optimistic per-core ceiling
+estimate of about 20 MH/s), and a final report whose first
+recommended experiment is the quiet-window decision re-run
+this file already calls for. Production remains unchanged.
