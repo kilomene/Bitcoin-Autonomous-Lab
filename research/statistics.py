@@ -112,7 +112,11 @@ def chain_statistics(rpc):
 def sample_statistics(samples=2_000_000):
     import ctypes
     from gpu.engine import ComputeEngine
-    eng = ComputeEngine()
+    # This sampler drives the C batch entry points directly, so
+    # it selects the C backend explicitly: the auto engine may
+    # legitimately select the AVX-512 backend, whose handle is
+    # a different library.
+    eng = ComputeEngine(requested="c")
     header = bytes(range(80))
     byte_counts = [[0] * 256 for _ in range(32)]
     bit_ones = 0
