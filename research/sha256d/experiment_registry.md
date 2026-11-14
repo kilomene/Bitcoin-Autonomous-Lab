@@ -709,6 +709,35 @@ EXP-019); next unreserved ID remains EXP-021
 (EXP-020 is reserved for the remaining
 Phase 6 design).
 
+## EXP-020: Automated full-round rewriting (2026-11-14)
+
+Phase 6's closing designed experiment: both
+discovery engines over the full round plus
+the schedule cone. The saturation reached 28
+vector ops per steady-state round in the
+AVX-512 vocabulary, and the SMT-guided leg
+assembled a matching lower bound (12 offset
+ops + 6 combines + 10 adds), so the round
+graph is optimal in that vocabulary; nothing
+nontrivial is shared between the cones for
+either engine to exploit. The one op below
+the emitted production code is a codegen
+gap, not a graph discovery: gcc emits Maj as
+two chained VPTERNLOGD where the proven form
+is one. That candidate (P6C-007) promoted to
+a gated variant kernel and benchmarked under
+the EXP-017 protocol: pooled adjusted
+log-ratio +0.0493 (CI -0.067 to +0.167), not
+significant, so no verified improvement and
+no integration. Verdicts: Y-014 and Y-015
+both supported as instruments, negative as
+discoveries on this cone. Tier: established.
+Full record: phase6/EXPERIMENT_RESULTS.md
+and extreme_optimization/EXPERIMENT_REGISTRY
+.md. Twenty-one experiments now recorded
+(EXP-000 to EXP-020); next unreserved ID
+remains EXP-021.
+
 ## Integration record: AVX-512 MB production backend (2026-11-14)
 
 Not an experiment: an integration under a
