@@ -1364,6 +1364,18 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
   is the vector decomposition with carry accounting.
 - Workstream A / Difficulty very high / Confidence
   low / Cost medium (derivation), high (kernel).
+- STATUS (2026-11-14, EXP-016): DERIVED AND REFUTED
+  as a work reduction. The affine separation
+  W_t = C_t + L_t(nonce) holds exactly for W18
+  (L = sigma0, XOR-linear) and W19 (L = identity,
+  integer-affine) and fails from W20 onward: the
+  delta map's linearity violation rate is 1.0 on
+  sampled pairs, and a z3 counterexample for W20
+  was verified numerically. The carry correction
+  the mechanism hoped to price cheaply is the
+  computation itself. Closed; see
+  ../phase6/MATHEMATICAL_DISCOVERIES.md and
+  ../phase6/REJECTED_APPROACHES.md.
 
 ### Y-066: Schedule delta compression for multi-template search
 - Limitation: in multi-template shapes (Y-044), each
@@ -1586,6 +1598,20 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
   symbolically past the ceiling's boundary.
 - Workstream A / Difficulty very high / Confidence
   low / Cost medium (derivation).
+- STATUS (2026-11-14, EXP-016): DERIVED AND REFUTED
+  as a work reduction. The (base, delta) state form
+  is exact after round 3, where the delta is the
+  pair (a, e) = C + nonce (integer-affine, z3
+  proven); round 4, the first round that consumes
+  the pair, already produces fresh words that are
+  nonlinear in the nonce, because Ch, Maj and the
+  big sigmas act on carry-mixed bits. The affine
+  words surviving at rounds 5 to 7 are unmodified
+  register copies awaiting consumption, not shared
+  computed work. The exact point the delta form
+  dies is thus the ceiling's own boundary, restated.
+  Closed; see ../phase6/MATHEMATICAL_DISCOVERIES.md
+  and ../phase6/REJECTED_APPROACHES.md.
 
 ### Y-076: Extranonce-dimension midstate amortization in the solo shape
 - Limitation: in the solo server's shape, each
