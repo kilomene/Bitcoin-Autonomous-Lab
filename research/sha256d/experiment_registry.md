@@ -490,3 +490,35 @@ first-assignment report recommending the next five
 experiments, starting with the quiet-window decision
 re-run already recorded as EXP-003's next step. Nothing
 in this file's history is altered by the new tree.
+
+## Pointer: Next Research Phase batch (2026-11-14)
+
+Parts B, C and D of the Next Research Phase order
+ran in the extreme_optimization tree. Part B is a
+new hypothesis registry (HYPOTHESIS_REGISTRY_Y.md,
+Y-001 to Y-108, no renamed repeats of H or X
+entries). Part C is PERFORMANCE_CEILING.md (the
+eight ceiling questions with three derived
+assumption sets). Part D ran five experiments,
+recorded in full in the tree's EXPERIMENT_REGISTRY
+.md and EXP011_ONWARD_REPORT.md:
+
+- EXP-011 dual-batch interleaved MB: promising,
+  unseparated (ratios to MB16 across three
+  sessions from 0.58x to 2.27x by configuration).
+- EXP-012 VPTERNLOGD cone: unique immediates
+  (Ch 0xCA, Maj 0xE8, XOR3 0x96), classic minima
+  proven (3, 4 and 2 ops), z3 UNSAT; the compiler
+  already emits ternlog in the baseline MB kernel,
+  so the explicit form is parity. Formal closure.
+- EXP-013 cross-lane prefix sharing in MB:
+  correct, effect below this VM's noise floor.
+- EXP-014 K+W folding in MB: no gain as
+  implemented; rejected for this shape.
+- EXP-015 bitsliced SHA-256d: implemented and
+  measured at about 0.03x of MB16; X-029's
+  analytic bound confirmed by measurement.
+
+No integration; production byte-identical. EXP-010
+is reserved for the Part A post-sync decision
+closure (separate watcher, not run here).
