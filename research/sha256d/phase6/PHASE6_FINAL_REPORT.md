@@ -308,3 +308,23 @@ fallback on every machine without the
 required features, and the pre-integration
 production files are preserved under
 .local/pre-avx512-integration/ for rollback.
+
+Correction note (2026-11-14, post-integration
+audit): the sentence above, "any failure at
+any step falls back cleanly", did not hold
+for one malformed-library case found by the
+independent audit (defect D-1: a library
+exporting the CPUID probe but not the kernel
+entry points raised AttributeError out of
+ComputeEngine construction). D-1 is fixed:
+both entry points are now hasattr-guarded in
+gpu/engine.py _try_v512 and in
+mining/cpu/build.py _smoke_v512, with a
+permanent regression gate in
+tests/test_avx512_integration.py; the
+sentence holds for the fixed code. The live
+miner was not restarted for the fix (the
+deployed library is complete, so D-1 was
+unreachable in the running deployment). Full
+record: POST_INTEGRATION_AUDIT.md, resolution
+section of 2026-11-14.
