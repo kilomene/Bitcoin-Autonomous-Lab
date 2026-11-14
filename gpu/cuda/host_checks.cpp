@@ -17,6 +17,8 @@
 //      threads recording 40000 synthetic candidates into capacity 100
 //   7: "range_valid <n>" Task 003.7 subtraction-based nonce-range
 //      validation cases passed out of the total checked
+//   8: "legacy_abi_validate <n> of <m>" Task 003.8 legacy CUDA ABI
+//      argument and allocation-size validation cases passed
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -144,5 +146,54 @@ int main() {
     if (bal_nonce_range_valid(c.start, c.count) == c.valid) range_ok++;
   }
   printf("range_valid %d of %d\n", range_ok, range_total);
+
+  // Task 003.8: the exact validation bal_cuda_batch performs
+  // before any CUDA memory operation, including null pointers,
+  // the documented maximum batch, and count-derived allocation
+  // sizes computed with checked multiplication.
+  uint8_t dummy_hashes[32] = {0}, dummy_flags[1] = {0};
+  size_t hb = 0, fb = 0;
+  struct AbiCase { const void* hdr; const void* tgt; const void* h;
+                   const void* f; uint64_t start, count;
+                   unsigned threads; int want; };
+  const AbiCase abi_cases[] = {
+    {header, target, dummy_hashes, dummy_flags, 0ULL, 16ULL, 128, 0},
+    {nullptr, target, dummy_hashes, dummy_flags, 0ULL, 16ULL, 128, -1},
+    {header, nullptr, dummy_hashes, dummy_flags, 0ULL, 16ULL, 128, -1},
+    {header, target, nullptr, dummy_flags, 0ULL, 16ULL, 128, -1},
+    {header, target, dummy_hashes, nullptr, 0ULL, 16ULL, 128, -1},
+    {header, target, dummy_hashes, dummy_flags, 0ULL, 0ULL, 128, -1},
+    {header, target, dummy_hashes, dummy_flags, 0ULL, 16ULL, 0, -1},
+    {header, target, dummy_hashes, dummy_flags, 0ULL, 16ULL, 1025, -1},
+    {header, target, dummy_hashes, dummy_flags, 0xFFFFFFFFULL, 2ULL,
+     128, -4},                                     // range crossing
+    {header, target, dummy_hashes, dummy_flags, 0ULL,
+     BAL_CUDA_LEGACY_MAX_BATCH, 128, 0},           // exactly the max
+    {header, target, dummy_hashes, dummy_flags, 0ULL,
+     BAL_CUDA_LEGACY_MAX_BATCH + 1ULL, 128, -6},   // one over the max
+    {header, target, dummy_hashes, dummy_flags, 0ULL,
+     0x2000000000000000ULL, 128, -6},              // count*32 overflow
+                                                   // attempt: rejected
+                                                   // before allocation
+    {header, target, dummy_hashes, dummy_flags, 0xFFFFFFFFULL, 1ULL,
+     128, 0},                                      // final nonce only
+  };
+  int abi_ok = 0, abi_total = 0;
+  for (const AbiCase& c : abi_cases) {
+    abi_total++;
+    hb = 0; fb = 0;
+    int rc = bal_cuda_batch_validate(c.hdr, c.tgt, c.h, c.f, c.start,
+                                     c.count, c.threads, &hb, &fb);
+    if (rc == c.want &&
+        (rc != 0 || (hb == (size_t)c.count * 32 && fb == (size_t)c.count)))
+      abi_ok++;
+  }
+  size_t mul_out = 0;
+  abi_total++;
+  if (!bal_checked_mul_size((size_t)-1, (size_t)2, &mul_out) &&
+      bal_checked_mul_size((size_t)1024, (size_t)32, &mul_out) &&
+      mul_out == (size_t)32768)
+    abi_ok++;
+  printf("legacy_abi_validate %d of %d\n", abi_ok, abi_total);
   return 0;
 }
