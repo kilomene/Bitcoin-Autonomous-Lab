@@ -19,6 +19,7 @@ the template's transactions verbatim) and submits it.
 """
 
 import json
+import socket
 import socketserver
 import struct
 import threading
@@ -195,6 +196,14 @@ class SoloServer:
 
 
 class _Handler(socketserver.StreamRequestHandler):
+    def setup(self):
+        super().setup()
+        try:  # signals travel immediately: no Nagle delay on jobs
+            self.request.setsockopt(
+                socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
+
     def handle(self):
         srv: SoloServer = self.server.solo
         extranonce1 = self.server.next_en1()
