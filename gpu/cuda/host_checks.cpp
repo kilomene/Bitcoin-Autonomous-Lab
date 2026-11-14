@@ -15,6 +15,8 @@
 //      recording over a deterministic range with capacity 3
 //   6: "concurrent counter <c> recorded <r> overflow <o>" 8 host
 //      threads recording 40000 synthetic candidates into capacity 100
+//   7: "range_valid <n>" Task 003.7 subtraction-based nonce-range
+//      validation cases passed out of the total checked
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -118,5 +120,29 @@ int main() {
   for (uint32_t v : nonces2) if (v != 0xFFFFFFFFu) recorded2++;
   printf("concurrent counter %u recorded %u overflow %u\n", counter2,
          recorded2, overflow2);
+
+  // Task 003.7: subtraction-based nonce-range validation, exactly
+  // the logic the CUDA C ABI calls before any kernel launch.
+  struct RangeCase { uint64_t start, count; int valid; };
+  const RangeCase cases[] = {
+    {0ULL, 1ULL, 1},                       // nonce zero
+    {0xFFFFFFFFULL, 1ULL, 1},              // only the final nonce
+    {0xFFFFFFFEULL, 2ULL, 1},              // ends exactly at 2^32
+    {0ULL, 0x100000000ULL, 1},             // the whole space
+    {0ULL, 0ULL, 0},                       // empty
+    {0xFFFFFFFFULL, 2ULL, 0},              // crosses the boundary
+    {0ULL, 0x100000001ULL, 0},             // count beyond the space
+    {0x100000000ULL, 1ULL, 0},             // start beyond the space
+    {0xFFFFFFFFFFFFFFFFULL, 1ULL, 0},      // start near 2^64 (wrap)
+    {0xFFFFFFFFFFFFFFFEULL, 4ULL, 0},      // start + count would wrap
+    {5ULL, 0xFFFFFFFFFFFFFFFBULL, 0},      // huge count
+    {0x80000000ULL, 0x80000000ULL, 1},     // upper half exactly
+  };
+  int range_ok = 0, range_total = 0;
+  for (const RangeCase& c : cases) {
+    range_total++;
+    if (bal_nonce_range_valid(c.start, c.count) == c.valid) range_ok++;
+  }
+  printf("range_valid %d of %d\n", range_ok, range_total);
   return 0;
 }
