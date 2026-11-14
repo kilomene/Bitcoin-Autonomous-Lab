@@ -614,3 +614,54 @@ Sub-verdicts: Y-103 PASS, Y-102 PASS at
 65,536 hashes, Y-101 PARTIAL. Full record:
 phase6/EXPERIMENT_RESULTS.md and
 extreme_optimization/EXPERIMENT_REGISTRY.md.
+
+## EXP-018: Register-resident dual-batch MB (2026-11-14)
+
+Phase 6 experiment for Y-023. A new kernel
+(extreme_optimization/src/avx512_mb_reg.c,
+libbal_r512.so) restructures EXP-011's
+dual-batch shape so both batches' state sets
+live in sixteen named zmm variables across an
+eight-round ring-relabeled unit: the round's
+state rotation is performed by compile-time
+argument rotation, writing new A into the
+vector that held h and new E into the vector
+that held d, with no rename moves. Assembly
+audit first, as predeclared: the final body
+(1,014 instructions, frame 2,368 bytes) has
+exactly one state vector homed in a single
+stack slot (3 accesses) and no stack traffic
+for the other fifteen; its remaining vector
+stack traffic is the two schedule rings (80
+accesses), as in every body of this family.
+A full 64-round unroll was compiled first
+and superseded (3,872 instructions, 214
+spill-region stack accesses). Correctness:
+the full gate set passes (108,000
+differentials, genesis, boundaries, target
+equality and minus one, exact accounting,
+2^32 group edge). Benchmarks under the
+EXP-017 protocol only (7 append-only
+sessions in phase6/benchmarks/exp018/,
+node in IBD): against single-batch MB the
+adjusted pooled log-ratio is +0.0836 (CI
+-0.0247 to +0.1902, 1.087x, pairs won
+0.554), positive in all three sessions but
+significant in none and not pooled; against
+production it is +1.5027 (CI 1.4010 to
+1.6011, 4.49x), significant everywhere; the
+reg-vs-itself control is null (-0.0945, CI
+contains 0). Verdict under the predeclared
+definitions: residency achieved, significance
+not shown, so Y-023 is NOT a verified
+improvement; the finding is that state
+traffic was not the binding cost in the
+dual-batch shape on this machine. Tier:
+PROMISING HYPOTHESIS with measured support.
+No integration; production byte-identical.
+Full record: phase6/EXPERIMENT_RESULTS.md
+and extreme_optimization/EXPERIMENT_REGISTRY
+.md. Nineteen experiments now recorded
+(EXP-000 to EXP-018); next unreserved ID
+remains EXP-021 (EXP-019 and EXP-020 are
+reserved for the remaining Phase 6 designs).
