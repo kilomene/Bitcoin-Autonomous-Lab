@@ -886,6 +886,7 @@ Rules applied to every entry:
 
 ### X-067: Quiet-window integration decision re-run
 - Status update 2026-11-14 (EXP-004): TESTED. The re-run ran at the best observed dip (node still in IBD); streams=4 median 4,212,571 vs production 1,463,346 at 2 threads, but streams=4 minimum 2,057,942 does not exceed production maximum 2,346,013. Criterion failed a second time; no integration.
+- Status update 2026-11-14 (EXP-010): CLOSED. The Part A decision ran on the owner's immediate order during IBD (not in a quiet window), with the AVX-512 multi-buffer added as a second challenger. Streams=4 strided min 1,440,195 and multi-buffer min 2,006,621 both fell below production max 2,288,008 at 2 threads over 15 rounds. Criterion failed a third time; the decision is closed for this machine and production stands. See EXP010_PART_A_REPORT.md.
 - Statement: repeating the EXP-003 decision protocol
   (round-robin interleaved, 2 threads, production versus
   H-02 versus H-01 streams 2 and 4) in a window with the
