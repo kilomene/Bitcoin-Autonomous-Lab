@@ -1,0 +1,178 @@
+{
+ "task": "TASK 003.8 - Final CUDA ABI hardening, validation and mining accounting",
+ "date": "2026-11-14",
+ "repo": "kilomene/Bitcoin-Autonomous-Lab",
+ "chain": "regtest only for integration; no mainnet mining or submission in this task; live mainnet services untouched",
+ "environment": {
+  "gpu_present": false,
+  "dev_nvidia_nodes": 0,
+  "cuda_runtime": "error 35 (no usable device/driver)",
+  "nvcc": "12.9.86, restored at $0 from NVIDIA official Ubuntu 24.04 packages extracted repo-locally to .local/cuda129 (system apt blocked by a pre-existing unrelated broken package, untouched), selected via BAL_NVCC",
+  "vm_contention": "shared VM capped near 1.5 CPUs; live mainnet pool miner and pruned mainnet node running throughout"
+ },
+ "reproductions_before_fix": {
+  "ctx_create_pointer": "pre-fix library: bal_cuda_ctx_create(2^25, 4096) returned -5 but left the caller output pointer at its sentinel 0x1234 (size caps were checked before *out_ctx was written)",
+  "legacy_abi": "bal_cuda_batch checked only count and threads; header/target_le/hashes/flags went straight to cudaMemcpy; count*32 allocation size unchecked (count 0xFFFFFFFF would request 128 GiB and rely on the allocator)",
+  "python_api": "CudaContext.search_complete had no validation of its own before set_work/backend calls",
+  "accounting": "forced-overflow stats had no candidate_count, no overflow_splits and no initial/recovery time split (measured in the before example)",
+  "batch_verification": "batch_search counted and recorded failed C/CUDA candidates but still trusted and returned the remaining pairs; the range was not independently re-covered; the generic enumeration path silently dropped target-meeting digests that failed verification"
+ },
+ "corrections": [
+  {
+   "id": "003.8-1",
+   "item": "legacy CUDA ABI hardening",
+   "files": [
+    "gpu/cuda/engine.cu",
+    "gpu/cuda/kernels/sha256.h",
+    "gpu/cuda/host_checks.cpp",
+    "docs/CUDA.md"
+   ],
+   "detail": "shared bal_cuda_batch_validate runs before any dereference, copy or CUDA call: null header/target_le/hashes/flags -1; zero count or threads outside [1,1024] -1; subtraction-based range failure -4; count over BAL_CUDA_LEGACY_MAX_BATCH (2^24) -6; allocation sizes via bal_checked_mul_size, overflow -5; validator sizes used for allocation and copies; single cleanup path attempts every free and reports a free error when the batch itself succeeded; ctx_search validates candidate buffers before any CUDA operation; ctx_batch_diag validates header/target explicitly; ctx_create uses checked multiplication for all count-derived sizes",
+   "tests": "host_checks legacy_abi_validate 14 of 14; compiled-library ctypes: null header/target/hashes/flags -1, threads 0 and 1025 -1, count 0 -1, range crossing -4, count 2^24+1 -6, count 0xFFFFFFFF -6, valid arguments reach the runtime (35 on this GPU-less VM)"
+  },
+  {
+   "id": "003.8-2",
+   "item": "bal_cuda_ctx_create output pointer",
+   "files": [
+    "gpu/cuda/engine.cu"
+   ],
+   "detail": "*out_ctx is set to nullptr immediately after the out_ctx null check, before all other validation and allocation; every failure path leaves it null; success writes it exactly once",
+   "tests": "compiled library: sentinel 0x1234 becomes null for max_count 2^25 (-5), cand_cap 2^23 (-5), max_count 0 (-1), and for valid arguments failing in the CUDA runtime (35); null out_ctx returns -1"
+  },
+  {
+   "id": "003.8-3",
+   "item": "Python public API validation",
+   "files": [
+    "gpu/engine.py"
+   ],
+   "detail": "validate_header (bytes-like, exactly 80), validate_target (int in [0,2^256) or exactly 32 little-endian bytes), validate_nonce_range (subtraction-based), validate_threads ([1,1024]); applied in CudaContext.search_complete before any backend call, and in search, batch_diag, set_work and the constructor (max_count in [1,2^24]); search_complete passes max_chunk=self._max_count to the recovery driver",
+   "tests": "29 invalid inputs plus a crossing range each rejected with zero backend calls (counting stubs); valid boundaries accepted: start 0, final nonce alone, whole space ending exactly at 2^32, targets as bytes and bytearray; CudaContext.search rejects bad inputs with zero native calls; constructor rejects bad max_count"
+  },
+  {
+   "id": "003.8-4",
+   "item": "attempt accounting",
+   "files": [
+    "gpu/engine.py",
+    "gpu/benchmark.py"
+   ],
+   "detail": "five fields threaded through collect_candidates_complete, CudaContext.search/search_complete and ComputeEngine.batch_search: unique_coverage, device_hashes, researched_hashes, overflow_splits, candidate_count (overflow_events kept as alias); invariant device_hashes == unique_coverage + researched_hashes asserted; split depth cap MAX_OVERFLOW_SPLIT_DEPTH 32; driver validates returned candidates and records initial_search_seconds, recovery_search_seconds, search_seconds, kernel_ms_total; CUDA-path hashrate is device_hashes per second, coverage_per_second separate; CPU last_search_stats naming mapped in documentation without renames",
+   "tests": "exact capacity, one over capacity, forced multi-split overflow (220 splits), 65536 range, max_chunk capping, always-overflowing backend raises explicitly; batch stats checked on C, CUDA and fallback paths"
+  },
+  {
+   "id": "003.8-5",
+   "item": "fail-closed batch verification",
+   "files": [
+    "gpu/engine.py"
+   ],
+   "detail": "_check_pairs requires in-range, unique, CPU-verified pairs; any failure poisons the enumeration; _rescan_all_candidates discards the backend pairs and independently re-covers the whole range with the trusted Python implementation, recording the event and accounting; generic enumeration path counts failures, recovers legacy CUDA digests by rescan, and raises an explicit error for CPU-fallback failures; coverage_status states the outcome on every batch path",
+   "tests": "corrupt C candidate, out-of-range C candidate and corrupt CUDA candidate each recovered to the exact recounted set with exact accounting and GPU device_hashes preserved; CPU-fallback verification failure raises an explicit RuntimeError"
+  }
+ ],
+ "accounting_example": {
+  "scenario": "GENESIS header, target 2^255, range [0,1024), single-shot stub effective capacity 3, driver capacity 4096, 512 true candidates by independent recount (host stub measurements, NOT GPU)",
+  "before": {
+   "sub_batches": 222,
+   "overflow_events": 220,
+   "researched_hashes": 7840,
+   "unique_coverage": 1024,
+   "device_hashes": 8864,
+   "candidate_count": null,
+   "overflow_splits": null
+  },
+  "after": {
+   "sub_batches": 222,
+   "overflow_events": 220,
+   "overflow_splits": 220,
+   "researched_hashes": 7840,
+   "unique_coverage": 1024,
+   "device_hashes": 8864,
+   "candidate_count": 512,
+   "initial_search_seconds": 0.00213,
+   "recovery_search_seconds": 0.06559,
+   "search_seconds": 0.06772
+  },
+  "derived": {
+   "invariant": "8864 == 1024 + 7840",
+   "researched_share_of_computations": 0.8845,
+   "recovery_share_of_search_time": 0.9685,
+   "unique_coverage_per_second_host_stub": 15121,
+   "actual_computations_per_second_host_stub": 130891
+  },
+  "batch_example": "corrupt C enumeration of [0,2000) at the regtest target: unique_coverage 2000, backend_hashes 4000 (2000 backend + 2000 rescan), verification_rescan_hashes 2000, candidate_count 1, verification_failures 1, exact recounted set of 1021 candidates returned from the rescan; corrupt CUDA enumeration of the same range keeps device_hashes at 2000 while backend_hashes is 4000"
+ },
+ "performance": {
+  "note": "host measurements on the contended shared VM; no GPU numbers exist; no improvement claimed",
+  "benchmark_harness_fallback_c": {
+   "median_hashrate": 888931,
+   "median_coverage_per_second": 888931,
+   "label": "NOT a GPU measurement: fallback backend executed the work",
+   "device_hashes": 0
+  },
+  "cpu_c_search_counted_hs": {
+   "threads_1": 1729296,
+   "threads_2": 1741547,
+   "threads_4": 1852815
+  },
+  "cpu_candidate_verification_us": 4.6,
+  "overflow_recovery_overhead_forced_case": {
+   "researched_share": 0.8845,
+   "recovery_seconds": 0.06559,
+   "initial_seconds": 0.00213
+  },
+  "cuda_device_throughput": "none exists; no GPU; UNVERIFIED"
+ },
+ "sanitizers": {
+  "asan_ubsan": "clean: gpu host_checks (including the new ABI validation cases); Task 003 sanitizer set rerun inside its suite remains clean",
+  "tsan": "clean under setarch -R: gpu host_checks; Task 003 set as in its suite",
+  "compute_sanitizer": "device runs impossible without a GPU: UNVERIFIED"
+ },
+ "compilers": {
+  "gpp": "-O2 -Wall -Wextra -Werror: host_sha256.cpp and host_checks.cpp clean",
+  "nvcc": "12.9.86 compiles the updated engine.cu cleanly (cuda_build ok; runtime_error_35 as expected with no device)"
+ },
+ "full_suite": {
+  "targets_total": 19,
+  "passed": 18,
+  "failed": [
+   {
+    "target": "test-rtl",
+    "reason": "iverilog not found on this VM (environment, unrelated, not hidden or weakened)"
+   }
+  ],
+  "environment_incident": "first make test-all stopped at test-deepening: the local peer regtest node's txindex was inconsistent with its rolled-back chain state (pre-existing .local data state: 'txindex: best block of the index not found'); the peer's stale chain directories were moved aside (kept at .local/regtest2/data/stale-backup-0038) and the target rerun: PASS with the peer resyncing the full chain; no repository code changed for this"
+ },
+ "regtest_block": {
+  "height": 558,
+  "hash": "00bb5030e64c2450893d7cf083fa7b3cd824277503d2d889db1cdddcb8b7a0c5",
+  "backend": "c (native CPU via mining/engine.py, batch_size 100000)",
+  "submitblock": null,
+  "best_block_match": true,
+  "note": "the Task 003 suite rerun in this session also mined its own fresh block at height 559"
+ },
+ "gates": {
+  "legacy_cuda_abi_validates_inputs_and_sizes": "PASS (host-proven 14 of 14 and proven against the freshly compiled library)",
+  "ctx_create_output_pointer_behavior": "PASS (compiled library)",
+  "public_python_cuda_apis_reject_invalid_inputs": "PASS (zero backend calls proven)",
+  "overflow_recovery_preserves_complete_coverage": "PASS (logic host-proven; device execution UNVERIFIED)",
+  "repeated_computation_accounted_separately": "PASS",
+  "hashrates_use_defined_actual_work": "PASS",
+  "verification_failures_cannot_become_false_no_hit": "PASS",
+  "regression_and_safety_tests_pass": "PASS (18 of 19 targets; test-rtl fails only on absent iverilog)",
+  "physical_gpu_execution": "UNVERIFIED (no NVIDIA GPU on this VM)",
+  "gpu_performance": "UNVERIFIED (no NVIDIA GPU on this VM)",
+  "gpu_regtest_block_acceptance": "UNVERIFIED (no NVIDIA GPU on this VM)"
+ },
+ "files_changed": [
+  "gpu/cuda/kernels/sha256.h",
+  "gpu/cuda/engine.cu",
+  "gpu/cuda/host_checks.cpp",
+  "gpu/engine.py",
+  "gpu/benchmark.py",
+  "docs/CUDA.md",
+  "tests/test_task0038_abi.py",
+  "Makefile",
+  "results/TASK0038_CUDA_ABI_HARDENING.md",
+  "results/TASK003_CORRECTIONS.md (addendum)",
+  "evidence/regtest/task0038-cuda-abi.json"
+ ]
+}
