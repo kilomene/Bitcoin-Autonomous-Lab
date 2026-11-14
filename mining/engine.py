@@ -229,6 +229,22 @@ class MiningEngine:
             "tx_count": 1 + len(txs_raw), "witness_count": witness_count,
         }
 
+    @staticmethod
+    def batch_count(batch_size, start):
+        """Nonces to request for the batch beginning at start
+        (Task 003.2). The final batch is clamped to the remaining
+        nonce space, count = min(batch_size, 2^32 - start), so the
+        loop never submits a range extending past 0xFFFFFFFF, never
+        skips a valid nonce, and covers the final nonce exactly
+        once for any batch size, including sizes that do not
+        divide 2^32. All arithmetic is on Python ints and cannot
+        overflow."""
+        if not (0 <= start < (1 << 32)):
+            raise ValueError("batch start outside the nonce space")
+        if batch_size < 1:
+            raise ValueError("batch size must be positive")
+        return min(batch_size, (1 << 32) - start)
+
     def mine_cycle(self, max_batches=200, deadline_seconds=120):
         """One full cycle. Returns a result dict; accepted means the
         block was submitted and is the node's best block.
@@ -239,7 +255,12 @@ class MiningEngine:
         old code added the full batch size after every search,
         including early-exit searches that stopped after a handful
         of attempts, inflating every reported hashrate. Elapsed
-        time uses a monotonic clock."""
+        time uses a monotonic clock.
+
+        Batch sizing (Task 003.2): every batch passes
+        batch_count(self.batch_size, start) to the backend, never
+        the raw configured batch size, so the final batch of a
+        nonce-space walk stays inside the 32-bit space."""
         template = self.get_template()
         started = time.perf_counter()
         total_hashes = 0
@@ -253,15 +274,14 @@ class MiningEngine:
                             "height": cand["height"], "hashes": total_hashes,
                             "batches": batches,
                             "backend": self.compute.backend}
+                count = self.batch_count(self.batch_size, start)
                 if hasattr(self.compute, "search_first_counted"):
                     hit, attempted, _secs = self.compute.search_first_counted(
-                        cand["header"], cand["target"], start,
-                        self.batch_size)
+                        cand["header"], cand["target"], start, count)
                 else:
                     hit = self.compute.search_first(
-                        cand["header"], cand["target"], start,
-                        self.batch_size)
-                    attempted = self.batch_size
+                        cand["header"], cand["target"], start, count)
+                    attempted = count
                 total_hashes += attempted
                 batches += 1
                 if hit:
@@ -284,7 +304,7 @@ class MiningEngine:
                         "hashrate": total_hashes / max(time.perf_counter() - started, 1e-9),
                         "tx_count": cand["tx_count"], "fees": cand["fees"],
                     }
-                start += self.batch_size
+                start += count
         return {"accepted": False, "reason": "nonce space exhausted",
                 "height": template["height"], "hashes": total_hashes,
                 "batches": batches, "backend": self.compute.backend}
