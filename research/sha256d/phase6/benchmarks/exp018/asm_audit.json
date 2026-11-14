@@ -1,0 +1,316 @@
+{
+  "experiment": "EXP-018",
+  "audit_utc": "2026-11-14T15:08:22.013599+00:00",
+  "method": "objdump -d --no-show-raw-insn; regions from prologue memcpy destinations",
+  "functions": [
+    {
+      "library": "libbal_r512.so",
+      "function": "v_compress16x2_reg",
+      "note": "EXP-018 dual compress. Rings at 0x100 and 0x500 per the two prologue memcpy destinations. Stack offsets below 0x100 are the spill area.",
+      "instructions": 1014,
+      "frame_bytes": 2368,
+      "vmovdqa64": {
+        "total": 99,
+        "stack": 21,
+        "stack_loads": 1,
+        "stack_stores": 20,
+        "register_to_register": 62
+      },
+      "vmovdqa32": {
+        "total": 87,
+        "stack": 34,
+        "stack_loads": 32,
+        "stack_stores": 2,
+        "register_to_register": 53
+      },
+      "zmm_stack_instructions": {
+        "total": 90,
+        "by_region": {
+          "spill_or_other": 10,
+          "schedule_0x100": 40,
+          "schedule_0x500": 40
+        },
+        "directions": {
+          "spill_or_other:store": 6,
+          "spill_or_other:load": 4,
+          "schedule_0x100:load": 32,
+          "schedule_0x100:store": 8,
+          "schedule_0x500:load": 32,
+          "schedule_0x500:store": 8
+        },
+        "spill_region_offsets": {
+          "0xc0": 3,
+          "0x0": 2,
+          "0x80": 5
+        }
+      },
+      "opcode_top": [
+        [
+          "vpaddd",
+          160
+        ],
+        [
+          "vmovdqa64",
+          99
+        ],
+        [
+          "mov",
+          97
+        ],
+        [
+          "vpternlogd",
+          96
+        ],
+        [
+          "vmovdqa32",
+          87
+        ],
+        [
+          "vprold",
+          80
+        ],
+        [
+          "vprord",
+          80
+        ],
+        [
+          "and",
+          79
+        ],
+        [
+          "shl",
+          78
+        ],
+        [
+          "vpsrld",
+          32
+        ]
+      ]
+    },
+    {
+      "library": "libbal_w512.so",
+      "function": "v_compress16x2",
+      "note": "EXP-011 dual compress. Rings at 0x0 and 0x400 per the prologue (rsp copied to r13, second ring at rsp+0x400); some schedule accesses use the r13 and r8 base pointers instead of rsp-relative form and are not in the stack counts.",
+      "instructions": 212,
+      "frame_bytes": 2112,
+      "vmovdqa64": {
+        "total": 48,
+        "stack": 0,
+        "stack_loads": 0,
+        "stack_stores": 0,
+        "register_to_register": 32
+      },
+      "vmovdqa32": {
+        "total": 18,
+        "stack": 8,
+        "stack_loads": 6,
+        "stack_stores": 2,
+        "register_to_register": 10
+      },
+      "zmm_stack_instructions": {
+        "total": 10,
+        "by_region": {
+          "schedule_0x0": 5,
+          "schedule_0x400": 5
+        },
+        "directions": {
+          "schedule_0x0:load": 4,
+          "schedule_0x0:store": 1,
+          "schedule_0x400:load": 4,
+          "schedule_0x400:store": 1
+        },
+        "spill_region_offsets": {}
+      },
+      "opcode_top": [
+        [
+          "vmovdqa64",
+          48
+        ],
+        [
+          "mov",
+          25
+        ],
+        [
+          "vpaddd",
+          20
+        ],
+        [
+          "vmovdqa32",
+          18
+        ],
+        [
+          "vpternlogd",
+          14
+        ],
+        [
+          "vprord",
+          10
+        ],
+        [
+          "vprold",
+          10
+        ],
+        [
+          "and",
+          9
+        ],
+        [
+          "shl",
+          8
+        ],
+        [
+          "push",
+          5
+        ]
+      ]
+    },
+    {
+      "library": "libbal_v512.so",
+      "function": "v_compress16",
+      "note": "Single-batch compress. One schedule ring.",
+      "instructions": 111,
+      "frame_bytes": 1088,
+      "vmovdqa64": {
+        "total": 24,
+        "stack": 0,
+        "stack_loads": 0,
+        "stack_stores": 0,
+        "register_to_register": 16
+      },
+      "vmovdqa32": {
+        "total": 9,
+        "stack": 4,
+        "stack_loads": 3,
+        "stack_stores": 1,
+        "register_to_register": 5
+      },
+      "zmm_stack_instructions": {
+        "total": 5,
+        "by_region": {
+          "schedule_0x0": 5
+        },
+        "directions": {
+          "schedule_0x0:load": 4,
+          "schedule_0x0:store": 1
+        },
+        "spill_region_offsets": {}
+      },
+      "opcode_top": [
+        [
+          "vmovdqa64",
+          24
+        ],
+        [
+          "mov",
+          11
+        ],
+        [
+          "vpaddd",
+          10
+        ],
+        [
+          "vmovdqa32",
+          9
+        ],
+        [
+          "vpternlogd",
+          7
+        ],
+        [
+          "and",
+          5
+        ],
+        [
+          "vprord",
+          5
+        ],
+        [
+          "vprold",
+          5
+        ],
+        [
+          "lea",
+          4
+        ],
+        [
+          "shl",
+          4
+        ]
+      ]
+    },
+    {
+      "library": "libbal_w512.so",
+      "function": "v_compress16",
+      "note": "Single-batch compress as compiled inside the EXP-011 library (identical counts expected).",
+      "instructions": 111,
+      "frame_bytes": 1088,
+      "vmovdqa64": {
+        "total": 24,
+        "stack": 0,
+        "stack_loads": 0,
+        "stack_stores": 0,
+        "register_to_register": 16
+      },
+      "vmovdqa32": {
+        "total": 9,
+        "stack": 4,
+        "stack_loads": 3,
+        "stack_stores": 1,
+        "register_to_register": 5
+      },
+      "zmm_stack_instructions": {
+        "total": 5,
+        "by_region": {
+          "schedule_0x0": 5
+        },
+        "directions": {
+          "schedule_0x0:load": 4,
+          "schedule_0x0:store": 1
+        },
+        "spill_region_offsets": {}
+      },
+      "opcode_top": [
+        [
+          "vmovdqa64",
+          24
+        ],
+        [
+          "mov",
+          11
+        ],
+        [
+          "vpaddd",
+          10
+        ],
+        [
+          "vmovdqa32",
+          9
+        ],
+        [
+          "vpternlogd",
+          7
+        ],
+        [
+          "and",
+          5
+        ],
+        [
+          "vprord",
+          5
+        ],
+        [
+          "vprold",
+          5
+        ],
+        [
+          "lea",
+          4
+        ],
+        [
+          "shl",
+          4
+        ]
+      ]
+    }
+  ]
+}
