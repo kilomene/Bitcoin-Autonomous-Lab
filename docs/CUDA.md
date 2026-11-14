@@ -33,6 +33,34 @@ On any machine with a real NVIDIA device and driver, the same code
 path selects CUDA only after the live self-test batch matches the
 CPU digest for digest. Nothing about that claim is pre-baked.
 
+## Task 003.8 ABI hardening (2026-11-14)
+
+The legacy one-shot entry point bal_cuda_batch validates every
+argument before any CUDA memory operation, through the shared
+bal_cuda_batch_validate in gpu/cuda/kernels/sha256.h (the same
+code the host validation build executes): header, target_le,
+hashes and flags must be non-null; the thread count must be
+within [1, 1024]; the nonce range must pass the subtraction-based
+bal_nonce_range_valid; and the count-derived allocation sizes
+(count times 32 digest bytes, count times 1 flag bytes) are
+computed with checked multiplication. The documented maximum
+legacy batch is BAL_CUDA_LEGACY_MAX_BATCH = 2^24 nonces (the
+legacy path materializes every digest, so at most 512 MiB of
+digest output); larger requests are rejected with -6 and belong
+on the persistent candidate-filtering context or in chunks.
+
+C ABI error codes (negative values are local validation errors,
+positive values are CUDA runtime error codes): 0 success; -1
+invalid argument (null pointer, zero count, bad thread count);
+-2 host allocation failure; -3 invalid kernel configuration; -4
+invalid nonce range; -5 allocation-size overflow or size limit;
+-6 legacy batch too large.
+
+bal_cuda_ctx_create validates out_ctx first and clears it
+immediately, so every failure path leaves the caller's pointer
+null. The persistent-context search validates its candidate
+output buffers before launching anything.
+
 ## Task 002 update (2026-11-14)
 
 The toolkit is currently ABSENT on this VM (a VM replacement
