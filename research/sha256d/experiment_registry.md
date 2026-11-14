@@ -62,6 +62,91 @@ experiments/bench_harness.py, accounting per Task 003.9.
   OpenSSL's compression and our wrapper shape (B1), not in
   the flags applied to the wrapper.
 
+## EXP-002: H-02 direct SHA-NI kernel (Stage 5, 2026-11-14)
+
+- Implementation: experiments/h02_shani/ (shani_core.h,
+  h02_shani.c, libbal_h02.so). Message schedule produced
+  entirely by SHA256MSG1/SHA256MSG2 (whitepaper GENA/GENB
+  construction); zero scalar schedule words. Scalar code:
+  initial word loads, byte swaps, padding constants,
+  feed-forward adds, and two scalar ROUNDS (template round 2
+  once per template; mode-2 variant's per-nonce round 3).
+- Correctness: ALL gates pass (test_h02.py): FIPS vectors,
+  genesis, 120,000 randomized differentials across 3 prefix
+  variants (0 bad), 5,000 vs production byte-identical,
+  boundaries, 5 template variations, target equality/minus
+  one/recount, counted accounting incl. early exit 50,001.
+  Scalar twin (BAL_H_SCALAR_SCHED, 0 MSG instructions)
+  byte-identical over 20,000: cross-implementation proof the
+  MSG path is the path that ran and is equivalent.
+- Assembly (hash_p1, per-nonce hot function): 494 insns,
+  sha256rnds2 63, msg1 24, msg2 24, stack frame 0 B, 2 xmm
+  stack ops, 0 calls, 0 scalar rotate/shift instructions.
+  Whole binary: rnds2 350, msg1 132, msg2 132.
+- Benchmarks (bench_h02.py, load avg 10.87 at run): H-02
+  medians 1T 1,690,859 / 2T 1,966,395 H/s vs same-session
+  production 1T 1,471,854 / 2T 1,403,332 and intrinsics
+  2T 600,023. Spreads 40 to 72 percent, ranges overlap.
+  Scalar twin 2T median 751,524: the MSG schedule alone is
+  worth about 2.6x over the scalar schedule at equal rounds.
+- Prefix variants (H-03 folded in): snapshot after round 1
+  vs after round 2 vs none, all medians within each other's
+  spreads (2T: 1,239,214 / 1,448,868 / 1,124,879). The
+  predicted 2.4 percent effect is below this VM's noise
+  floor: INCONCLUSIVE here, neither confirmed nor refuted.
+- Decision: kernel stays in the research tree. Production
+  unchanged (integration rule, see EXP-003 decision run).
+
+## EXP-003: H-01 multi-stream interleave (Stage 5, 2026-11-14)
+
+- Implementation: experiments/h02_shani/h01_multistream.c,
+  libbal_h01.so. Streams 1/2/4 inside one worker thread
+  (not OS threads), blocked nonce chunks per stream, wave
+  dispatch 4 then 2 then 1 so partial waves never hash
+  dummy nonces; coverage exact and disjoint. Search wave
+  semantics: a wave is atomic; other streams' hashes in the
+  winning wave are counted in attempted; winner is first
+  published, not lowest nonce.
+- Correctness: ALL gates pass (test_h01.py): 108,000
+  randomized differentials per stream count (324,000 total,
+  0 bad), genesis, boundaries, odd counts, miss accounting
+  exact, and an exact wave-accounting proof: winner at scan
+  position 50,001 found with attempted == 4.
+- Assembly: 1-stream body 176 insns, 7 xmm registers, frame
+  0 B, no stack ops. All variants inlined into
+  walk_span.constprop.0: 2,985 insns, frame 1,056 B, 365 xmm
+  stack ops: 4 streams x 8 live vectors cannot fit 16
+  architectural xmm registers, so the compiler spills
+  heavily. Whole binary rnds2 474, msg1 180, msg2 180.
+- Benchmarks (bench_h01.py, load avg 9.95): per-worker
+  (threads=1) medians: streams=1 1,064,406; streams=2
+  2,515,315 (2.36x streams=1, same session); streams=4
+  3,298,604 with 98.0 percent spread. Threads=2 totals:
+  2,022,309 / 3,171,230 / 3,481,103. Single-candidate
+  latency (count=1 call): about 30 us at every stream
+  count, boundary-overhead dominated as in EXP-000.
+- Decision run (bench_decision.py, round-robin interleaved,
+  5 x 1M, load avg 7.46): at 2 threads, medians:
+  production 1,183,205 (spread 142.3 percent), H-02
+  2,068,798, H-01 s2 1,932,862, H-01 s4 3,084,485 (spread
+  37.0 percent). Streams=4 won 4 of 5 rounds; production's
+  best sample (2,442,181) still overlaps streams=4's
+  minimum (2,130,229). At 1 thread the new kernels' ranges
+  fully clear production's range.
+- Decision: NOT INTEGRATED. The integration rule requires
+  beating production beyond spread at the 2-thread
+  configuration; medians favour the new kernels 1.75x to
+  2.6x and the direction is consistent across three
+  sessions, but the 2-thread ranges still overlap in the
+  decision run, so the strict test is not met on this
+  contended VM. Production stays byte-identical. Next
+  question: repeat the decision run in a quieter window
+  (for example after node IBD completes); if ranges then
+  separate, wire H-01 streams=4 (or 2) as a selectable
+  backend with fallback, run the full suite, and mine a
+  fresh regtest block through mining/engine.py before any
+  default changes.
+
 ## Ranked hypotheses (H-01 to H-24)
 
 Benefit classes: marginal (under about 5%), moderate
@@ -80,7 +165,10 @@ effort and risk.
   (register pressure, schedule bookkeeping per stream).
 - Validation: prototype in the research tree, differential
   vs hashlib at 100k+, harness benchmark at 1/2/4 streams,
-  assembly spill check. Status: OPEN, top priority.
+  assembly spill check. Status: MEASURED 2026-11-14
+  (EXP-003): supported; streams=2 gives 2.36x per-worker
+  over streams=1 in-session; streams=4 highest medians,
+  heavy spills; not integrated, decision-run spread rule.
 
 ### H-02: Direct single-stream SHA-NI kernel with real schedule instructions
 - Statement: a from-scratch SHA-NI kernel using SHA256MSG1
@@ -91,7 +179,11 @@ effort and risk.
   sites and recomputes the schedule in scalar C per nonce.
 - Expected benefit: moderate to large. Difficulty: medium.
   Risk: low to medium. Validation: same protocol as H-01;
-  it is also H-01's stepping stone. Status: OPEN.
+  it is also H-01's stepping stone. Status: MEASURED
+  2026-11-14 (EXP-002): all correctness gates pass, MSG
+  schedule proven by scalar-twin equivalence, medians
+  above production in every session; not integrated,
+  decision-run spread rule.
 
 ### H-03: Block-2 prefix precomputation (rounds 0..2)
 - Statement: precomputing the block-2 state after round 2 per
@@ -104,8 +196,12 @@ effort and risk.
   cannot express it in the production path.
 - Expected benefit: marginal. Difficulty: medium (in a new
   kernel, low). Risk: low. Validation: differential tests
-  plus micro-benchmark inside the H-02 kernel. Status: OPEN,
-  bundled with H-02.
+  plus micro-benchmark inside the H-02 kernel. Status:
+  MEASURED 2026-11-14 inside EXP-002: all three prefix
+  variants shipped and correct; the 2.4 percent effect is
+  below this VM's noise floor, spreads fully overlap:
+  INCONCLUSIVE on this machine, identity itself proven by
+  the differentials.
 
 ### H-04: Candidates-only batch output
 - Statement: a batch entry point that writes only flags (or
