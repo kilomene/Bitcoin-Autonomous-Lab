@@ -29,3 +29,22 @@ not committed):
   behaviour probe (standalone program).
 - h01_phase.c (EXP-008): cross-nonce phase pipelining;
   libbal_phase.so.
+
+Contents added by the EXP-011 to EXP-015 batch
+(2026-11-14, Next Research Phase Part D; same flat
+layout and build.sh):
+
+- avx512_mb2.c (EXP-011): dual-batch interleaved
+  AVX-512 multi-buffer, two 16-lane batches per
+  worker; libbal_w512.so.
+- avx512_mb_tern.c (EXP-012): explicit VPTERNLOGD
+  Boolean cone in the multi-buffer kernel;
+  libbal_t512.so. The search and proofs are in
+  ../proofs/boolean_cone_search.py.
+- avx512_mb_share.c (EXP-013): cross-lane prefix
+  and schedule sharing (scalar rounds 0..2 and
+  shared W16/W17 per template); libbal_x512.so.
+- avx512_mb_kw.c (EXP-014): K+W constant folding
+  for template-fixed block-2 rounds; libbal_k512.so.
+- bitslice32.c (EXP-015): bitsliced 32-lane
+  SHA-256d; libbal_zbs.so.
