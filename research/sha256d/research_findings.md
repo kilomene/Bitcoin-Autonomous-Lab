@@ -208,3 +208,27 @@ unseparated on this guest (EXP-011, EXP-013);
 K+W folding does not pay as implemented
 (EXP-014). No verified improvement this batch and
 no integration; production is byte-identical.
+
+## Pointer: EXP-010 Part A decision closure (2026-11-14)
+
+The decision is closed. Run on the owner's
+immediate order during initial block download
+(the contention is part of the record), both
+challengers again beat production on medians
+(streams=4 strided 3,342,449 H/s, 2.76x; AVX-512
+multi-buffer 3,551,903 H/s, 2.94x, median CIs
+clear of production's) and again failed the
+predeclared beyond-spread criterion on their
+minimum rounds (1,440,195 and 2,006,621 against
+production's maximum 2,288,008). Production C
+remains the mining backend, byte-identical. The
+multi-buffer kernel's variance is not a steal or
+load-spike artefact: calm and spiked round
+medians differ by 1.3 percent while its spread
+is 207.7 percent against production's 115.8
+percent under identical conditions. Full report:
+extreme_optimization/EXP010_PART_A_REPORT.md.
+Tier classification: no verified improvement at
+the integration standard; the median superiority
+under stated contention is a verified
+measurement, not an integration.
