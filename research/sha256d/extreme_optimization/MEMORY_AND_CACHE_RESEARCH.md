@@ -64,7 +64,17 @@ spill area is L1-resident (the frame is about 1 KiB), so
 this is not a bandwidth cost; it is an issue-slot and
 load-latency cost inside the hot loop. It is also the
 measured reason streams stop scaling: latency hiding wins
-while spill slots are cheap, then loses. Open questions,
+while spill slots are cheap, then loses. Later evidence
+in the same direction, added by the Phase 6 correction:
+the geometry walker's 4 and 6 stream bodies carry a
+1,536-byte frame with 790 xmm stack operations (EXP-005);
+the hand-scheduled variant proved the schedule's store
+and reload round trip costs what the spills it removed
+had cost (EXP-006); and the dual-batch MB body moves its
+state through memory 48 times per body (EXP-011).
+Register and stack traffic is not a footnote in this
+programme; in three separate kernel families it is the
+quantity that decided the result. Open questions,
 one experiment each: X-007 (spill slot layout in one
 cache line, hand-scheduled), X-057 (rolled versus unrolled
 stream body), X-047 (aliasing and alignment annotations
@@ -122,8 +132,12 @@ state traffic (not compute) the visible cost in its
 assembly record; a fleet design moved templates or lanes
 across sockets; or rates rose by two orders of magnitude
 on one socket, at which point digest stores alone would
-approach the measured copy floor. None of these is the
-current machine. Until one is, Workstream C's job is
-verification, not invention: keep the spill, store, and
-I-cache accounts current in each new kernel's experiment
-entry.
+approach the measured copy floor. UPDATE (Phase 6,
+2026-11-14): the first condition has occurred (EXP-011,
+see the correction note at the head of this document),
+so for the multi-buffer family the conclusion is
+reopened by this document's own criterion. Workstream
+C's job is now both: keep the spill, store, and I-cache
+accounts current in each new kernel's experiment entry,
+and pursue the reopened state-traffic questions
+(Y-023, Y-029, Y-054) as research, not only audit.
