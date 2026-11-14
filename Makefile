@@ -32,6 +32,9 @@ test-deepening:
 test-cpu:
 	python3 tests/test_cpu_aspect.py
 
+test-cpu-correction:
+	python3 tests/test_cpu_correction.py
+
 test-rtl:
 	python3 tests/test_rtl_aspects.py
 
@@ -50,7 +53,7 @@ test-judgement:
 test-installer:
 	python3 tests/test_installer.py
 
-test-all: test test-regtest test-engine test-pow test-gpu test-mining test-adversarial test-deepening test-cpu test-rtl test-solo test-research test-autopilot test-judgement test-installer
+test-all: test test-regtest test-engine test-pow test-gpu test-mining test-adversarial test-deepening test-cpu test-cpu-correction test-rtl test-solo test-research test-autopilot test-judgement test-installer
 
 cuda-build:
 	python3 gpu/cuda/build.py
