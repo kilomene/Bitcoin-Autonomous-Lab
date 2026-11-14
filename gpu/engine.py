@@ -104,6 +104,7 @@ class ComputeEngine:
         self._lib = None
         self._c_lib = None
         self.cuda_fallback_reason = None
+        self.last_search_stats = None
         if requested in ("auto", "cuda"):
             self._try_cuda(lib_path)
             self.cuda_fallback_reason = self.fallback_reason
@@ -136,6 +137,19 @@ class ComputeEngine:
                 ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint32,
                 ctypes.c_uint, ctypes.c_char_p,
                 ctypes.POINTER(ctypes.c_uint32), ctypes.c_char_p]
+        if hasattr(lib, "bal_c_search2"):
+            lib.bal_c_search2.restype = ctypes.c_int
+            lib.bal_c_search2.argtypes = [
+                ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+                ctypes.c_uint, ctypes.c_char_p,
+                ctypes.POINTER(ctypes.c_uint32), ctypes.c_char_p,
+                ctypes.POINTER(ctypes.c_uint64)]
+        if hasattr(lib, "bal_c_batch2"):
+            lib.bal_c_batch2.restype = ctypes.c_int
+            lib.bal_c_batch2.argtypes = [
+                ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+                ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p,
+                ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint64)]
         header = bytes(range(80))
         got = self._c_batch(lib, header, 1 << 255, 0, 256)
         if got is None:
@@ -184,14 +198,60 @@ class ComputeEngine:
         return out
 
     def search_first(self, header, target, start, count):
-        """Early-exit search via bal_c_search when the C backend is
-        active: returns (nonce, digest) or None. Falls back to a
-        flagged batch scan on other backends."""
+        """Early-exit search: returns (nonce, digest) or None.
+        Thin wrapper over search_first_counted for callers that do
+        not need the actual attempt count."""
+        hit, _attempted, _seconds = self.search_first_counted(
+            header, target, start, count)
+        return hit
+
+    def search_first_counted(self, header, target, start, count):
+        """Early-exit search that reports ACTUAL work.
+
+        Returns (hit, attempted, seconds) where hit is
+        (nonce, digest) or None, attempted is the number of hash
+        attempts actually completed (reported per worker by the
+        native library through bal_c_search2; on an early exit it
+        is usually far below the requested range size), and
+        seconds is measured on a monotonic clock. The result is
+        also recorded on self.last_search_stats together with the
+        backend, thread count and requested range, so callers can
+        account and report honestly. The fallback batch path scans
+        the full range by construction, so its attempted count is
+        exactly the range size."""
         if len(header) != 80 or not (1 <= target < (1 << 256)):
             raise ValueError("bad header or target")
         if not (0 <= start and 0 < count and start + count <= NONCE_SPACE):
             raise ValueError("nonce range out of bounds")
-        if self.backend == "c" and hasattr(self._c_lib, "bal_c_search"):
+        t0 = time.perf_counter()
+        hit = None
+        attempted = count  # batch fallback scans everything
+        backend_used = self.backend
+        if self.backend == "c" and hasattr(self._c_lib, "bal_c_search2"):
+            out_nonce = ctypes.c_uint32(0)
+            out_attempted = ctypes.c_uint64(0)
+            out_digest = ctypes.create_string_buffer(32)
+            target_le = target.to_bytes(32, "little")
+            rc = self._c_lib.bal_c_search2(
+                header, start, count, C_THREADS, target_le,
+                ctypes.byref(out_nonce), out_digest,
+                ctypes.byref(out_attempted))
+            attempted = out_attempted.value
+            if rc == 1:
+                nonce = out_nonce.value
+                digest = out_digest.raw
+                if verify_candidate(header, target, nonce, digest):
+                    hit = (nonce, digest)
+                # else: C said hit but CPU disagrees: trust CPU,
+                # hit stays None and the attempts still count.
+            elif rc == 0:
+                hit = None
+            else:
+                raise RuntimeError(f"bal_c_search2 returned {rc}")
+        elif self.backend == "c" and hasattr(self._c_lib, "bal_c_search"):
+            # Legacy library without attempt reporting: the count
+            # is not measurable, so report the range size and mark
+            # the stat as an upper bound via counted=False.
             out_nonce = ctypes.c_uint32(0)
             out_digest = ctypes.create_string_buffer(32)
             target_le = target.to_bytes(32, "little")
@@ -203,14 +263,27 @@ class ComputeEngine:
                 nonce = out_nonce.value
                 digest = out_digest.raw
                 if verify_candidate(header, target, nonce, digest):
-                    return nonce, digest
-                return None  # C said hit but CPU disagrees: trust CPU
-            if rc == 0:
-                return None
-        cands, _ = self.batch_search(header, target, start, count)
-        if cands:
-            return cands[0]["nonce"], bytes.fromhex(cands[0]["hash"])[::-1]
-        return None
+                    hit = (nonce, digest)
+            self.last_search_stats = {
+                "backend": backend_used, "threads": C_THREADS,
+                "start": start, "requested": count,
+                "attempted": attempted, "counted": False,
+                "seconds": time.perf_counter() - t0, "hit": bool(hit)}
+            return hit, attempted, self.last_search_stats["seconds"]
+        else:
+            cands, _stats = self.batch_search(header, target, start, count)
+            backend_used = _stats["backend"]
+            if cands:
+                hit = (cands[0]["nonce"],
+                       bytes.fromhex(cands[0]["hash"])[::-1])
+        seconds = time.perf_counter() - t0
+        self.last_search_stats = {
+            "backend": backend_used,
+            "threads": C_THREADS if backend_used == "c" else 1,
+            "start": start, "requested": count, "attempted": attempted,
+            "counted": True, "seconds": seconds, "hit": bool(hit),
+            "hashrate": attempted / seconds if seconds > 0 else 0.0}
+        return hit, attempted, seconds
 
     def _try_cuda(self, lib_path):
         if not os.path.isfile(lib_path):
@@ -275,7 +348,7 @@ class ComputeEngine:
             raise ValueError("nonce batch out of bounds")
         if not (1 <= target < (1 << 256)):
             raise ValueError("target out of range")
-        t0 = time.time()
+        t0 = time.perf_counter()
         candidates = []
         used = self.backend
         if self.backend == "c":
@@ -289,7 +362,7 @@ class ComputeEngine:
                         candidates.append({"nonce": nonce,
                                            "hash": d[::-1].hex(),
                                            "backend": "c"})
-                seconds = max(time.time() - t0, 1e-9)
+                seconds = max(time.perf_counter() - t0, 1e-9)
                 return candidates, {
                     "backend": used, "hashes": count, "seconds": seconds,
                     "hashrate": count / seconds, "start": start,
@@ -309,7 +382,7 @@ class ComputeEngine:
                 if verify_candidate(header, target, nonce, d):
                     candidates.append({"nonce": nonce, "hash": d[::-1].hex(),
                                        "backend": used})
-        seconds = max(time.time() - t0, 1e-9)
+        seconds = max(time.perf_counter() - t0, 1e-9)
         return candidates, {
             "backend": used, "hashes": count, "seconds": seconds,
             "hashrate": count / seconds, "start": start,
@@ -338,4 +411,7 @@ class ComputeEngine:
             "cuda_fallback_reason": self.cuda_fallback_reason,
             "c_backend": bool(self._c_lib),
             "c_threads": C_THREADS,
+            "c_attempt_counting": bool(
+                self._c_lib and hasattr(self._c_lib, "bal_c_search2")),
+            "last_search_stats": self.last_search_stats,
         }
