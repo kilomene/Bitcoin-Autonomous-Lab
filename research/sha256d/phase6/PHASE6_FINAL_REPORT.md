@@ -435,3 +435,163 @@ candidates P6C-005 to P6C-009 in
 proofs/exp020_candidates.json; raw benchmark
 data in benchmarks/exp020/; assembly audit in
 analysis/exp020_asm_audit.json.
+
+## Addendum (2026-11-14): EXP-021, heterogeneous worker pair (Y-097)
+
+The second-ranked hypothesis of the Phase 6
+ranking was tested as a search configuration
+question: does a mixed worker pool (AVX-512 MB
+workers plus SHA-NI streams workers on disjoint
+partitions of one search) beat the best
+homogeneous pool at equal threads on this
+contended guest, because the families contend
+less with each other than with themselves? The
+pool passed its full gate set before
+benchmarking (candidate sets equal to the
+Python recount across six splits, genesis
+under either family as partition owner,
+boundary and empty partitions, exact union
+accounting), then ran all pairwise comparisons
+at two and four threads, three sessions each,
+under the EXP-017 paired protocol.
+
+The answer is no, reproduced. Under the
+predeclared makespan statistic the pooled
+ordering is strict: mb2 above mixed2 above
+shani2's equal (mixed2 vs mb2 -0.1884, CI
+-0.294 to -0.082; mixed2 vs shani2 +0.0125,
+null), and mb4 above mixed22 above shani4
+(mixed22 vs mb4 -0.1285, CI -0.203 to -0.054;
+mixed22 vs shani4 +0.1442). A secondary
+recomputation under the production shape
+(continuous span assignment: pool rate as the
+sum of the recorded per-worker rates) gives
+the same ordering, so the barrier design was
+not hiding a win, and the per-worker medians
+show the mechanism directly: neither family
+runs measurably faster beside the other
+family than beside itself. Diversification
+cannot beat concentration on the faster
+family when both draw on the same capped CPU
+budget; the EXP-007 variance anomaly does not
+cash out at pool level.
+
+Three-tier conclusions:
+
+- VERIFIED IMPROVEMENT: unchanged (the AVX-512
+  MB integration remains the programme's one
+  verified improvement; EXP-021 adds the
+  configuration-level confirmation that the
+  homogeneous MB shape production runs is
+  also the fastest measured pool shape).
+- PROMISING HYPOTHESIS: unchanged.
+- UNPROVEN BREAKTHROUGH: unchanged.
+- Established results: Y-097 is an established
+  negative on this guest under both timing
+  semantics; the pool table (six comparisons,
+  18 sessions) stands as the deployment-shape
+  reference for future worker-model questions.
+
+Environment note: every EXP-021 measurement
+predates the VM replacement of about 18:08
+UTC that moved the guest from the AMD EPYC
+9D25 host (SHA extensions, full AVX-512) to
+an Intel Xeon host without SHA extensions
+or VBMI, on which neither research library
+as built can re-execute; the production
+miner's probe-gated v512 backend re-selected
+cleanly on the new host and is mining. The
+full note is in the EXP-021 record.
+
+Full record: EXPERIMENT_RESULTS.md, EXP-021;
+raw data in benchmarks/exp021/ (18 sessions,
+the analysis, the secondary analysis, and the
+driver smoke session under smoke/).
+
+## Addendum (2026-11-14): EXP-022, flags-only MB batch via mask registers (Y-084)
+
+Y-084 asked the output-shape question for
+batch mode: production batch stores 32
+digest bytes per hash that most consumers
+never read, so a form that computes the
+target comparison in vector form, stores
+one mask bit per hash, and extracts digests
+only for flagged lanes should gain in
+batch-shaped consumers (verification,
+statistics), at stated candidate densities.
+The registry scoped the claim to batch mode
+in its own text, and the wider reading
+(retiring lanes mid-batch to cover
+heterogeneous spans) is structurally void
+in the lockstep kernel: a lane's digest
+exists only when its group completes, and
+masking a lane's stores does not retire its
+round work.
+
+The variant (bal_v_batchf2, in
+extreme_optimization/src/avx512_mb_flags.c)
+carries the comparison in opmask registers
+as a lexicographic compare in v_meets
+significance order and passed the full gate
+set before timing: 154,316 density-1
+differentials against hashlib,
+candidate-set parity with production at
+four densities in both extract and
+pure-flags modes, genesis nonce recovery,
+target equality and minus/plus-one
+boundaries, and accounting parity on 32
+(count, threads) pairs. Under the EXP-017
+paired protocol, three sessions per
+comparison and every session individually
+significant, the predeclared primary
+(flagsx versus production batch, density
+approx 0, two threads) pooled at +0.5984
+(CI +0.5042 to +0.6905), 1.82x. The scope
+comparisons agree: 1.59x at density 2^-8,
+1.33x at density 1, 1.89x for the
+pure-flags form at density approx 0, 1.83x
+for the primary at one thread. The effect
+is monotone in the fraction of digests
+nobody reads, which is the mechanism: the
+production batch epilogue (the staging
+stores, the scalar extraction of all
+sixteen digests per group, the per-hash
+output copy, the scalar per-lane compare)
+was roughly half the batch call at sparse
+densities, and the flags form removes it.
+
+Three-tier conclusions:
+
+- VERIFIED IMPROVEMENT: Y-084 joins the
+  list, in batch scope. The AVX-512 MB
+  integration remains the programme's
+  search-path verified improvement; EXP-022
+  adds the batch output shape as a second,
+  separately scoped one. No production
+  change is made by the experiment:
+  adopting the flags form for the engine's
+  batch consumers is an interface decision
+  for the owner, recommended here at about
+  1.8x on sparse-candidate batch work.
+- PROMISING HYPOTHESIS: unchanged.
+- UNPROVEN BREAKTHROUGH: unchanged.
+- Established results: the batch epilogue
+  cost is now measured, not conjectured,
+  and the mid-batch lane-retirement reading
+  of Y-084 is closed as structurally void.
+
+Environment note: every EXP-022 measurement
+ran on the Intel Xeon Platinum 8321HC
+replacement host (AVX-512F, BW, VL, VNNI;
+no SHA extensions, no VBMI) that the
+EXP-021 note records, with both libraries
+built under the restricted flag set
+(-mavx512f -mavx512bw) that lets them
+execute there at all, under heavy
+co-tenancy with the live miner and node
+running untouched throughout.
+
+Full record: EXPERIMENT_RESULTS.md,
+EXP-022; raw data in benchmarks/exp022/
+(15 sessions, the gates record, the
+analysis).
