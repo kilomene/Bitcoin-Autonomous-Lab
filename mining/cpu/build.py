@@ -190,6 +190,8 @@ def _smoke_v512(lib_path):
     supported = lib.bal_v512_supported()
     if not supported:
         return None, 0
+    if not hasattr(lib, "bal_v_batch2"):
+        return "library lacks the bal_v_batch2 entry point", 1
     lib.bal_v_batch2.restype = ctypes.c_int
     lib.bal_v_batch2.argtypes = [
         ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
