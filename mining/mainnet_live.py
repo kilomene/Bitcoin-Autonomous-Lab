@@ -3,7 +3,8 @@
 
 Owner ordered 2026-11-13: the lab must mine for real on mainnet
 and be seen mining. This runner connects the phase-1 Stratum
-client (public-pool.io) to the current ComputeEngine (runtime
+client (public pool, or our own solo server after the cutover)
+to the current ComputeEngine (runtime
 dispatched backend: AVX-512 multi-buffer where the CPUID probe
 confirms it, otherwise the C midstate batch; early-exit search):
 real mainnet jobs, real hashes, shares
@@ -13,6 +14,13 @@ every few seconds.
 
 Usage: python3 mining/mainnet_live.py --duration 3600
        [--address bc1q...] (defaults to the lab wallet)
+
+The Stratum endpoint comes from mining/endpoint_config.py:
+--pool-host / --pool-port arguments, then BAL_POOL_HOST /
+BAL_POOL_PORT, then .local/mining-endpoint.json (mode "pool" is
+public-pool.io, mode "solo" is our own solo server), then the
+public-pool default. The solo cutover is a flip of that file
+plus a restart of this process; see docs/SOLO_CUTOVER.md.
 """
 
 import argparse
@@ -49,6 +57,29 @@ def target_for_difficulty(diff):
     return int(DIFF1_TARGET / diff)
 
 
+def call_attempts(engine, hit, start):
+    """Exact hash attempts of one engine.search_first call.
+
+    The status counter accumulates real work, not requested
+    work: the engine's counted stats
+    (last_search_stats["attempted"], verified exact by the
+    post-integration audit) are the source of truth. If a
+    call path ever leaves no stats, count only what the
+    result itself proves: a hit proves every nonce from the
+    span start through the winner was examined, and a miss
+    without stats proves no countable partial work, so 0.
+    The requested span size is never counted: on an
+    early-exit span it includes nonces never attempted
+    (audit note N-1, resolved 2026-11-14).
+    """
+    stats = getattr(engine, "last_search_stats", None)
+    if stats is not None and stats.get("attempted") is not None:
+        return int(stats["attempted"])
+    if hit is not None:
+        return hit[0] - start + 1
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--duration", type=int, default=3600)
@@ -58,15 +89,35 @@ def main():
                          "machine's hostname, so every agent "
                          "mines under its own worker")
     ap.add_argument("--evidence", default="evidence/mainnet-live.jsonl")
+    ap.add_argument("--pool-host", default=None,
+                    help="Stratum host override; default resolution "
+                         "is endpoint_config (env, config file, "
+                         "public-pool)")
+    ap.add_argument("--pool-port", type=int, default=None,
+                    help="Stratum port override")
     args = ap.parse_args()
 
     if not args.worker:
         from mining.autopilot import default_worker
         args.worker = default_worker()
+    from mining.endpoint_config import resolve_endpoint
+    pool_host, pool_port, endpoint_mode, endpoint_cfg = \
+        resolve_endpoint(args.pool_host, args.pool_port)
     ev = Evidence(args.evidence)
     user = f"{args.address}.{args.worker}"
-    client = StratumClient("public-pool.io", 21496, user, "x", ev)
-    client.suggest_difficulty = 0.001  # pool clamps to its min: 1
+    client = StratumClient(pool_host, pool_port, user, "x", ev)
+    if endpoint_mode == "solo":
+        # Our own server sets the difficulty itself; suggest the
+        # configured value so the session log shows intent.
+        client.suggest_difficulty = float(
+            endpoint_cfg["solo"]["share_difficulty"])
+    else:
+        client.suggest_difficulty = 0.001  # pool clamps to its min: 1
+    endpoint_line = (f"stratum endpoint: {pool_host}:{pool_port} "
+                     f"(mode {endpoint_mode})")
+    print(endpoint_line, flush=True)
+    ev.log("endpoint_selected", host=pool_host, port=pool_port,
+           mode=endpoint_mode)
     client.connect()
     threading.Thread(target=client.reader_loop, daemon=True).start()
     if not client.authorized.wait(timeout=30):
@@ -117,7 +168,7 @@ def main():
                     break
             span = min(span_size, (1 << 32) - nonce)
             hit = engine.search_first(header, target, nonce, span)
-            total_hashes += span
+            total_hashes += call_attempts(engine, hit, nonce)
             nonce += span
             if hit is not None:
                 found, digest = hit
@@ -172,8 +223,8 @@ def main():
             print(line, flush=True)
             with open(STATUS, "w") as f:
                 f.write(f"MAINNET LIVE MINING\n{line}\n"
-                        f"worker={user}\npool=public-pool.io:21496\n"
-                        f"{backend_line}\n")
+                        f"worker={user}\npool={pool_host}:{pool_port}\n"
+                        f"{endpoint_line}\n{backend_line}\n")
             ev.log("status", hashes=total_hashes, rate=rate, best=best,
                    submitted=submitted)
     print("duration complete", flush=True)
