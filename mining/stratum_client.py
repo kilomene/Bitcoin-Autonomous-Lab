@@ -193,6 +193,7 @@ class StratumClient:
         self.methods_by_id = {}
         self.suggest_difficulty = None
         self.stop_flag = False
+        self._tip_ntime = {}  # prevhash -> highest ntime accepted
 
     def _send(self, method, params):
         with self.lock:
@@ -205,6 +206,11 @@ class StratumClient:
 
     def connect(self):
         self.sock = socket.create_connection((self.host, self.port), timeout=30)
+        try:  # signals travel immediately: no Nagle delay
+            self.sock.setsockopt(socket.IPPROTO_TCP,
+                                 socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
         self.sock.settimeout(1.0)
         self.ev.log("connected", pool=f"{self.host}:{self.port}")
         sub_id = self._send("mining.subscribe", ["BitcoinAutonomousLab/0.1.0"])
@@ -252,11 +258,32 @@ class StratumClient:
                 "clean_jobs": p[8] if len(p) > 8 else False,
             }
             problems = validate_job(job)
+            if not problems:
+                # Freshness guards: a duplicate of the template
+                # already in hand changes nothing, and a template
+                # for the same tip with an older ntime is a stale
+                # echo, never an improvement.
+                with self.lock:
+                    cur = self.current_job
+                if (cur is not None
+                        and job["job_id"] == cur["job_id"]
+                        and job["prevhash"] == cur["prevhash"]
+                        and job["ntime"] == cur["ntime"]):
+                    self.ev.log("template_duplicate",
+                                job_id=job["job_id"])
+                    return
+                seen = self._tip_ntime.get(job["prevhash"])
+                if seen is not None and int(job["ntime"], 16) < seen:
+                    problems = ["ntime regressed for the same tip: "
+                                "stale template echo"]
             if problems:
                 self.ev.log("template_rejected",
                             job_id=job.get("job_id"),
                             problems=problems)
                 return
+            self._tip_ntime[job["prevhash"]] = max(
+                int(job["ntime"], 16),
+                self._tip_ntime.get(job["prevhash"], 0))
             with self.lock:
                 # Any accepted template supersedes the work in
                 # progress: the miner only ever works on the
@@ -325,14 +352,53 @@ class StratumClient:
                     nonce="%08x" % nonce)
         return mid
 
+    def _reset_session(self):
+        """Drop all per-connection state before a reconnect."""
+        if self.sock is not None:
+            try:
+                self.sock.close()
+            except OSError:
+                pass
+            self.sock = None
+        with self.lock:
+            self.current_job = None
+            self.difficulty = None
+            self.job_generation += 1
+        self.extranonce1 = None
+        self.extranonce2_size = None
+        self.authorized.clear()
+        self.buf = b""
+
     def reader_loop(self):
+        """Read pool messages forever; reconnect on any drop.
+
+        A dropped connection is not a dead miner: the session
+        is reset and re-established with a one second retry
+        until it succeeds or a stop is requested, so the
+        workforce is back on a fresh template in seconds
+        instead of waiting for a full process restart.
+        """
         while not self.stop_flag:
             try:
                 self.poll_once()
             except (ConnectionError, OSError) as exc:
-                self.ev.log("connection_error", error=str(exc))
-                self.stop_flag = True
-                return
+                if self.stop_flag:
+                    return
+                self.ev.log("connection_error", error=str(exc),
+                            action="reconnecting")
+                self._reset_session()
+                while not self.stop_flag:
+                    try:
+                        self.connect()
+                        self.ev.log(
+                            "reconnected",
+                            pool=f"{self.host}:{self.port}")
+                        break
+                    except (ConnectionError, OSError,
+                            TimeoutError) as exc2:
+                        self.ev.log("reconnect_failed",
+                                    error=str(exc2))
+                        time.sleep(1)
 
 
 def main():
