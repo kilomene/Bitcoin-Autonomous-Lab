@@ -302,3 +302,33 @@ verified improvement; state traffic was not
 the binding cost. No integration. Full
 record: phase6/EXPERIMENT_RESULTS.md,
 EXP-018.
+
+## Pointer: AVX-512 MB integrated as the production backend (2026-11-14)
+
+The owner adopted the EXP-017 statistic as
+the programme's integration decision rule
+(replacing the min/max separation rule) and
+named the AVX-512 multi-buffer kernel the
+integration target. It is now ComputeEngine
+backend "v512": production translation unit
+mining/cpu/bal_avx512_mb.c built with
+restricted flags (-mavx512f -mavx512bw) into
+libbal_v512.so, selected only when the
+flag-free CPUID probe confirms AVX-512F and
+AVX-512BW and a batch reproduces hashlib
+digests, with clean fallback to the OpenSSL
+C backend everywhere else. Gates through
+the production path: 196,608 randomized
+differentials exact, accounting parity with
+wave semantics, fresh regtest blocks
+accepted at heights 630 and 700, test-all
+green except the pre-existing test-rtl
+environment failure. The live miner was
+restarted onto the new code and verified
+(backend v512 in the miner log and status,
+counter advancing, session rate 13.28M H/s
+against 3.33M H/s in the previous C session).
+Classification: VERIFIED IMPROVEMENT under
+the adopted rule. Full record:
+phase6/PHASE6_FINAL_REPORT.md, addendum of
+2026-11-14.
