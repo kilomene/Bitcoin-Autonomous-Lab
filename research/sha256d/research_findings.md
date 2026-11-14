@@ -190,3 +190,21 @@ the X-059 prices. PROMISING HYPOTHESIS: hand-scheduled
 assembly (weakened), phase pipelining elsewhere, AVX2
 8-way for narrower machines. UNPROVEN BREAKTHROUGH:
 anything beyond the per-core ceiling narrative.
+
+## Pointer: Next Research Phase, Parts B to D (2026-11-14)
+
+The Y-series registry (108 hypotheses), the
+performance ceiling report (three derived
+assumption sets; per-core ceiling in the low tens
+of MH/s under every set), and experiment batch
+EXP-011 to EXP-015 live in the extreme_optimization
+tree (EXP011_ONWARD_REPORT.md). Headlines: the
+Boolean cone is at its proven minimum in the
+compiled MB kernel (EXP-012, z3 plus exhaustive
+search); bitslicing is refuted by implementation
+at about 30x below MB (EXP-015); dual-batch MB
+and cross-lane sharing are promising but
+unseparated on this guest (EXP-011, EXP-013);
+K+W folding does not pay as implemented
+(EXP-014). No verified improvement this batch and
+no integration; production is byte-identical.
