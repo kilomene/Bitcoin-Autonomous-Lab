@@ -375,3 +375,25 @@ running deployment, and the fix lands on the next
 natural restart. Resolution record:
 phase6/POST_INTEGRATION_AUDIT.md, resolution section
 of 2026-11-14.
+
+## Pointer: EXP-019 carry-save schedule pricing (2026-11-14)
+
+EXP-019 (Y-002, then Y-001) has run in its
+designed order: the per-distance price list
+came first and no carry-save form passed its
+gate, so no kernel was built. A software 3:2
+compressor costs 3 instructions (2 VPTERNLOGD
+plus a VPSLLD carry alignment the registry
+costing omitted), making a resolved
+carry-save schedule sum 5 or 7 instructions
+with a 4 or 5 stage chain against the
+incumbent's 3 VPADDD and 3 stages; measured,
+the carry-save forms cost 1.17 to 1.53 times
+the incumbent at separations 0 and 1, the
+only separations where resolution is forced,
+and are slower at every separation from 1 up
+under L1-resident operands. Y-002 and Y-001
+are REJECTED (established negative); the
+price list is the discovery cost model's
+resolution table. Full record:
+phase6/EXPERIMENT_RESULTS.md, EXP-019.
