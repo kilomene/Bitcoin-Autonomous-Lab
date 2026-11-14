@@ -454,11 +454,217 @@ by reference, without altering the originals.
   repricing belongs with any multi-buffer integration
   decision.
 
+### EXP-011: Dual-batch interleaved AVX-512 multi-buffer
+
+- Hypothesis: two independent 16-lane batches
+  interleaved round-by-round in one worker hide
+  vector round latency, as H-01 streams did for
+  SHA-NI (the Y-registry's dual-batch candidate,
+  Part D of the Next Research Phase order).
+- Justification: EXP-003 proved the latency
+  mechanism in the SHA-NI family; EXP-007 made MB
+  the fastest family, and its interleave depth was
+  untested.
+- Implementation: src/avx512_mb2.c (v_compress16x2,
+  v_group2, dual-aware walker; single-group path
+  below 17 remaining nonces). Production untouched.
+- Methodology: full gate set
+  (tests/test_exp011_onward.py), then three
+  interleaved benchmark sessions against production,
+  geo s4 strided and MB16 (benchmarks/
+  exp011_onward_kernels.json and exp011_confirm.json;
+  session A figures transcribed in the batch report).
+- Correctness evidence: all gates pass, including
+  108,000 randomized differentials, genesis,
+  boundaries, template variations, target equality
+  and minus one, exact 32-group atomic accounting
+  (early-exit attempted exactly 50,016 on the
+  genesis probe; partial-group backend 100,016 at
+  count 100,003).
+- Benchmark evidence: medians relative to
+  same-session MB16: session A 0.97x (1 thread),
+  2.27x (2 threads, the highest 2-thread median of
+  the programme at 8,267,078 H/s); session B 1.41x,
+  0.64x; session C 0.58x, 1.15x. Spreads to 250
+  percent. Assembly: dual body 239 instructions,
+  48 VMOVDQA64 (memory-backed state).
+- Hardware: lab VM as EXP-004; node still in IBD;
+  contention the worst of the programme so far.
+- Statistical analysis: cross-session medians
+  inconsistent in sign at 1 thread; no separation.
+- Result: not accepted as an improvement;
+  retained as a promising hypothesis.
+- Rejection reason (for the improvement claim):
+  does not reproduce across sessions under the
+  EXP-004 standard.
+- Follow-up: Y-023 (register-resident dual batch)
+  and Y-043 (interleave granularity), in a quieter
+  window.
+
+### EXP-012: VPTERNLOGD Boolean cone, searched, proven, and measured
+
+- Hypothesis: Ch, Maj and the sigma XOR triples
+  each cost several classic vector ops; one
+  VPTERNLOGD each would shed about 6 ops per round
+  (the X-027/X-094 line, with the instruction-
+  level realization as the new element).
+- Justification: AVX-512F includes a general
+  3-input bitwise instruction; the SHA-256 round's
+  Boolean functions are 3-input functions.
+- Implementation: proofs/boolean_cone_search.py
+  (search and proofs) and src/avx512_mb_tern.c
+  (explicit ternlog forms throughout v_compress16).
+- Methodology: exhaustive search over all 256
+  immediates against 8-row truth tables; exact
+  op-count BFS over classic ops for the lower
+  bound; z3 bit-vector UNSAT for the closed forms;
+  1,000,000-sample differential; full gate set;
+  interleaved benches in sessions A and C.
+- Correctness evidence: unique immediates Ch 202
+  (0xCA), Maj 232 (0xE8), XOR3 150 (0x96); classic
+  minima Ch 3 ops, Maj 4 ops, XOR3 2 ops (closure
+  level sizes 8, 38, 152, 232, 256); z3 UNSAT for
+  both closed forms; differential clean; all
+  kernel gates pass (108,000 differentials).
+- Benchmark evidence: ratios to MB16: session A
+  0.81x / 0.90x, session C 0.97x / 1.13x (parity).
+  Assembly: explicit form 111 instructions, 6
+  VPTERNLOGD; baseline 116 instructions, 7
+  VPTERNLOGD. gcc had already applied the
+  optimization to the baseline.
+- Hardware: as EXP-011.
+- Statistical analysis: parity is the predicted
+  outcome of the assembly comparison and is what
+  the benches show.
+- Result: accepted as a formal result and a
+  codegen fact; rejected as a performance
+  hypothesis (no gain exists to take).
+- Acceptance reason: the search and proofs are
+  complete for the stated op libraries; the
+  assembly audit explains the parity.
+- Follow-up: the pair (MB16, ternlog twin) is the
+  programme's equal-pair noise control (Y-103);
+  joint-cone sharing continues as Y-013.
+
+### EXP-013: Cross-lane prefix and schedule sharing in MB
+
+- Hypothesis: block-2 rounds 0..2 and schedule
+  words W16/W17 are lane-independent (W18
+  analysis), so computing them once per template
+  removes 3 of 64 block-2 rounds and 2 schedule
+  generations per group.
+- Justification: the dependency derivation is
+  proven; EXP-002's H-03 found the same effect
+  below the noise floor in the SHA-NI family, and
+  the vector family owed its own measurement.
+- Implementation: src/avx512_mb_share.c (scalar
+  prefix state and shared words in
+  v_template_init; v_compress16_from starting at
+  round 3).
+- Methodology: full gate set, three interleaved
+  sessions as EXP-011.
+- Correctness evidence: all gates pass (108,000
+  differentials; accounting identical to MB16,
+  including early-exit 50,016).
+- Benchmark evidence: ratios to MB16: session A
+  1.06x / 1.11x; session B 1.21x / 0.65x;
+  session C 0.51x / 0.86x.
+- Hardware: as EXP-011.
+- Statistical analysis: the predicted effect
+  (about 2.4 percent of per-nonce rounds) is an
+  order of magnitude below session noise.
+- Result: neither accepted nor refuted; retained
+  as a combination ingredient.
+- Reason: effect size below the measurable floor
+  on this VM, stated plainly rather than rounded.
+- Follow-up: Y-093 (share inside dual batch) in a
+  quieter window.
+
+### EXP-014: K+W constant folding for template-fixed MB rounds
+
+- Hypothesis: for block-2 rounds 0..17 except
+  round 3 the schedule word is a per-template
+  constant, so K[t] + W[t] folds once per template
+  and saves one vector add per such round
+  (extends X-024 into the vector family).
+- Justification: 17 folded adds per block-2
+  compression, exact by substitution.
+- Implementation: src/avx512_mb_kw.c (kw table in
+  the template; v_compress16_kw for block 2).
+- Methodology: full gate set, sessions A and C.
+- Correctness evidence: all gates pass (108,000
+  differentials; accounting identical to MB16).
+- Benchmark evidence: ratios to MB16: session A
+  0.65x / 0.93x; session C 0.64x / 1.09x. No
+  session shows a gain.
+- Hardware: as EXP-011.
+- Statistical analysis: consistently at or below
+  parity at 1 thread; the 2-thread figures
+  straddle parity without reproducing a gain.
+- Result: rejected as implemented.
+- Rejection reason: the folded operand's
+  per-round broadcast and branch structure cost
+  what the saved add was worth; the theoretical
+  saving was under 2 percent of per-hash work.
+- Follow-up: Y-070 (recurrence-level folding)
+  only if its dependency analysis shows a much
+  larger foldable set.
+
+### EXP-015: Bitsliced 32-lane SHA-256d, implemented
+
+- Hypothesis: bitslicing (32 hashes in bit
+  planes, rotations free as reindexing) might
+  beat the vector family despite ripple-carry
+  additions; X-029 had only an analytic bound.
+- Justification: the rotation and Boolean costs
+  genuinely vanish in planes; the open empirical
+  question was the addition tax on this core.
+- Implementation: src/bitslice32.c (plane state,
+  ripple-carry plane adds, rotating state offset,
+  scalar midstate broadcast, 32-group atomic
+  accounting).
+- Methodology: full gate set; a Python replica of
+  the logic was verified against hashlib to
+  isolate a C transcription bug the gates caught
+  (carry re-read after an aliased write in
+  bs_add); fix, re-gate, then benches in
+  sessions A and C.
+- Correctness evidence: all gates pass after the
+  fix (108,000 differentials; early-exit 50,016;
+  partial-group backend 100,032 at count 100,003).
+- Benchmark evidence: medians 109,921 and
+  116,330 H/s (1 thread), 172,365 and 186,090
+  (2 threads); spreads 21 to 41 percent, the
+  tightest of the batch. About 0.03x of MB16 and
+  about 0.13x of production in the same sessions.
+- Hardware: as EXP-011.
+- Statistical analysis: the deficit is two
+  orders of magnitude beyond any session noise;
+  no subtlety needed.
+- Result: rejected by measurement.
+- Rejection reason: ripple-carry addition costs
+  roughly 160 plane ops per 32-bit add, several
+  adds per round, swamping the free rotations;
+  X-029's analytic bound is confirmed by an
+  implementation.
+- Follow-up: hybrid schedule-only bitslicing is
+  registered as Y-004; the full form is closed
+  on this core.
+
 ## Registry state
 
-Ten experiments recorded (EXP-000 to EXP-009). EXP-004
-to EXP-009 ran as one batch on 2026-11-14; the batch
-report is EXP004_009_REPORT.md in this directory. No
-integration resulted: EXP-004's predeclared criterion
-failed and production is byte-identical. Next ID:
-EXP-010.
+Fifteen experiments recorded (EXP-000 to EXP-009
+and EXP-011 to EXP-015), plus Part B
+(HYPOTHESIS_REGISTRY_Y.md, Y-001 to Y-108) and
+Part C (PERFORMANCE_CEILING.md) of the Next
+Research Phase. EXP-010 is reserved for the Part A
+post-sync decision closure, which is handled by
+its own watcher and has not run. EXP-011 to
+EXP-015 ran as one batch on 2026-11-14; the batch
+report is EXP011_ONWARD_REPORT.md in this
+directory. No integration resulted and production
+is byte-identical: the batch produced no verified
+improvement, two closures (EXP-012, EXP-015), one
+implementation negative (EXP-014), and two
+unseparated promising results (EXP-011, EXP-013).
+Next unreserved ID: EXP-016.
