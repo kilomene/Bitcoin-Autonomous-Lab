@@ -595,3 +595,91 @@ Full record: EXPERIMENT_RESULTS.md,
 EXP-022; raw data in benchmarks/exp022/
 (15 sessions, the gates record, the
 analysis).
+
+## Addendum (2026-11-14): EXP-023, midstate amortisation family (Y-076, Y-077, Y-079)
+
+EXP-023 tested the midstate amortisation
+family as written, audit first. The audit
+priced the recomputed reusable state in the
+lab's own paths: in the GBT path,
+build_candidate repeats the full transaction
+pass, the full merkle tree and two RPC round
+trips on every extranonce call (17.81 ms
+median per call at 500 transactions on this
+host; about 99.6 percent of the repeated
+work is extranonce independent), while no
+serving path rebuilds a midstate per
+extranonce step at all (the stratum step is
+117.9 us against a full nonce scan; the solo
+server holds no midstate). The two-level
+prototype (family constants, per-template
+pass and tree, coinbase spine per step)
+passed 1,320 randomised byte-identity cases
+against build_candidate before timing.
+
+Three-tier conclusions after EXP-023:
+
+- VERIFIED IMPROVEMENT: Y-077 at the data
+  level joins the list, in serving-path
+  scope. Under the EXP-017 paired protocol
+  the amortised builder beat the current
+  per-extranonce rebuild in every session
+  and pooled: 18.49x for 16 extranonce steps
+  on one 500-transaction template (adjusted
+  +2.9174, CI +2.7884 to +3.0406, pairs won
+  1.000), 16.46x at 100 transactions, and
+  22.06x for 16 jobs of one family. The
+  boundary is measured, not assumed: when
+  every job's tx set churns, the result is
+  parity (0.97x, not significant), and
+  break-even is about 1.8 steps per
+  template. No integration is made by the
+  experiment; adopting the prepared-template
+  shape in mining/engine.py is recommended
+  to the owner.
+- PROMISING HYPOTHESIS: unchanged.
+- UNPROVEN BREAKTHROUGH: unchanged.
+- Established negatives and verified
+  results: Y-076 is rejected as specified
+  (its cache target, block 1's first 64
+  bytes, is not fixed across extranonce
+  steps: the root occupies bytes 36 to 63
+  and the midstate changes per step; the
+  deepest extranonce-independent snapshot
+  is R8, rounds 0 to 8; and the named
+  per-step midstate rebuild does not exist
+  in any serving path). Y-077's stated
+  compression-prefix mechanism is rejected
+  as immaterial (R8 without alignment, R11
+  only under 2^-96 merkle-head alignment,
+  at most about 304 us per block-1
+  compression in a Python path, zero in the
+  kernel path). Y-079 is a verified table:
+  deepest snapshot by shallowest varying
+  field is none (version), R0 (prevhash),
+  R8 (merkle), B2R0 (time), B2R1 (nbits),
+  SCH17 (none of the five); the named
+  block-1 half depth is deepest for no
+  field subset, and a tail-word-only change
+  leaves the full midstate valid. The solo
+  server's per-share validation carries the
+  same full-rebuild cost (24.3 ms at 500
+  transactions) and is recorded as a second
+  candidate for the same cached tree if the
+  owner adopts it.
+
+Environment note: every EXP-023 measurement
+ran on the Intel Xeon Platinum 8321HC host
+(AVX-512F, BW, VL, VNNI; no SHA extensions,
+no VBMI) recorded in the session manifests,
+with the live miner and node running
+untouched throughout; three of the four
+analyses were completed after a runtime
+restart onto an AMD EPYC 9D25 host, which
+does not affect them (deterministic
+arithmetic over the recorded sessions).
+
+Full record: EXPERIMENT_RESULTS.md,
+EXP-023; raw data in benchmarks/exp023/
+(12 sessions, the gates record, the audit,
+four analyses).
