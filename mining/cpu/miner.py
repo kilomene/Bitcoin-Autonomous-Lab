@@ -52,8 +52,13 @@ def benchmark(seconds_per_path=2.0):
     header = bytes(80)
     target = 1 << 240
 
-    eng_c = ComputeEngine()
-    results["backend_selected"] = eng_c.backend
+    # The C measurements below are of the C library itself, so
+    # they use an explicitly C-selected engine; the auto engine
+    # may select the AVX-512 backend, which is recorded
+    # separately as the machine's selected backend.
+    eng_sel = ComputeEngine()
+    results["backend_selected"] = eng_sel.backend
+    eng_c = ComputeEngine(requested="c")
     results["c_midstate_engine"] = eng_c.benchmark()
 
     eng_py = ComputeEngine(requested="cpu")
