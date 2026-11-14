@@ -863,10 +863,99 @@ by reference, without altering the originals.
 - Follow-up: EXP-018 (Y-023) is decided under
   this statistic.
 
+### EXP-018: Register-resident dual-batch MB (Phase 6, Y-023)
+
+- Hypothesis: EXP-011's dual-batch kernel
+  (highest single-session 2-thread median of
+  the programme, 8.27M H/s, never reproduced)
+  pays for its interleave with array-handled
+  state and 48 vmovdqa64; a restructured dual
+  body holding both batches' state sets in zmm
+  registers should cut that traffic enough to
+  reproduce a gain over single-batch MB.
+- Mathematical basis: the round's state
+  rotation is a relabelling, (T1+T2, a, b, c,
+  d+T1, e, f, g); writing new A into the vector
+  that held h and new E into the vector that
+  held d, with compile-time rotated argument
+  tuples, performs the rotation with no data
+  movement, and the orientation repeats every
+  eight rounds. Exact by construction.
+- Predicted effect: zero or near-zero state
+  spills and no rename moves in the hot loop,
+  and a significant paired gain over
+  single-batch MB if state traffic was the
+  binding cost.
+- Implementation: src/avx512_mb_reg.c
+  (bal_r_batch2, bal_r_search2; libbal_r512
+  .so), sixteen named state vectors, two
+  stack schedule rings, EXP-012 VPTERNLOGD
+  cones, an eight-round ring unit repeated
+  eight times. A full 64-round unroll was
+  compiled first and superseded: 3,872
+  instructions, 3,776-byte frame, 214 zmm
+  stack accesses in its spill region.
+  avx512_mb.c and avx512_mb2.c unmodified.
+- Assembly evidence: ../phase6/benchmarks/
+  exp018/asm_audit.json. Final dual body
+  v_compress16x2_reg: 1,014 instructions,
+  frame 2,368 bytes; zmm stack instructions
+  90, of which 80 are schedule ring accesses
+  and 10 are in the spill area; exactly one
+  state vector is homed in one stack slot
+  (0xc0, 3 accesses), the other fifteen have
+  no stack traffic. EXP-011 dual body rebuilt:
+  212 instructions (239 in its own report),
+  frame 2,112, vmovdqa64 48 including 16
+  per-iteration renames. Single-batch body:
+  111 instructions, frame 1,088, vmovdqa64
+  24. Residency achieved at the near-zero
+  level; schedule ring traffic remains in
+  all bodies.
+- Correctness evidence: tests/test_exp018.py,
+  all gates pass: 108,000 differentials vs
+  hashlib, genesis digest and search,
+  boundaries, template variations, target
+  equality and minus one, regtest-easy set
+  (82), exact accounting including early
+  exit 50,016, partial backend 100,016 at
+  count 100,003, sub-group backend 16 at
+  count 5, 2^32 group edge.
+- Benchmark evidence: seven append-only
+  sessions in ../phase6/benchmarks/exp018/
+  (analysis_20261114T151341Z.json), EXP-017
+  protocol, 160 pairs of 65,536 hashes at 2
+  threads per session, node in IBD (heights
+  411,173 to 411,194 of 975,810 where the
+  RPC answered). Primary, reg vs single
+  batch MB, adjusted pooled +0.0836 (CI
+  -0.0247 to +0.1902, 1.087x), pairs won
+  0.554, positive point estimate in all
+  three sessions, not significant in any
+  session or pooled. Context, reg vs
+  production: pooled +1.5027 (CI 1.4010 to
+  1.6011, 4.49x), significant everywhere.
+  Control (reg vs itself): -0.0945 (CI
+  -0.2770 to +0.0884), null as required.
+- Result: residency achieved, rate gain not
+  significant; the finding is that state
+  traffic was not the binding cost in the
+  dual-batch shape on this machine.
+- Decision: Y-023 is NOT a verified
+  improvement under its predeclared
+  definitions. Tier: PROMISING HYPOTHESIS
+  with measured support. No integration;
+  production byte-identical.
+- Follow-up: variant retained in tree,
+  gated and benchmarked; the audit method
+  (regions from the prologue, spill slots
+  by offset) is the template for Y-024 and
+  any schedule-residency design.
+
 ## Registry state
 
-Eighteen experiments recorded (EXP-000 to
-EXP-017), plus Part B (HYPOTHESIS_REGISTRY_Y.md,
+Nineteen experiments recorded (EXP-000 to
+EXP-018), plus Part B (HYPOTHESIS_REGISTRY_Y.md,
 Y-001 to Y-108) and Part C
 (PERFORMANCE_CEILING.md) of the Next Research
 Phase. EXP-011 to EXP-015 ran as one batch on
@@ -892,8 +981,12 @@ Y hypotheses, built the discovery system's first
 component, and executed EXP-016, which refuted
 Y-065 and Y-075 as work reductions with proof
 grade evidence. EXP-017 (the measurement stack)
-has since run and is recorded above; Phase 6
-reserves EXP-018 to EXP-020 for its designed
+has since run and is recorded above; EXP-018
+(Y-023, register-resident dual-batch) has also
+run and is recorded above: residency achieved,
+no significant gain over single-batch MB, not
+a verified improvement. Phase 6 reserves
+EXP-019 to EXP-020 for its remaining designed
 experiments. Phase 6 records live in
 ../phase6/ (plan, results, final report). Next
 unreserved ID: EXP-021.
