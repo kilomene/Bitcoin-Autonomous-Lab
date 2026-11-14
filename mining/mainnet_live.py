@@ -3,8 +3,10 @@
 
 Owner ordered 2026-11-13: the lab must mine for real on mainnet
 and be seen mining. This runner connects the phase-1 Stratum
-client (public-pool.io) to the current ComputeEngine (C midstate
-batch, early-exit search): real mainnet jobs, real hashes, shares
+client (public-pool.io) to the current ComputeEngine (runtime
+dispatched backend: AVX-512 multi-buffer where the CPUID probe
+confirms it, otherwise the C midstate batch; early-exit search):
+real mainnet jobs, real hashes, shares
 submitted at pool difficulty, evidence logged as JSONL plus a
 human-readable status file (.local/mainnet-status.txt) refreshed
 every few seconds.
