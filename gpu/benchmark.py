@@ -5,6 +5,11 @@ Measurement discipline:
   gives median and spread, never a single best run.
 - End-to-end batch time uses a monotonic host clock
   (time.perf_counter inside ComputeEngine.batch_search).
+- Rates follow the Task 003.8 accounting definitions: hashrate is
+  ACTUAL backend hash computations per second (on the CUDA path,
+  device_hashes per second, including overflow-recovery repeats),
+  and unique coverage per second is reported separately as
+  coverage_per_second. The two are never conflated.
 - Kernel-only time comes from CUDA events and is reported ONLY when
   a batch actually executed on CUDA (stats carry kernel_ms). It is
   never mixed into or compared against end-to-end numbers.
@@ -35,6 +40,16 @@ def run_benchmark(batches=5, batch=65536, engine=None):
         runs.append({
             "backend": stats["backend"],
             "hashes": stats["hashes"],
+            "backend_hashes": stats.get("backend_hashes",
+                                        stats["hashes"]),
+            "device_hashes": stats.get("device_hashes"),
+            "unique_coverage": stats.get("unique_coverage", batch),
+            "coverage_per_second": stats.get(
+                "coverage_per_second", stats["hashrate"]),
+            "researched_hashes": stats.get("researched_hashes", 0),
+            "overflow_splits": stats.get("overflow_splits", 0),
+            "candidate_count": stats.get("candidate_count",
+                                         len(cands)),
             "seconds": stats["seconds"],
             "wall_seconds": wall,
             "hashrate": stats["hashrate"],
@@ -43,6 +58,7 @@ def run_benchmark(batches=5, batch=65536, engine=None):
             "fallback_events": stats.get("fallback_events", 0),
         })
     rates = [r["hashrate"] for r in runs]
+    coverage_rates = [r["coverage_per_second"] for r in runs]
     executed_on_cuda = any(r["backend"] == "cuda" for r in runs)
     return {
         "backend": eng.backend,
@@ -61,6 +77,14 @@ def run_benchmark(batches=5, batch=65536, engine=None):
         "median_hashrate": statistics.median(rates),
         "min_hashrate": min(rates),
         "max_hashrate": max(rates),
+        "hashrate_definition": (
+            "actual backend hash computations per second "
+            "(device_hashes per second on the CUDA path)"),
+        "median_coverage_per_second": statistics.median(
+            coverage_rates),
+        "coverage_definition": (
+            "unique nonce coverage per second, reported separately "
+            "from actual hash computations"),
         "runs": runs,
         "cpu_vs_gpu_comparison": (
             "available in runs above (cuda batches) against a CPU "
