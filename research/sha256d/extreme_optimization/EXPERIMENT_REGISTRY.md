@@ -969,10 +969,101 @@ by reference, without altering the originals.
   by offset) is the template for Y-024 and
   any schedule-residency design.
 
+### EXP-019: Carry-save schedule pricing, then engine (Phase 6, Y-002, Y-001)
+
+- Hypothesis: the four-operand schedule sum
+  (W[t-16] + sigma0(W[t-15]) + W[t-7] +
+  sigma1(W[t-2])) prices lower as a carry-save
+  network than as the add tree the production
+  compiler emits, at some consumption distance
+  (Y-002); if so, a whole-schedule carry-save
+  generator (Y-001) is worth building.
+- Mathematical basis: carry-save addition is
+  exact (3:2 compressor identities, parity and
+  majority, with the carry vector aligned by a
+  shift). The open question was never
+  correctness but price: ops, dependency
+  chain, and measured cost per distance.
+- Predicted effect: registry costing assumed
+  one carry-save level at two ternlog ops.
+  The audit below corrects that count before
+  any measurement: a software compressor is
+  2 VPTERNLOGD plus 1 VPSLLD (carry
+  alignment), so a resolved four-operand sum
+  costs 5 instructions (one level) or 7 (two
+  levels) against the incumbent's 3 VPADDD,
+  with chains of 4 or 5 stages against 3.
+- Implementation: no kernel. Tooling only:
+  ../phase6/src/exp019_price_micro.c (five
+  exact forms, self-verified on 1,600,000
+  random lanes, zero mismatches) and
+  ../phase6/benchmarks/exp019_price_list.py
+  plus exp019_l1_supplement.py. Production
+  mining/cpu/bal_avx512_mb.c untouched.
+- Assembly evidence: microbenchmark runner
+  loops emit exactly the intended forms
+  (current 3 VPADDD; cs1 2 VPTERNLOGD +
+  1 VPSLLD + 2 VPADDD; csfull 4 + 2 + 1).
+  The production hot loop's schedule sum is
+  likewise emitted as three serially
+  dependent VPADDD, so the incumbent form is
+  the emitted serial chain, as the registry
+  claimed for Y-001's limitation.
+- Benchmark evidence: paired microbenchmark,
+  three sessions, 63 paired repeats per
+  separation (full table in ../phase6/
+  analysis/exp019_price_list.json). At the
+  recurrence's actual separations the
+  carry-save forms cost, relative to the
+  incumbent: separation 0 (T1) 1.27 to 1.53;
+  separation 1 (sigma1 at t+2) 1.17 to 1.26;
+  separation 6 (direct at t+7) 1.02 to 1.15.
+  An apparent carry-save advantage at
+  separations 8 to 15 under L2-resident
+  operand streams (0.80 to 0.97) reversed
+  under an L1-resident supplement matching
+  the kernel's stack-ring residency: 1.06 to
+  1.49 at separations 1 to 15, intervals
+  excluding parity at 6, 10, 13 and 15. The
+  node was mid-restart during the sessions
+  (RPC unavailable; debug.log block files to
+  height 412,014, IBD continuing).
+- Statistical analysis: not a kernel
+  comparison; the statistic is the paired
+  log-ratio of ns per vector op within
+  repeats, bootstrap intervals as recorded.
+  The decisive pattern needs no subtlety:
+  carry-save loses on ops, on chain, and on
+  measured cost under kernel-faithful
+  residency, at every separation where
+  resolution is forced (0 and 1) by the
+  widest margins in the table.
+- Result: the price list is delivered
+  (Y-002's stated success), and its winner at
+  every relevant distance is the incumbent.
+  No form met the predeclared gate (micro
+  cost win AND chain win), so no kernel was
+  built, per the experiment's order of work.
+- Decision: Y-002 REJECTED as a cheaper
+  materialization; Y-001 REJECTED as a work
+  reduction on this instruction set at the
+  pricing level (deferral is bounded by
+  sigma1 at separation 1, and a sigma cannot
+  consume a redundant pair). Tier:
+  established negative for both.
+- Follow-up: the price list is the discovery
+  cost model's resolution table
+  (COMPUTATION_GRAPH_RESEARCH.md section 4),
+  with the compressor priced at 3
+  instructions. The balanced-tree control's
+  inconsistent readings across residency
+  regimes are left as a data point for
+  Y-003. Production byte-identical.
+
 ## Registry state
 
-Nineteen experiments recorded (EXP-000 to
-EXP-018), plus Part B (HYPOTHESIS_REGISTRY_Y.md,
+Twenty experiments recorded (EXP-000 to
+EXP-019), plus Part B (HYPOTHESIS_REGISTRY_Y.md,
 Y-001 to Y-108) and Part C
 (PERFORMANCE_CEILING.md) of the Next Research
 Phase. EXP-011 to EXP-015 ran as one batch on
@@ -1002,8 +1093,11 @@ has since run and is recorded above; EXP-018
 (Y-023, register-resident dual-batch) has also
 run and is recorded above: residency achieved,
 no significant gain over single-batch MB, not
-a verified improvement. Phase 6 reserves
-EXP-019 to EXP-020 for its remaining designed
-experiments. Phase 6 records live in
+a verified improvement. EXP-019 (carry-save
+schedule pricing) has also run and is recorded
+above: the price list closes Y-002 and Y-001
+as established negatives, and no kernel was
+built. Phase 6 reserves EXP-020 for its
+remaining designed experiment. Phase 6 records live in
 ../phase6/ (plan, results, final report). Next
 unreserved ID: EXP-021.
