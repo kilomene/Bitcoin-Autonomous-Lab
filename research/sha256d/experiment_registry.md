@@ -415,3 +415,21 @@ effort and risk.
   and full SHA-256d is 64 rounds twice. See
   rejected_hypotheses.md. Status: REJECTED, do not relitigate
   without new evidence of a different kind.
+
+## Pointer: the extreme optimization tree (2026-11-14)
+
+The Grand Research Mandate opened a dedicated tree at
+research/sha256d/extreme_optimization/. It contains: the
+X-series hypothesis registry (X-001 to X-116, a separate
+numbering from H-01 to H-24 above, with cross-references
+stated on the entries), an experiment registry in the
+mandate section 10 format with EXP-000 to EXP-003 and the
+integration decision run backfilled as imported entries
+(this file remains the original record for those
+experiments), a bottleneck analysis of the production
+path, a performance roadmap with the honest quantitative
+assessment of the 500 GH/s and 140 TH/s targets, and a
+first-assignment report recommending the next five
+experiments, starting with the quiet-window decision
+re-run already recorded as EXP-003's next step. Nothing
+in this file's history is altered by the new tree.
