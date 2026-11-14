@@ -56,6 +56,25 @@ on a capped guest, is still about 77,000x below 500
 GH/s, and the ceiling argument of section 2 is
 unchanged.
 
+Update 2026-11-14 (Next Research Phase, Parts B to
+D): the Y-series registry (HYPOTHESIS_REGISTRY_Y.md,
+108 entries) continues the hypothesis space, and
+PERFORMANCE_CEILING.md now carries the full ceiling
+analysis with three derived assumption sets (the
+summary in section 2 below remains valid; the
+ceiling report adds the multi-buffer op-census set,
+which places the EXP-007 kernel within about 1.5x
+of its instruction-count bound at guest clocks).
+Batch EXP-011 to EXP-015 (EXP011_ONWARD_REPORT.md)
+produced no verified improvement and no
+integration: dual-batch MB and cross-lane sharing
+are promising but unseparated across sessions,
+the VPTERNLOGD cone is proven minimal and already
+exploited by the compiler, K+W folding does not
+pay as implemented, and bitslicing is refuted by
+measurement at about 0.03x of MB16. The target
+arithmetic of section 3 is unchanged.
+
 ## 2. The per-core ceiling (estimate, arithmetic shown)
 
 Per-nonce work after all proven precomputation: 125
