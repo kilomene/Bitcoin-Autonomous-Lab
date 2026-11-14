@@ -231,23 +231,38 @@ class MiningEngine:
 
     def mine_cycle(self, max_batches=200, deadline_seconds=120):
         """One full cycle. Returns a result dict; accepted means the
-        block was submitted and is the node's best block."""
+        block was submitted and is the node's best block.
+
+        Hash accounting (Task 001 correction): total_hashes counts
+        ACTUAL hash attempts reported by the backend through
+        search_first_counted, never the requested batch size. The
+        old code added the full batch size after every search,
+        including early-exit searches that stopped after a handful
+        of attempts, inflating every reported hashrate. Elapsed
+        time uses a monotonic clock."""
         template = self.get_template()
-        started = time.time()
+        started = time.perf_counter()
         total_hashes = 0
         batches = 0
         for extranonce in range(64):
             cand = self.build_candidate(template, extranonce)
             start = 0
             while start < (1 << 32):
-                if time.time() - started > deadline_seconds or batches >= max_batches:
+                if time.perf_counter() - started > deadline_seconds or batches >= max_batches:
                     return {"accepted": False, "reason": "budget exhausted",
                             "height": cand["height"], "hashes": total_hashes,
                             "batches": batches,
                             "backend": self.compute.backend}
-                hit = self.compute.search_first(
-                    cand["header"], cand["target"], start, self.batch_size)
-                total_hashes += self.batch_size
+                if hasattr(self.compute, "search_first_counted"):
+                    hit, attempted, _secs = self.compute.search_first_counted(
+                        cand["header"], cand["target"], start,
+                        self.batch_size)
+                else:
+                    hit = self.compute.search_first(
+                        cand["header"], cand["target"], start,
+                        self.batch_size)
+                    attempted = self.batch_size
+                total_hashes += attempted
                 batches += 1
                 if hit:
                     sol = {"nonce": hit[0]}
@@ -265,8 +280,8 @@ class MiningEngine:
                         "nonce": sol["nonce"], "hashes": total_hashes,
                         "batches": batches, "extranonce_rounds": extranonce + 1,
                         "backend": self.compute.backend,
-                        "seconds": time.time() - started,
-                        "hashrate": total_hashes / max(time.time() - started, 1e-9),
+                        "seconds": time.perf_counter() - started,
+                        "hashrate": total_hashes / max(time.perf_counter() - started, 1e-9),
                         "tx_count": cand["tx_count"], "fees": cand["fees"],
                     }
                 start += self.batch_size
