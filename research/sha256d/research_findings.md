@@ -23,9 +23,11 @@ the evidence supports.
    in batch: batching discipline, already practiced by the
    miners, is worth more than any micro-optimization of a
    single call.
-5. Memory bandwidth (about 4.0 GB/s single-stream under
-   contention) is orders above mining's needs; compute and
-   latency chains are the binding constraints.
+5. Memory bandwidth (2.739 GB/s single-stream under
+   contention, per the saved probe record; an unsourced
+   4.0 GB/s figure in earlier revisions is withdrawn) is
+   orders above mining's needs; compute and latency chains
+   are the binding constraints.
 
 ## Established by proof or derivation
 
@@ -60,9 +62,63 @@ the evidence supports.
     case is the linearity of probability in hash rate, not
     an expectation of discovery.
 
+## Documentation corrections (Stage 5 authorization, 2026-11-14)
+
+- header_and_midstate_analysis.md: the first nonce-dependent
+  EXPANDED schedule word is W18, not W19
+  (W18 = sigma1(W16) + W11 + sigma0(W3) + W2; the t-15 input
+  is the nonce word W3). W19 also appeared in
+  message_schedule_research.md and is corrected there too.
+  Indexing correction only; the 67/192 ceiling is unchanged.
+- cpu_microarchitecture.md: reconciled with the saved probe
+  record (tools/machine_probe_2026-11-14.json). Probe-session
+  load average is 8.66 (not 10.7, which had no saved source;
+  loads above 10 belong to the separate EXP-000 baseline
+  sessions), and memory-copy bandwidth is 2.739 GB/s (the
+  unsourced 4.0 GB/s figure is withdrawn; the same figure in
+  README.md bottleneck B5 is corrected to match).
+
+## Stage 5 results (2026-11-14, EXP-002 and EXP-003)
+
+- H-02 BUILT AND FULLY CORRECT: the direct SHA-NI kernel in
+  experiments/h02_shani/ produces the entire message
+  schedule with SHA256MSG1/SHA256MSG2, zero scalar schedule
+  words. Equivalence of the MSG path is proven by a scalar
+  twin build (identical rounds, scalar schedule, zero MSG
+  instructions) producing byte-identical digests, on top of
+  120,000 randomized differentials vs hashlib across three
+  prefix variants and 5,000 vs production.
+- The MSG schedule alone is worth about 2.6x at equal
+  rounds: scalar twin 2T median 751,524 H/s vs MSG kernel
+  1,966,395 H/s in the same session (bench_h02.py).
+- Medians favour the new kernels in every session measured
+  (decision run, interleaved: at 2 threads production
+  1,183,205, H-02 2,068,798, H-01 streams=2 1,932,862,
+  streams=4 3,084,485 H/s). At 1 thread the new kernels'
+  ranges fully clear production's range.
+- H-01 MEASURED: interleaving works. Per-worker streams=2
+  is 2.36x streams=1 within one session; streams=4 has the
+  highest medians and the tightest decision-run spread
+  (37.0 percent) despite heavy register spills (365 xmm
+  stack ops in the blended hot function): latency hiding
+  outweighs spill cost on this core, as measured.
+- H-03 prefix precomputation: implemented in three correct
+  variants; the effect is below this VM's noise floor and
+  the spreads fully overlap. Recorded INCONCLUSIVE, not as
+  a gain and not as a refutation.
+- NOT INTEGRATED, by the rule: at the 2-thread tuned
+  configuration the decision-run ranges still overlap
+  (production best sample 2,442,181 vs streams=4 minimum
+  2,130,229), because this contended VM's session spread
+  (production 142.3 percent in that run) exceeds any
+  margin measurable today. Production is byte-identical.
+  The kernels, tests, and benchmark drivers stay in the
+  research tree for a quieter-window decision re-run.
+
 ## Not established (and not claimed)
 
-- No implementation in this pass is faster than production.
+- No production integration: the strict beyond-spread test
+  at 2 threads is not met yet (see Stage 5 results).
   Production code is unchanged.
 - Nothing about GPU, FPGA, or ASIC performance; those gates
   remain exactly as Tasks 002/003 left them: UNVERIFIED on
@@ -72,8 +128,7 @@ the evidence supports.
 
 ## The one-sentence summary
 
-The easy wins are taken and the flag drawer is empty; the
-remaining large lever on this machine is a purpose-built,
-multi-stream SHA-NI kernel (H-01 on H-02), and the programme
-now has the baseline, proofs, and registry to build it
-honestly.
+The direct SHA-NI kernel is built, proven correct, and
+faster by median in every session; on a VM this noisy the
+honest verdict is "repeat the decision run in a quieter
+window", not a production swap on overlapping ranges.
