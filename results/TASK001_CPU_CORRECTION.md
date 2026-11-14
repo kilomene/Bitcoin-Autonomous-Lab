@@ -381,3 +381,35 @@ purpose was correctness, and the before and after bands overlap.
   is a small follow-up for a mainnet-scoped task.
 - test-gpu and test-rtl cannot pass until nvcc and iverilog are
   present on this VM again; both are outside the CPU subsystem.
+
+## Task 003 addendum (2026-11-14)
+
+Task 003 hardened three items from this report; see
+results/TASK003_CORRECTIONS.md for the full evidence.
+
+- Mutex initialization (new): bal_ctx_init() now checks the
+  pthread_mutex_init() result, propagates failure to the caller
+  (the search entry points return -4 and start no worker), never
+  destroys an uninitialized mutex, and bal_ctx_publish() checks
+  lock and unlock results (a publication failure returns -3 from
+  the search entry points instead of risking a corrupt winner).
+  Verified by tests/task003_mutex_harness.c, ctypes failure
+  injection against both libraries, and sanitizer runs in
+  tests/test_task003_corrections.py.
+- Hash accounting in mining/engine.py (extended): the cycle loop
+  now also clamps the final nonce batch with
+  count = min(batch_size, 2^32 - start) (Task 003.2). The Task 001
+  accounting fix counted actual attempts but still submitted the
+  raw configured batch size, which an awkward batch size turned
+  into an out-of-range final batch at the end of the nonce space.
+- Winner semantics (correction of wording): this report and
+  bal_miner.c previously described the bal-miner search winner as
+  "deterministically the smallest found nonce". The accurate
+  statement is first-found semantics: workers stop at the first
+  candidate found by any worker, and the reported nonce is the
+  smallest among the candidates actually found before the stop
+  propagated. That is not a proof of the lowest valid nonce in
+  the range. bal_miner now prints winner_semantics=first-found.
+  (The shared library search in bal_search.h is unaffected: its
+  winner is the first candidate published under the mutex, which
+  is what Task 001 Gate 2 tested.)
