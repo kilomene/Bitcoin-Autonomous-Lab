@@ -666,6 +666,49 @@ and extreme_optimization/EXPERIMENT_REGISTRY
 remains EXP-021 (EXP-019 and EXP-020 are
 reserved for the remaining Phase 6 designs).
 
+## EXP-019: Carry-save schedule pricing (2026-11-14)
+
+Phase 6 experiment for Y-002, then Y-001. The
+price list ran first, as designed: a paired
+microbenchmark (phase6/src/
+exp019_price_micro.c, forms verified on
+1,600,000 random lanes) pricing the
+four-operand schedule sum per pipeline
+separation 0..15, three sessions, plus an
+L1-resident supplement matching the kernel's
+stack-ring operand residency. Two costing
+facts decide the experiment before any kernel
+question: a software 3:2 compressor is three
+instructions (2 VPTERNLOGD plus a VPSLLD
+carry alignment the registry's original
+costing omitted), so a resolved carry-save
+sum costs 5 or 7 instructions against the
+incumbent's 3 VPADDD, with dependency chains
+of 4 or 5 stages against 3; and every
+expanded word is resolved at separation 0
+(fused T1) or separation 1 (sigma1 at t+2),
+where the measured carry-save price is worst
+(1.17 to 1.53 times the incumbent). Under L1
+residency the carry-save forms are slower at
+every separation from 1 up, intervals
+excluding parity at 6, 10, 13 and 15; their
+apparent advantage at wide separations under
+L2 operand streams is a streaming-pattern
+artifact. No form met the predeclared gate
+(micro-cost win AND chain win), so no kernel
+was built. Verdicts: Y-002 REJECTED (its
+winner table is delivered; the winner is the
+incumbent), Y-001 REJECTED at the pricing
+level. Tier: established negative. The price
+list stands as the discovery cost model's
+resolution table. Production byte-identical.
+Full record: phase6/EXPERIMENT_RESULTS.md and
+extreme_optimization/EXPERIMENT_REGISTRY.md.
+Twenty experiments now recorded (EXP-000 to
+EXP-019); next unreserved ID remains EXP-021
+(EXP-020 is reserved for the remaining
+Phase 6 design).
+
 ## Integration record: AVX-512 MB production backend (2026-11-14)
 
 Not an experiment: an integration under a
