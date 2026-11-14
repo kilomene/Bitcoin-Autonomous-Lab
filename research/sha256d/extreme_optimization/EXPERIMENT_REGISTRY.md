@@ -1276,10 +1276,90 @@ by reference, without altering the originals.
   EXP-022; benchmarks/exp022/ (15 sessions,
   gates record, analysis).
 
+### EXP-023: Midstate amortisation family (Y-076, Y-077, Y-079)
+
+- Hypotheses: Y-076 (extranonce-dimension
+  midstate amortisation in the solo shape),
+  Y-077 (two-level midstate cache for job
+  families), Y-079 (snapshot-depth decision
+  table by template field), tested as
+  written.
+- Audit first: in the GBT path,
+  build_candidate recomputes the full
+  transaction pass (500 txid and 500 wtxid
+  recomputations at 500 transactions), the
+  full merkle tree (503 double hashes), the
+  body join and two RPC round trips on every
+  extranonce call (17.81 ms median per call
+  at 500 transactions on this host, up to
+  1,139.9 ms per template over 64 calls);
+  about 99.6 percent of that repeated work is
+  extranonce-independent. No lab serving path
+  rebuilds a midstate per extranonce step:
+  the stratum step costs 117.9 us against a
+  full nonce scan (share 3.4e-7), and the
+  solo server holds no midstate at all (its
+  per-share validation prices at 24.3 ms at
+  500 transactions, its own full rebuild).
+- Correctness evidence: gates all pass
+  before timing (../phase6/benchmarks/
+  exp023_gates.py): the round stepper
+  matches PureSHA256 and snapshot completions
+  match hashlib; 1,320 randomised
+  byte-identity cases of the amortised
+  builder against build_candidate; the
+  merkle spine equals merkle_root at 47 leaf
+  counts; the Y-079 table verified for all
+  32 field subsets plus two boundary rows.
+- Measured result: the two-level prototype
+  (family constants, per-template
+  transaction pass and merkle tree, coinbase
+  spine per step) under the EXP-017 paired
+  protocol, three sessions per comparison,
+  every primary session significant. 16
+  extranonce steps on one 500-transaction
+  template: pooled 18.49x (adjusted +2.9174,
+  CI +2.7884 to +3.0406), pairs won 1.000. At
+  100 transactions: 16.46x. Sixteen jobs of
+  one family, one step each: 22.06x, pairs
+  won 1.000. Boundary control (tx set churns
+  every job): 0.97x, not significant, as the
+  mechanism predicts.
+- Decision: Y-076 REJECTED as specified,
+  established negative: its cache target is
+  not extranonce independent (a root change
+  alters block-1 bytes 36 onward and the
+  midstate; only the R8 prefix, rounds 0 to
+  8, survives an extranonce step) and no
+  serving path rebuilds a midstate per
+  extranonce step for it to save. Y-077
+  VERIFIED IMPROVEMENT at the data level in
+  the serving path (prototype; integration
+  into mining/engine.py recommended to the
+  owner, break-even about 1.8 steps per
+  template); its compression-prefix
+  mechanism is separately rejected as
+  immaterial (valid without alignment only
+  to R8, to R11 only under 2^-96 merkle-head
+  alignment, worth at most about 304 us per
+  block-1 compression in a Python path and
+  zero in the kernel path). Y-079 VERIFIED
+  TABLE: deepest snapshots are none (version
+  varies), R0 (prevhash), R8 (merkle), B2R0
+  (time), B2R1 (nbits), SCH17 (none of the
+  five); the named block-1 half (R11) is
+  deepest for no field subset, and a
+  tail-word-only change leaves the full
+  midstate valid. Production byte-identical.
+  Full record and artifacts:
+  ../phase6/EXPERIMENT_RESULTS.md, EXP-023;
+  benchmarks/exp023/ (12 sessions, gates
+  record, audit, four analyses).
+
 ## Registry state
 
-Twenty-three experiments recorded (EXP-000 to
-EXP-022), plus Part B (HYPOTHESIS_REGISTRY_Y.md,
+Twenty-four experiments recorded (EXP-000 to
+EXP-023), plus Part B (HYPOTHESIS_REGISTRY_Y.md,
 Y-001 to Y-108) and Part C
 (PERFORMANCE_CEILING.md) of the Next Research
 Phase. EXP-011 to EXP-015 ran as one batch on
@@ -1334,6 +1414,21 @@ stated densities (pooled 1.82x at sparse
 candidates), production byte-identical,
 integration of the output shape left as
 the owner's interface decision.
+EXP-023 (Y-076, Y-077, Y-079, the midstate
+amortisation family) has also run and is
+recorded above: Y-076 is rejected as
+specified (no per-extranonce midstate
+rebuild exists in the serving paths, and
+its cache target is not extranonce
+independent past round 8), Y-077 is a
+verified improvement at the data level in
+the serving path (pooled 18.49x on
+extranonce steps at 500 transactions,
+22.06x on job families, parity when the tx
+set churns every job), and Y-079 is a
+verified snapshot-depth table whose named
+block-1 half depth serves no common field
+variation. Production byte-identical.
 Phase 6 records live in ../phase6/ (plan,
 results, final report). Next unreserved ID:
-EXP-023.
+EXP-024.
