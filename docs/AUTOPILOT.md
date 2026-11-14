@@ -37,10 +37,42 @@ bash scripts/autopilot.sh log       # tail of .local/autopilot.log
 bash scripts/autopilot.sh stop      # graceful stop of both
 ```
 
-Or as a service: `scripts/bal-autopilot.service` (edit
-WorkingDirectory, `systemctl enable --now bal-autopilot`). The
-service also restarts the autopilot itself if it ever dies, a
-second layer under the supervisor's own watchdog.
+Or as a service: `bash scripts/autopilot.sh install-service`
+fills in this checkout's path, installs the unit and enables
+it, then `systemctl start bal-autopilot`. The service restarts
+the autopilot itself if it ever dies and starts it on boot, a
+second layer under the supervisor's own watchdog. On a machine
+whose reboots are routine, the service is the difference
+between mining that survives the night and mining that waits
+for a human.
+
+## Worker identity
+
+Every agent needs its own worker name on the shared payout
+address. When none is given, the autopilot names the worker
+after this machine's hostname (sanitized), so a team never
+collides on one shared name. Override with `--worker`,
+`BAL_WORKER`, or the unit's environment.
+
+## The node, and stopping approval spam
+
+Pool mining needs no local node. A node is only needed to host
+the lab's own solo server later. If you run the pruned mainnet
+node (`.local/mainnet`), two in-repo tools keep it autonomous:
+
+```
+bash scripts/autopilot.sh install-node-service   # systemd unit,
+                                                 # restart on boot
+python3 scripts/pin-peers.py                     # pin connect=
+                                                 # to current peers
+```
+
+Pinning matters on hosts where outbound connections need a
+human approval per destination: a syncing node otherwise
+dials new peer IPs forever and generates an approval card per
+IP. Pinned, it talks only to a fixed set, approved once. See
+docs/ROOTCAUSE_WORKERS_ZERO.md for the incident that produced
+this tooling.
 
 ## What the autopilot does not do
 
