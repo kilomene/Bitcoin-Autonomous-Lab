@@ -3,11 +3,13 @@
 Everything CPU-side lives here and is independently usable:
 
 - The C batch engine (bal_batch.c, midstate optimized, SHA-NI) via
-  ComputeEngine's "c" backend.
-- CpuMiner: a miner that uses ONLY the CPU backends (C first,
-  Python fallback, never CUDA) to run full getblocktemplate cycles
-  with submission and acceptance checks. It reuses the block
-  construction in mining/engine.py and forces the compute choice.
+  ComputeEngine's "c" backend, and the AVX-512 multi-buffer
+  engine via its "v512" backend when CPUID dispatch selects it.
+- CpuMiner: a miner that uses ONLY the CPU backends (AVX-512 MB
+  or C first, Python fallback, never CUDA) to run full
+  getblocktemplate cycles with submission and acceptance
+  checks. It reuses the block construction in mining/engine.py
+  and forces the compute choice.
 - benchmark(): a measured comparison of every CPU hashing path in
   the lab on this machine (C midstate library at several thread
   counts, the bal_miner binary's engine approach via the library,
@@ -27,7 +29,11 @@ from mining.engine import MiningEngine
 
 def verify_c_library(samples=2000):
     """The C library's digests must equal hashlib's, nonce by nonce."""
-    eng = ComputeEngine()
+    # This verifies the C library specifically, so it asks for
+    # the C backend explicitly: the auto engine may legitimately
+    # select the AVX-512 backend instead, which says nothing
+    # about the C library.
+    eng = ComputeEngine(requested="c")
     if eng.backend != "c":
         return {"ok": False, "reason": f"backend is {eng.backend}"}
     header = bytes(range(80))
@@ -58,7 +64,7 @@ def benchmark(seconds_per_path=2.0):
     if eng_c._c_lib:
         for threads in (1, 2, 4):
             ge.C_THREADS = threads
-            e = ComputeEngine()
+            e = ComputeEngine(requested="c")
             results[f"c_midstate_raw_{threads}thr"] = e.benchmark()
         ge.C_THREADS = 2
     # hashlib single loop reference.
@@ -108,8 +114,12 @@ class CpuMiner:
                  tune=True):
         self.compute = ComputeEngine()
         if self.compute.backend == "cuda":
-            # CPU aspect means CPU: rebuild without the CUDA request.
-            self.compute = ComputeEngine(requested="c")
+            # CPU aspect means CPU: rebuild without the CUDA
+            # request. "auto" would select CUDA again on a GPU
+            # machine, so ask for a native CPU backend; the
+            # engine's dispatch picks AVX-512 MB where the CPU
+            # supports it and the C library otherwise.
+            self.compute = ComputeEngine(requested="v512")
         self.tuning = tune_threads() if tune else (None, {})
         self.engine = MiningEngine(rpc, payout_address, self.compute,
                                    batch_size=batch_size)
