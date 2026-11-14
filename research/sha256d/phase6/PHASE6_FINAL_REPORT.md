@@ -171,3 +171,44 @@ enacted; production is unchanged, and no kernel
 was integrated by this experiment. Full record:
 EXPERIMENT_RESULTS.md, EXP-017; raw data in
 benchmarks/exp017/.
+
+## Addendum (2026-11-14): EXP-018, register-resident dual-batch (Y-023)
+
+EXP-018 has run, the first kernel experiment
+decided under the EXP-017 statistic. The new
+kernel (extreme_optimization/src/
+avx512_mb_reg.c) holds both batches' state
+sets in sixteen named zmm variables across an
+eight-round ring-relabeled unit: the assembly
+audit shows exactly one state vector homed in
+a single stack slot and no stack traffic for
+the other fifteen, so the mechanical half of
+Y-023 (residency) is achieved; a full 64-round
+unroll compiled first and spilled heavily,
+which bounds how the register file can hold
+this design. The rate half is not achieved:
+against single-batch MB the adjusted pooled
+log-ratio is +0.0836 (CI -0.0247 to +0.1902),
+positive in all three sessions, significant
+in none; against production it is +1.5027
+(4.49x), significant everywhere; the control
+is null. Conclusions under the three tiers:
+
+- VERIFIED IMPROVEMENT: none from this
+  experiment. The residency construction and
+  its audit are verified mechanical results,
+  but Y-023's predeclared definition requires
+  the rate significance as well, and it is
+  absent.
+- PROMISING HYPOTHESIS: Y-023 itself, still.
+  The point estimate against single-batch MB
+  is +8.7 percent with pairs won 0.554, but
+  the interval crosses zero; the measured
+  finding is that state traffic was not the
+  binding cost in the dual-batch shape on
+  this machine.
+- UNPROVEN BREAKTHROUGH: unchanged.
+
+No integration; production is unchanged. Full
+record: EXPERIMENT_RESULTS.md, EXP-018; raw
+data in benchmarks/exp018/.
