@@ -2,7 +2,7 @@
 
 Every public claim this lab makes traces to one of:
 
-1. A test suite in `tests/` that anyone can run (`make test-all`, 12 suites).
+1. A test suite in `tests/` that anyone can run (`make test-all`, 15 suites).
 2. A session evidence file in `evidence/` (JSONL, timestamped UTC).
 3. A third party record: the pool's acceptance messages in the session
    log, the public-pool dashboard for the lab address, and the Bitcoin
