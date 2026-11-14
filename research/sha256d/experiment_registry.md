@@ -764,3 +764,95 @@ verified on the new backend. Classification:
 VERIFIED IMPROVEMENT under the adopted rule.
 Full record: phase6/PHASE6_FINAL_REPORT.md,
 addendum of 2026-11-14.
+
+## EXP-021: Heterogeneous worker pair (2026-11-14)
+
+Y-097, ranked second in the Phase 6
+ranking: whether a mixed worker pool
+(AVX-512 MB workers and SHA-NI streams
+workers, streams=4 strided per EXP-005,
+on disjoint partitions of one search)
+beats the best homogeneous pool at equal
+threads on this contended guest. Pool
+gates pass in full (candidate sets equal
+to the Python recount across six splits,
+every digest vs hashlib, genesis under
+either owner, boundary and empty
+partitions, exact union accounting;
+tests/test_exp021.py). Benchmark under
+the EXP-017 paired protocol, three
+sessions per comparison, makespan pool
+timing: mixed2 vs mb2 pooled -0.1884 (CI
+-0.294 to -0.082), mixed2 vs shani2
++0.0125 (null), mb2 vs shani2 +0.3100;
+mixed22 vs mb4 -0.1285 (CI -0.203 to
+-0.054), mixed22 vs shani4 +0.1442, mb4
+vs shani4 +0.2848. A secondary
+recomputation under continuous-assignment
+semantics (sum of the recorded per-worker
+rates) reproduces the same ordering
+(mixed2 vs mb2 -0.1029 pooled; mixed22 vs
+mb4 -0.1007, CI excluding 0), and
+per-worker medians show no cross-family
+contention relief. Y-097 is NOT a
+verified improvement: the reproduced
+ordering puts the mixed pool below the
+homogeneous MB pool production already
+runs. Tier: established negative. Full
+record: phase6/EXPERIMENT_RESULTS.md,
+EXP-021; raw data in
+phase6/benchmarks/exp021/. Twenty-two
+experiments now recorded (EXP-000 to
+EXP-021); next unreserved ID is EXP-022.
+
+## EXP-022: Flags-only MB batch via masks (2026-11-14)
+
+Y-084: whether an MB batch form that
+computes the target comparison in vector
+form, stores one mask bit per hash, and
+extracts digests only for flagged lanes
+beats production batch at stated candidate
+densities. The variant (bal_v_batchf2 in
+extreme_optimization/src/avx512_mb_flags.c,
+the EXP-007 kernel plus the flags path;
+opmask-carried lexicographic compare in
+v_meets significance order) passed all
+gates before timing: 154,316 density-1
+differentials vs hashlib, candidate-set
+parity with production at four densities
+in extract and pure modes, genesis
+recovery, target equality and
+minus/plus-one boundaries, accounting
+parity on 32 (count, threads) pairs
+(benchmarks/exp022_gates.py). Benchmark
+under the EXP-017 paired protocol, three
+sessions per comparison, every session
+individually significant: flagsx vs
+production at density approx 0, two
+threads (predeclared primary) pooled
++0.5984 (CI +0.5042 to +0.6905), 1.82x;
+at 2^-8 +0.4628, 1.59x; at density 1
++0.2854, 1.33x; pure flags +0.6344,
+1.89x; primary at one thread +0.6033,
+1.83x. The effect is monotone in the
+unread-digest fraction: production's
+batch epilogue (staging stores, scalar
+extraction of all sixteen digests per
+group, per-hash output copy, scalar
+per-lane compare) was roughly half the
+batch call at sparse densities. Y-084 is
+a VERIFIED IMPROVEMENT in batch scope;
+the search path never paid the epilogue,
+no search claim is made, and adopting
+the flags output shape for batch
+consumers is recorded as a recommendation
+for the owner's decision. Production
+byte-identical. All work ran on the
+Intel Xeon Platinum 8321HC replacement
+host (AVX-512F/BW, no SHA, no VBMI) with
+both libraries built -mavx512f -mavx512bw.
+Full record: phase6/EXPERIMENT_RESULTS.md,
+EXP-022; raw data in
+phase6/benchmarks/exp022/. Twenty-three
+experiments now recorded (EXP-000 to
+EXP-022); next unreserved ID is EXP-023.
