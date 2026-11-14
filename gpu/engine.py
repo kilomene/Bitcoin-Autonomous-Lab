@@ -26,9 +26,56 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LIB_PATH = os.path.join(ROOT, ".local", "cuda", "libbal_cuda.so")
 C_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_batch.so")
 import os as _os
-# Measured on the lab VM (about 1.5 shared cores): 2 threads is the
-# peak; more threads thrash. Override with BAL_C_THREADS.
-C_THREADS = int(_os.environ.get("BAL_C_THREADS", "2"))
+# Full-workforce thread count for the C search. An explicit
+# BAL_C_THREADS always wins. Otherwise the engine measures the
+# machine it is running on once (tune_c_threads below) and runs
+# at that machine's own measured peak: every agent's box is
+# different, and full workforce means the maximum of the machine
+# under the miner, not a number copied from another agent's VM.
+_C_THREADS_ENV = _os.environ.get("BAL_C_THREADS")
+C_THREADS = int(_C_THREADS_ENV) if _C_THREADS_ENV else 2
+C_THREADS_TUNED = _C_THREADS_ENV is not None
+
+
+def tune_c_threads(engine):
+    """Measure this machine and set C_THREADS to its peak.
+
+    Probes several thread counts with the real C search over a
+    fixed nonce range and keeps the fastest. Runs once per
+    process; any failure leaves the safe default in place.
+    """
+    global C_THREADS, C_THREADS_TUNED
+    if C_THREADS_TUNED:
+        return C_THREADS
+    C_THREADS_TUNED = True
+    if getattr(engine, "backend", None) != "c" or not hasattr(
+            engine._c_lib, "bal_c_search"):
+        return C_THREADS
+    try:
+        header = bytes(range(80))
+        target_le = (1).to_bytes(32, "little")
+        probe = 1 << 20
+        cpus = os.cpu_count() or 2
+        best_n, best_rate = C_THREADS, 0.0
+        for n in sorted({1, 2, 4, cpus, cpus * 2}):
+            if n < 1 or n > 32:
+                continue
+            out_nonce = ctypes.c_uint32(0)
+            out_digest = ctypes.create_string_buffer(32)
+            t0 = time.time()
+            rc = engine._c_lib.bal_c_search(
+                header, 0, probe, n, target_le,
+                ctypes.byref(out_nonce), out_digest)
+            dt = time.time() - t0
+            if rc in (0, 1) and dt > 0 and probe / dt > best_rate:
+                best_n, best_rate = n, probe / dt
+        C_THREADS = best_n
+        print(f"full-workforce: C search threads auto-tuned to "
+              f"{best_n} on this machine "
+              f"(probe {best_rate:,.0f} H/s)", flush=True)
+    except Exception:
+        pass
+    return C_THREADS
 
 
 def cpu_digest(header, nonce):
@@ -66,6 +113,8 @@ class ComputeEngine:
             self.fallback_reason = self.cuda_fallback_reason
         if requested == "cuda" and self.backend != "cuda":
             self.fallback_reason = self.fallback_reason or "CUDA requested but unavailable"
+        if self.backend == "c":
+            tune_c_threads(self)
 
     def _try_c(self, c_lib_path):
         if not os.path.isfile(c_lib_path):
