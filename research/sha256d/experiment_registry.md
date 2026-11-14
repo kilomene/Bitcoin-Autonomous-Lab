@@ -147,6 +147,63 @@ experiments/bench_harness.py, accounting per Task 003.9.
   fresh regtest block through mining/engine.py before any
   default changes.
 
+
+## EXP-004 to EXP-009: first X-series batch (2026-11-14)
+
+Full records in extreme_optimization/EXPERIMENT_REGISTRY.md
+(mandate section 10 format) and the batch report
+extreme_optimization/EXP004_009_REPORT.md. Summary:
+
+- EXP-004 (X-067 decision re-run): 9 interleaved rounds at
+  the best observed load dip (node still in IBD: blocks
+  408,981, progress 0.0812; steal 2.24 percent). At 2
+  threads, H-01 streams=4 median 4,212,571 vs production
+  1,463,346, but streams=4 minimum 2,057,942 does not
+  exceed production maximum 2,346,013. The predeclared
+  beyond-spread criterion FAILED a second time. NOT
+  INTEGRATED; production byte-identical.
+- EXP-005 (geometry sweep): streams 3 and 6 and a strided
+  assignment mode added to the H-01 framework (extreme_
+  optimization/src/h01_geo.c); all variants pass the full
+  gate set with wave-exact accounting per geometry. Best
+  geometry at 2 threads: streams=4 strided (median
+  3,473,271), streams=6 blocked indistinguishable; the
+  curve is flat-topped from 3 to 6.
+- EXP-006 (X-006/X-007): schedule-first hand-scheduled
+  variant cuts hot-body spill ops 790 to 117 but does not
+  improve throughput (parity at 2 to 3 streams, behind at
+  4). Negative result: spill traffic is not the binding
+  cost; the inline-assembly pair was not built because
+  the 2-stream compiler body already has a 0 B frame and
+  zero stack ops.
+- EXP-007 (X-031, gate X-041): AVX-512 16-way multi-
+  buffer (extreme_optimization/src/avx512_mb.c) passes
+  all gates including partial-group lane accounting. It
+  posts the fastest medians measured on this VM at 2
+  threads in two interleaved sessions (6,526,467 and
+  3,195,024 H/s), with the widest variance and no
+  separation claim. X-041 frequency gate: inconclusive
+  under contention, no catastrophic AVX-512 penalty.
+- EXP-008 (X-009): cross-nonce phase pipelining matches
+  a second same-phase stream (median 2,104,688 at 2
+  threads) and loses to deeper interleaving; the phase
+  premium is not supported on this core.
+- EXP-009 (pipeline study, measurement only): X-059
+  priced. build_candidate issues exactly one
+  validateaddress and one getblockchaininfo RPC per call;
+  validateaddress is a 3.963 ms median round trip against
+  the regtest node and dominates construction below
+  roughly 250 template transactions; per-transaction
+  re-verification is about 17.8 us (stub: 0.018 ms at 0
+  tx to 8.919 ms at 500 tx per call; up to about 571 ms
+  per template at 64 extranonce rounds). Span-size
+  interaction: none measurable (per-call overhead under
+  about 10 us, under 0.1 percent at span 65,536, min-
+  based best case). Mine-cycle split (stub, 0 tx):
+  search 99.958 percent of wall. Confirmation at 1.1 us
+  per candidate becomes about 2.8 percent of a core at
+  regtest density and 6.5M H/s.
+
 ## Ranked hypotheses (H-01 to H-24)
 
 Benefit classes: marginal (under about 5%), moderate
