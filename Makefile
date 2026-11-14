@@ -20,6 +20,9 @@ test-pow:
 test-gpu:
 	python3 tests/test_gpu_compute.py
 
+test-gpu-correction:
+	python3 tests/test_gpu_correction.py
+
 test-mining:
 	python3 tests/test_mining_engine.py
 
@@ -53,7 +56,7 @@ test-judgement:
 test-installer:
 	python3 tests/test_installer.py
 
-test-all: test test-regtest test-engine test-pow test-gpu test-mining test-adversarial test-deepening test-cpu test-cpu-correction test-rtl test-solo test-research test-autopilot test-judgement test-installer
+test-all: test test-regtest test-engine test-pow test-gpu test-gpu-correction test-mining test-adversarial test-deepening test-cpu test-cpu-correction test-rtl test-solo test-research test-autopilot test-judgement test-installer
 
 cuda-build:
 	python3 gpu/cuda/build.py
