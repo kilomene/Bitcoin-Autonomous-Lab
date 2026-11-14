@@ -511,6 +511,23 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
   element is the register residency design.
 - Workstream B / Difficulty high / Confidence medium /
   Cost medium.
+- Status: RUN as EXP-018 (2026-11-14). Residency
+  achieved at the near-zero level: the shipped
+  eight-round ring-relabeled body (src/
+  avx512_mb_reg.c) homes exactly one of sixteen
+  state vectors in a single stack slot; a full
+  64-round unroll was compiled first and spilled
+  heavily (214 spill-region accesses), which is
+  the measured answer to this entry's design
+  question: the register file holds the design
+  only when live ranges are kept short. Rate:
+  adjusted pooled +0.0836 vs single-batch MB
+  (CI -0.0247 to +0.1902), not significant, so
+  state traffic was not the binding cost and
+  Y-023 is not a verified improvement. Tier:
+  PROMISING HYPOTHESIS with measured support.
+  Full record: ../phase6/EXPERIMENT_RESULTS.md,
+  EXP-018.
 
 ### Y-024: Triple-batch MB interleave (spill cliff locator)
 - Limitation: the MB family's interleave depth is
