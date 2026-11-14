@@ -29,7 +29,7 @@ rhythm:
   --auto-update when running the module directly.
 
 Sensitivity profile (owner-specified): heartbeat every 5 s,
-watchdog crash detection on a 2 s poll, hung-miner window 300 s
+watchdog crash detection on a 1 s poll, hung-miner window 300 s
 (5 minutes), update check every 15 minutes.
 
 Stop: SIGTERM or SIGINT to the autopilot, or `touch
@@ -70,7 +70,7 @@ def default_worker():
     name = re.sub(r"[^a-z0-9-]+", "-", host.lower()).strip("-")
     return (name or "bal")[:24]
 
-POLL_S = float(os.environ.get("BAL_AP_POLL_S", "2"))
+POLL_S = float(os.environ.get("BAL_AP_POLL_S", "1"))
 STALE_S = float(os.environ.get("BAL_AP_STALE_S", "300"))
 HEARTBEAT_S = float(os.environ.get("BAL_AP_HEARTBEAT_S", "5"))
 UPDATE_CHECK_S = float(os.environ.get("BAL_AP_UPDATE_CHECK_S", "900"))
