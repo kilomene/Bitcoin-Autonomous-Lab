@@ -441,3 +441,31 @@ restarted; the fix lands on the next natural
 restart. Resolution record:
 phase6/POST_INTEGRATION_AUDIT.md, N-1 resolution
 addendum of 2026-11-14.
+
+## Pointer: solo cutover staged and armed (2026-11-14)
+
+The switch from public-pool.io to the lab's own solo server
+is staged and armed, not fired: the mainnet node is still in
+initial block download (block 412,094 of 975,822 headers at
+staging). The solo server was audited for mainnet duty and
+hardened (chain gate and IBD refusal in refresh_job,
+tip-following JobRefresher broadcasts, per-worker share
+accounting with a status snapshot, submitblock failure
+capture, validated witness commitment parsing, ntime sanity,
+suggest_difficulty acknowledgement). The miner's Stratum
+endpoint is now config-driven (mining/endpoint_config.py,
+.local/mining-endpoint.json; pool default preserves today's
+behaviour exactly), the solo runner is mining/solo_mainnet.py
+behind a bal-solo systemd unit installed at fire time, and
+scripts/solo_cutover.py performs the one-shot switch with a
+live subscribe self-check against the node tip, verification
+from the server's per-worker accounting, and automatic
+rollback. Goal cron bal-solo-cutover checks every 15
+minutes, fires once when the node leaves IBD with blocks
+within 2 of headers, and stands itself down on the terminal
+marker. Share difficulty is 0.02 (an expected share every
+about 7 s at the measured v512 session rate). Regtest
+end-to-end re-proven in current form: block height 763,
+hash 0000001325090ccf3e4108a2d2a3ca7832f91607d1259c1e970ee0940ec4a2de,
+accepted by Core through a connected miner, with per-worker
+accounting asserted. Full record: docs/SOLO_CUTOVER.md.
