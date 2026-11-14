@@ -44,7 +44,13 @@ test-research:
 test-autopilot:
 	python3 tests/test_autopilot.py
 
-test-all: test test-regtest test-engine test-pow test-gpu test-mining test-adversarial test-deepening test-cpu test-rtl test-solo test-research test-autopilot
+test-judgement:
+	python3 tests/test_judgement.py
+
+test-installer:
+	python3 tests/test_installer.py
+
+test-all: test test-regtest test-engine test-pow test-gpu test-mining test-adversarial test-deepening test-cpu test-rtl test-solo test-research test-autopilot test-judgement test-installer
 
 cuda-build:
 	python3 gpu/cuda/build.py
