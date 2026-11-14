@@ -36,6 +36,13 @@ def main():
                      for c in w), w
     assert default_worker() == w
     print(f"default worker name: {w}")
+    # Full workforce, no resting: crash relaunch backoff starts
+    # at 1 s and never exceeds 30 s.
+    from mining.autopilot import BACKOFF_CAP_S, BACKOFF_START_S
+    assert BACKOFF_START_S <= 1.0, BACKOFF_START_S
+    assert BACKOFF_CAP_S <= 30.0, BACKOFF_CAP_S
+    print(f"relaunch backoff: start {BACKOFF_START_S}s, "
+          f"cap {BACKOFF_CAP_S}s")
     # If a production autopilot already owns this checkout, the
     # lock doing its job makes this test meaningless here; skip.
     lock = os.path.join(ROOT, ".local", "autopilot.lock")
