@@ -16,10 +16,21 @@ fact, that is stated.
 - vCPUs: 4 online, topology as exposed: 4 cores x 1 thread,
   1 socket, 1 NUMA node. No SMT sibling is exposed.
 - Effective capacity: the VM is capped near 1.5 shared CPUs on a
-  contended host. Load average (1m) at probe time was 10.7, from
-  the live mainnet miner, the syncing mainnet node, and host
-  neighbours we cannot see. Every benchmark in this programme
-  must be read with that ceiling.
+  contended host. Load average (1m) recorded by the probe
+  session saved in tools/machine_probe_2026-11-14.json was
+  8.66, from the live mainnet miner, the syncing mainnet node,
+  and host neighbours we cannot see. The EXP-000 baseline
+  sessions later the same day ran under still heavier
+  contention (load average above 10, noted qualitatively in
+  baseline_performance.md): load on this host drifts between
+  sessions, so each measurement must cite its own session.
+  Every benchmark in this programme must be read with that
+  ceiling. (Reconciliation, Stage 5 authorization 2026-11-14:
+  an earlier revision of this file quoted a load of 10.7 for
+  the probe session. No saved measurement supports 10.7 as
+  the probe-session value; the JSON record, 8.66, is the
+  sourced figure, and the above-10 observation belongs to
+  the separate baseline sessions.)
 - Frequency: /proc/cpuinfo reports 1497.75 MHz in every sample
   taken (5 samples over 1 s). No cpufreq sysfs is exposed, so
   scaling behaviour, boost states, and throttling cannot be
@@ -35,8 +46,14 @@ fact, that is stated.
   1 GiB swap.
 - Memory bandwidth micro-measurement: STREAM-style memcpy over a
   128 MiB working set (4x L3), single stream, 5 repetitions:
-  about 4.0 GB/s under the contention above. This is a floor
-  estimate on a capped, shared VM, not the silicon's capability.
+  2.739 GB/s as recorded by the probe session in
+  tools/machine_probe_2026-11-14.json, under the contention
+  above. This is a floor estimate on a capped, shared VM, not
+  the silicon's capability. (Reconciliation, Stage 5
+  authorization 2026-11-14: an earlier revision quoted about
+  4.0 GB/s. No saved probe output supports that figure; the
+  JSON record, 2.739 GB/s, is the only sourced measurement
+  and replaces it.)
 
 ## Instruction sets that matter for SHA-256
 
