@@ -95,12 +95,20 @@ Reusable across all nonces of one fixed template:
   intrinsics path could, subject to the pairing limit above).
 
 Ceiling: 67 of 192 rounds are template-invariant, about 34.9%.
-Per-nonce work can never fall below the remaining 125 rounds
-(61 of block 2 plus 64 of the outer hash) by precomputation
-alone. Any claim of a larger saving is not precomputation; it
-would have to be a different evaluation strategy for the same
-rounds (parallel streams, wider SIMD, better scheduling), which
-is where the rest of the registry aims.
+The conventional evaluation's per-nonce remainder is the
+remaining 125 round evaluations (61 of block 2 plus 64 of
+the outer hash) once precomputation has taken its 67.
+CORRECTION (Phase 6, 2026-11-14): the original text said
+per-nonce work "can never fall below" 125 rounds. That
+phrasing is corrected here as everywhere in the programme:
+125 counts conventional round evaluations, and is not a
+proven universal lower bound on every mathematically
+equivalent implementation. Any claim of a larger saving
+is not precomputation; it would have to be a different
+computation graph for the same function, whose existence
+is an open research question (Phase 6 Workstream A), not
+merely a different evaluation strategy for the same
+rounds.
 
 The outer hash admits NO cross-candidate reuse beyond its
 constant initial state and its constant padding words: its
