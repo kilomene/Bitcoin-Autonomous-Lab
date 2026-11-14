@@ -862,6 +862,23 @@ by reference, without altering the originals.
   owner; it is not enacted.
 - Follow-up: EXP-018 (Y-023) is decided under
   this statistic.
+- Owner decision and integration
+  (2026-11-14): the owner ADOPTED the EXP-017
+  rule as the programme's integration decision
+  rule, replacing the min/max separation rule,
+  and named the AVX-512 multi-buffer kernel
+  the integration target. The kernel is now
+  the production CPU backend ("v512") behind
+  runtime CPUID dispatch (AVX-512F plus
+  AVX-512BW, probe plus digest self-test, clean
+  fallback to the OpenSSL C backend). Full
+  gates passed through the production path,
+  including a fresh regtest block at height
+  630, and the live miner was deployed and
+  verified on the new backend. Classification:
+  VERIFIED IMPROVEMENT under the adopted rule.
+  Full record: ../phase6/PHASE6_FINAL_REPORT
+  .md, addendum of 2026-11-14.
 
 ### EXP-018: Register-resident dual-batch MB (Phase 6, Y-023)
 
