@@ -873,6 +873,16 @@ class ComputeEngine:
                 "AVX-512 multi-buffer kernel (requires AVX-512F "
                 f"and AVX-512BW; feature bits {bits})")
             return
+        missing = [name for name in
+                   ("bal_v_batch2", "bal_v_search2")
+                   if not hasattr(lib, name)]
+        if missing:
+            self.v512_reason = (
+                "AVX-512 library is incomplete: missing kernel "
+                "entry point(s) " + ", ".join(missing)
+                + "; rejecting the library as a whole and "
+                "falling back")
+            return
         lib.bal_v_batch2.restype = ctypes.c_int
         lib.bal_v_batch2.argtypes = [
             ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
