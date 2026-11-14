@@ -357,7 +357,7 @@ Rules applied to every entry:
 - Impact: small (operand formation is a few ops per round
   pair; bounded, exact, and free once coded). Difficulty:
   low inside the H-02 scaffold. Confidence: high. Cost:
-  hours. Status: untested.
+  hours. Status: tested in the vector family by EXP-014 (2026-11-14): K+W folding for rounds 0..17 except 3, no gain as implemented in three sessions; the SHA-NI scaffold form remains untested. See EXP011_ONWARD_REPORT.md.
 
 ### X-025: Extranonce-major iteration geometry
 - Statement: at high stream counts, iterating the
@@ -396,7 +396,7 @@ Rules applied to every entry:
 - Impact: moderate within vector and scalar-round designs
   (four functions per round, 192 rounds per hash).
   Difficulty: high (search space control). Confidence:
-  medium. Cost: weeks. Status: untested.
+  medium. Cost: weeks. Status: tested by EXP-012 (2026-11-14): the cone components are at proven minima and the compiler already emits VPTERNLOGD for them in the MB kernel; explicit forms perform at parity. Closed as a performance hypothesis; the joint multi-output search continues as Y-013.
 
 ### X-028: Addition-tree reassociation under a port model
 - Statement: among the association orders of the T1 and
@@ -423,8 +423,7 @@ Rules applied to every entry:
   exactly additions.
 - Impact: negligible as speed; the bound closes the idea
   with arithmetic instead of opinion. Difficulty: low
-  (analysis). Confidence: high. Cost: hours. Status:
-  untested (analysis entry).
+  (analysis). Confidence: high. Cost: hours. Status: tested by EXP-015 (2026-11-14): a full bitsliced implementation measures about 0.03x of the AVX-512 MB kernel and about 0.13x of production on this core. Refuted by measurement, confirming the analytic bound. See EXP011_ONWARD_REPORT.md.
 
 ### X-030: Feed-forward folded into the target comparison
 - Statement: in batch and search paths, comparing
@@ -1246,7 +1245,7 @@ Rules applied to every entry:
   at the two functions every vector round evaluates.
 - Impact: small within vector designs (two functions of
   the roughly 30 ops per round). Difficulty: medium.
-  Confidence: medium. Cost: days. Status: untested.
+  Confidence: medium. Cost: days. Status: tested by EXP-012 (2026-11-14): Ch and Maj have unique VPTERNLOGD immediates (0xCA, 0xE8) and proven classic minima (3 and 4 ops); the compiled MB kernel already uses them. Closed; joint-cone sharing continues as Y-013.
 
 ### X-095: Bayesian optimization over kernel parameters
 - Statement: a Bayesian optimizer over the discrete
