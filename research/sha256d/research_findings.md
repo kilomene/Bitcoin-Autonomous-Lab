@@ -416,3 +416,28 @@ a pooled adjusted log-ratio of +0.0493 (CI
 verified improvement and no integration.
 Full record: phase6/EXPERIMENT_RESULTS.md,
 EXP-020.
+
+## Pointer: audit note N-1 fixed (2026-11-14)
+
+The post-integration audit's last open note is
+resolved. mining/mainnet_live.py now accumulates
+the engine's exact attempted count
+(last_search_stats["attempted"]) for each
+search_first call through a new call_attempts
+helper, instead of the full requested span; the
+displayed session rate derives from exact
+attempts. Historical rates in earlier evidence
+were computed on the inflated counter and are
+left as recorded. A permanent regression gate
+(tests/test_mainnet_live_accounting.py, make
+test-mainnet-live, part of test-all) asserts
+early-exit, full-miss and no-stats fallback
+accounting on the auto and C backends. Full
+test-all: 21 of 22 targets pass, only the
+pre-existing test-rtl environment failure
+remains. All audit notes are now resolved
+(D-1, N-1, N-2). The live miner was not
+restarted; the fix lands on the next natural
+restart. Resolution record:
+phase6/POST_INTEGRATION_AUDIT.md, N-1 resolution
+addendum of 2026-11-14.
