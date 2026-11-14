@@ -469,3 +469,24 @@ end-to-end re-proven in current form: block height 763,
 hash 0000001325090ccf3e4108a2d2a3ca7832f91607d1259c1e970ee0940ec4a2de,
 accepted by Core through a connected miner, with per-worker
 accounting asserted. Full record: docs/SOLO_CUTOVER.md.
+
+## Pointer: EXP-021 heterogeneous worker pair (2026-11-14)
+
+EXP-021 (Y-097) tested the mixed worker pool
+against both homogeneous pools at two and
+four threads under the EXP-017 paired
+protocol, gates in full first. The mixed
+pool reproduces below the homogeneous
+AVX-512 MB pool under both the predeclared
+makespan statistic (mixed2 vs mb2 pooled
+-0.1884, CI -0.294 to -0.082; mixed22 vs
+mb4 -0.1285) and a secondary
+continuous-assignment recomputation from
+the recorded per-worker rates (same
+ordering), and per-worker medians show no
+cross-family contention relief. Y-097 is
+an established negative on this guest; the
+homogeneous MB configuration production
+already runs remains the fastest measured
+pool shape. Full record:
+phase6/EXPERIMENT_RESULTS.md, EXP-021.
