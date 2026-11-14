@@ -104,6 +104,8 @@ How to read the dashboard: **Workers** counts live workers; **Best Difficulty** 
 
 The production miner. A C batch engine computes the first compression of the 80 byte header once per template (midstate), then scans nonces with two SHA-256 transforms per nonce through OpenSSL's SHA-NI code path. An early-exit threaded search stops at the first valid nonce; a flags array replaced the old Python rescan of every digest; a live tuner picks the thread count by measurement (2 threads wins on this VM; more threads lose to contention). Every candidate is re-verified in Python before it is trusted.
 
+Update, 2026-11-14: the production CPU backend is now the AVX-512 16-way multi-buffer kernel (mining/cpu/bal_avx512_mb.c, the EXP-007 kernel), integrated under the owner's adopted EXP-017 decision rule (pooled 3.55x against the C backend, CI 3.17x to 3.97x, significant in every session). Sixteen hashes advance in lockstep per zmm register through the same counted batch ABI, with wave-exact accounting. Selection is runtime CPUID dispatch: a flag-free probe confirms AVX-512F and AVX-512BW (the exact feature set of the kernel's restricted-flag build, confirmed by an instruction audit of the compiled object) and the batch must reproduce hashlib digests before the backend is chosen. Any failure falls back cleanly to the OpenSSL C backend, and machines without AVX-512 behave exactly as before. The standing gate is tests/test_avx512_integration.py (make test-avx512): dispatch, 196,608 randomized differentials through the production path, accounting parity, and a fresh regtest block accepted through the MB backend.
+
 | Metric | Value | Kind |
 | --- | --- | --- |
 | End to end engine rate | 6,617,558 H/s | MEASURED, suite benchmark |
