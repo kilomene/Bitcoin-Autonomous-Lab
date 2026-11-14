@@ -26,7 +26,9 @@
  *   at the moment every worker stopped, which is at most the
  *   range size and usually far less.
  * Return values: 1 found (search only), 0 range exhausted,
- * -1 bad arguments, -2 nonce range exceeds the 32-bit space.
+ * -1 bad arguments, -2 nonce range exceeds the 32-bit space,
+ * -3 winner publication failed (mutex error), -4 search context
+ * initialization failed (no worker was started).
  */
 #include <openssl/sha.h>
 #include <pthread.h>
@@ -38,11 +40,18 @@
 
 _Atomic int bal_create_fail_after = -1;
 _Atomic int bal_create_fail_calls = 0;
+_Atomic int bal_mutex_fail_mask = 0;
 
 /* Test hook: fail pthread_create after n successes (-1 disables). */
 void bal_c_test_set_create_fail_after(int n) {
   atomic_store(&bal_create_fail_calls, 0);
   atomic_store(&bal_create_fail_after, n);
+}
+
+/* Test hook (Task 003.1): bit 0 fails mutex initialization,
+ * bit 1 fails mutex locking, 0 disables. */
+void bal_c_test_set_mutex_fail_mask(int mask) {
+  atomic_store(&bal_mutex_fail_mask, mask);
 }
 
 static int meets(const uint8_t *digest, const uint8_t *target) {
@@ -210,7 +219,7 @@ int bal_c_search2(const uint8_t *header, uint64_t start, uint64_t count,
   uint32_t midstate[8];
   compute_midstate(header, midstate);
   BalSearchCtx ctx;
-  bal_ctx_init(&ctx);
+  if (bal_ctx_init(&ctx) != 0) return -4; /* no worker is started */
   uint64_t begins[16], ends[16];
   unsigned spans = bal_partition(count, threads, begins, ends);
   pthread_t tids[16];
@@ -232,6 +241,10 @@ int bal_c_search2(const uint8_t *header, uint64_t start, uint64_t count,
     uint64_t total = 0;
     for (unsigned s = 0; s < spans; s++) total += jobs[s].attempted;
     *out_attempted = total;
+  }
+  if (bal_ctx_publish_failed(&ctx)) {
+    bal_ctx_destroy(&ctx);
+    return -3; /* winner publication failed: result is not trusted */
   }
   int found = ctx.found_valid;
   if (found) {
