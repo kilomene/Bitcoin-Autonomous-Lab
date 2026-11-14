@@ -59,7 +59,10 @@ test-installer:
 test-task003:
 	python3 tests/test_task003_corrections.py
 
-test-all: test test-regtest test-engine test-pow test-gpu test-gpu-correction test-mining test-adversarial test-deepening test-cpu test-cpu-correction test-rtl test-solo test-research test-autopilot test-judgement test-installer test-task003
+test-task0038:
+	python3 tests/test_task0038_abi.py
+
+test-all: test test-regtest test-engine test-pow test-gpu test-gpu-correction test-mining test-adversarial test-deepening test-cpu test-cpu-correction test-rtl test-solo test-research test-autopilot test-judgement test-installer test-task003 test-task0038
 
 cuda-build:
 	python3 gpu/cuda/build.py
