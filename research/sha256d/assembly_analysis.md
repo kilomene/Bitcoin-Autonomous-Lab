@@ -48,6 +48,42 @@ under .local/cpu/ and .local/shax/.
   this VM; nothing device-side is claimed in this programme
   stage.
 
+## H-02 research kernel (experiments/h02_shani/libbal_h02.so, 2026-11-14)
+
+Measured with experiments/h02_shani/asm_report.py (objdump).
+Per-nonce hot function hash_p1 (snapshot-after-round-1
+mode): 494 instructions, about 2,539 B, sha256rnds2 63
+(exactly 31 block-2 pairs + 32 outer pairs), sha256msg1 24,
+sha256msg2 24 (12 of each per compression), stack frame
+0 B, 2 xmm stack ops, 4 stack refs, 0 calls, 43 memory
+refs, and ZERO ror/shr/shl instructions: no scalar schedule
+remnant in the hot path. hash_full: 496 insns, rnds2 64.
+hash_p2 (snapshot after round 2): 530 insns, rnds2 62,
+frame 0 B. bal_h_compress: 175 insns, rnds2 32, msg1 12,
+msg2 12. The batch loop (h_worker) calls hash_p1 per nonce
+(68 insns, frame 64 B); the search loop inlines it
+(h_sworker 575 insns, frame 160 B, 22 xmm stack ops).
+Whole binary: rnds2 350, msg1 132, msg2 132. Scalar twin
+(libbal_h02_scalar.so): rnds2 286, msg1 0, msg2 0, as
+designed; it is the equivalence reference for the MSG path.
+
+## H-01 multi-stream kernel (libbal_h01.so, 2026-11-14)
+
+The standalone 1-stream body (m_run_b2_1) is 176 insns,
+rnds2 31, 7 xmm registers live, frame 0 B, zero stack ops.
+The compiler inlined all other stream variants and the wave
+machinery into walk_span.constprop.0: 2,985 insns, frame
+1,056 B, 365 xmm stack ops, 566 stack refs. That is the
+register-pressure signature the Stage 5 authorization
+predicted for 4 streams: 4 streams x (2 state + 4 schedule
+vectors plus K and scratch) cannot fit the 16 architectural
+xmm registers, so state and schedule vectors spill to the
+stack every wave. Measured throughput still rises with
+stream count (registry EXP-003): the spills cost less than
+the RNDS2 latency they hide on this core. Whole binary:
+rnds2 474, msg1 180, msg2 180 (template init carries its
+own 33 rnds2: 32 block-1 + 1 snapshot pair).
+
 ## Standing rules for future assembly work
 
 1. Count instructions and stack in the function that runs per
