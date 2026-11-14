@@ -96,6 +96,97 @@ def verify_candidate(header, target, nonce, digest):
     return int.from_bytes(digest, "little") <= target
 
 
+# Task 003.8: public CUDA API validation. The CudaContext boundary
+# validates every argument itself, before any backend call; it
+# does not rely on ComputeEngine.batch_search or on the C ABI to
+# catch bad input. Thread counts are CUDA block sizes, hence the
+# documented 1..1024 bound.
+CUDA_MAX_THREADS = 1024
+MAX_OVERFLOW_SPLIT_DEPTH = 32
+
+
+def _is_plain_int(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def validate_header(header, name="header"):
+    """Return the header as bytes, requiring a bytes-like object
+    of exactly 80 bytes."""
+    if isinstance(header, memoryview):
+        raw = header.tobytes()
+    elif isinstance(header, (bytes, bytearray)):
+        raw = bytes(header)
+    else:
+        raise TypeError(
+            f"{name} must be a bytes-like object, got "
+            f"{type(header).__name__}")
+    if len(raw) != 80:
+        raise ValueError(
+            f"{name} must be exactly 80 bytes, got {len(raw)}")
+    return raw
+
+
+def validate_target(target, name="target"):
+    """Return the target as an int. Accepts an int in
+    [0, 2**256) or exactly 32 raw little-endian bytes (bytes-like);
+    rejects everything else, naming the parameter."""
+    if isinstance(target, bool):
+        raise TypeError(f"{name} must be an int or 32 little-endian "
+                        f"bytes, got bool")
+    if _is_plain_int(target):
+        if not (0 <= target < (1 << 256)):
+            raise ValueError(
+                f"{name} int out of range [0, 2**256): {target}")
+        return target
+    if isinstance(target, memoryview):
+        raw = target.tobytes()
+    elif isinstance(target, (bytes, bytearray)):
+        raw = bytes(target)
+    else:
+        raise TypeError(
+            f"{name} must be an int or 32 little-endian bytes, got "
+            f"{type(target).__name__}")
+    if len(raw) != 32:
+        raise ValueError(
+            f"{name} bytes must be exactly 32 bytes, got {len(raw)}")
+    return int.from_bytes(raw, "little")
+
+
+def validate_nonce_range(start, count):
+    """Subtraction-based nonce-range validation: count is checked
+    first, then start is compared against NONCE_SPACE - count, so
+    no start + count expression can wrap."""
+    if not _is_plain_int(start):
+        raise TypeError(
+            f"start must be an int, got {type(start).__name__}")
+    if not _is_plain_int(count):
+        raise TypeError(
+            f"count must be an int, got {type(count).__name__}")
+    if count < 1:
+        raise ValueError(f"count must be at least 1, got {count}")
+    if start < 0:
+        raise ValueError(f"start must be at least 0, got {start}")
+    if count > NONCE_SPACE:
+        raise ValueError(
+            f"count {count} exceeds the 32-bit nonce space")
+    if start > NONCE_SPACE - count:
+        raise ValueError(
+            f"start {start} exceeds the nonce space for count "
+            f"{count} (start must be at most "
+            f"{NONCE_SPACE - count})")
+
+
+def validate_threads(threads, name="threads"):
+    if not _is_plain_int(threads):
+        raise TypeError(
+            f"{name} must be an int, got {type(threads).__name__}")
+    if not (1 <= threads <= CUDA_MAX_THREADS):
+        raise ValueError(
+            f"{name} must be within [1, {CUDA_MAX_THREADS}], got "
+            f"{threads}")
+    return threads
+
+
 class CandidateOverflowError(RuntimeError):
     """The bounded candidate buffer overflowed during a single-shot
     search (Task 003.5). The stored records are incomplete: `total`
@@ -124,7 +215,7 @@ def choose_sub_batch(target, count, capacity, safety=8):
 
 
 def collect_candidates_complete(search_once, target, start, count,
-                                capacity):
+                                capacity, max_chunk=None):
     """Guaranteed-coverage candidate collection (Task 003.5).
 
     search_once(start, count) performs ONE bounded single-shot
@@ -141,28 +232,71 @@ def collect_candidates_complete(search_once, target, start, count,
     no candidate is silently discarded, and the returned list is
     deduplicated by nonce and sorted.
 
+    Accounting (Task 003.8): the stats distinguish
+    unique_coverage (distinct nonces covered by completing leaf
+    sub-batches; equals count on success), device_hashes (total
+    hashes the backend actually computed, including repeats),
+    researched_hashes (the repeated part caused by overflow
+    recovery), overflow_splits (overflow-driven subdivisions;
+    overflow_events is kept as the same count for older callers),
+    and candidate_count (candidates returned for verification).
+    For every completed call the invariant
+    device_hashes == unique_coverage + researched_hashes holds.
+    Splits are depth-capped at MAX_OVERFLOW_SPLIT_DEPTH (32,
+    enough to halve any 32-bit range down to single nonces); a
+    backend that still overflows at the cap, or at a single
+    nonce, raises an explicit CandidateOverflowError instead of
+    looping. max_chunk optionally caps each single-shot size
+    (used by CudaContext to respect its device buffer size).
+
     Returns (candidates, stats) where candidates are (nonce,
-    digest) pairs. Raises if a single nonce overflows (impossible
-    for a correct backend: one nonce yields at most one candidate),
-    which exposes a broken backend instead of looping forever."""
+    digest) pairs."""
+    target = validate_target(target)
+    validate_nonce_range(start, count)
+    if not _is_plain_int(capacity):
+        raise TypeError(
+            f"capacity must be an int, got {type(capacity).__name__}")
+    if capacity < 1:
+        raise ValueError(f"capacity must be at least 1, got {capacity}")
+    if max_chunk is not None:
+        if not _is_plain_int(max_chunk):
+            raise TypeError(
+                f"max_chunk must be an int, got "
+                f"{type(max_chunk).__name__}")
+        if max_chunk < 1:
+            raise ValueError(
+                f"max_chunk must be at least 1, got {max_chunk}")
     found = {}
     stats = {"sub_batches": 0, "overflow_events": 0,
+             "overflow_splits": 0,
              "researched_hashes": 0, "unique_coverage": 0,
-             "device_hashes": 0}
+             "device_hashes": 0, "candidate_count": 0,
+             "initial_search_seconds": 0.0,
+             "recovery_search_seconds": 0.0,
+             "search_seconds": 0.0, "kernel_ms_total": 0.0}
     end = start + count
     stack = []
     pos = start
     sub0 = choose_sub_batch(target, count, capacity)
+    if max_chunk is not None:
+        sub0 = min(sub0, max_chunk)
     while pos < end:
         n = min(sub0, end - pos)
-        stack.append((pos, n))
+        stack.append((pos, n, 0))
         pos += n
     while stack:
-        s, n = stack.pop()
+        s, n, depth = stack.pop()
         stats["device_hashes"] += n
+        t0 = time.perf_counter()
         try:
-            cands, _info = search_once(s, n)
+            cands, info = search_once(s, n)
         except CandidateOverflowError:
+            dt = time.perf_counter() - t0
+            stats["search_seconds"] += dt
+            if depth == 0:
+                stats["initial_search_seconds"] += dt
+            else:
+                stats["recovery_search_seconds"] += dt
             stats["overflow_events"] += 1
             stats["researched_hashes"] += n
             if n == 1:
@@ -170,14 +304,42 @@ def collect_candidates_complete(search_once, target, start, count,
                     "single nonce reported more candidates than the "
                     "buffer holds; backend is broken",
                     start=s, count=n)
+            if depth >= MAX_OVERFLOW_SPLIT_DEPTH:
+                raise CandidateOverflowError(
+                    f"overflow split depth cap "
+                    f"{MAX_OVERFLOW_SPLIT_DEPTH} reached for range "
+                    f"start={s} count={n}; backend is broken",
+                    start=s, count=n)
+            stats["overflow_splits"] += 1
             half = n // 2
-            stack.append((s + half, n - half))
-            stack.append((s, half))
+            stack.append((s + half, n - half, depth + 1))
+            stack.append((s, half, depth + 1))
             continue
+        dt = time.perf_counter() - t0
+        stats["search_seconds"] += dt
+        if depth == 0:
+            stats["initial_search_seconds"] += dt
+        else:
+            stats["recovery_search_seconds"] += dt
+        if info and isinstance(info, dict):
+            kms = info.get("kernel_ms")
+            if isinstance(kms, (int, float)) and kms:
+                stats["kernel_ms_total"] += float(kms)
         stats["sub_batches"] += 1
         stats["unique_coverage"] += n
         for nonce, digest in cands:
-            found[nonce] = digest
+            if not (_is_plain_int(nonce) and s <= nonce < s + n):
+                raise RuntimeError(
+                    f"backend returned candidate nonce {nonce!r} "
+                    f"outside the searched range start={s} "
+                    f"count={n}")
+            if not (isinstance(digest, (bytes, bytearray))
+                    and len(digest) == 32):
+                raise RuntimeError(
+                    f"backend returned a malformed digest for "
+                    f"nonce {nonce}")
+            found[nonce] = bytes(digest)
+    stats["candidate_count"] = len(found)
     return sorted(found.items()), stats
 
 
@@ -255,7 +417,16 @@ class CudaContext:
     CAND_CAP = 4096
 
     def __init__(self, lib, max_count=MAX_BATCH):
+        if not _is_plain_int(max_count):
+            raise TypeError(
+                f"max_count must be an int, got "
+                f"{type(max_count).__name__}")
+        if not (1 <= max_count <= (1 << 24)):
+            raise ValueError(
+                f"max_count must be within [1, {1 << 24}], got "
+                f"{max_count}")
         self._lib = lib
+        self._max_count = max_count
         self._ctx = None
         self._work_key = None
         lib.bal_cuda_ctx_create.restype = ctypes.c_int
@@ -294,6 +465,10 @@ class CudaContext:
                 raise RuntimeError(f"bal_cuda_ctx_destroy failed: {rc}")
 
     def set_work(self, header, target):
+        header = validate_header(header)
+        target = validate_target(target)
+        if self._ctx is None:
+            raise RuntimeError("CUDA context is not initialized")
         key = (header, target)
         if self._work_key == key:
             return
@@ -308,7 +483,18 @@ class CudaContext:
         candidates are raw (nonce, digest) pairs, NOT yet CPU
         verified. Raises CandidateOverflowError when the bounded
         buffer overflowed: the stored records are then incomplete
-        and must never be presented as a complete search."""
+        and must never be presented as a complete search. All
+        arguments are validated at this boundary (Task 003.8)
+        before any backend call."""
+        header = validate_header(header)
+        target = validate_target(target)
+        validate_nonce_range(start, count)
+        validate_threads(threads)
+        if count > self._max_count:
+            raise ValueError(
+                f"count {count} exceeds this context's max_count "
+                f"{self._max_count}; use search_complete for "
+                f"larger ranges")
         self.set_work(header, target)
         out_count = ctypes.c_uint32(0)
         out_ovf = ctypes.c_uint32(0)
@@ -321,7 +507,7 @@ class CudaContext:
             nonces, digests, ctypes.byref(kernel_ms))
         if rc != 0:
             raise RuntimeError(f"bal_cuda_ctx_search failed: {rc}")
-        if out_ovf.value:
+        if out_ovf.value or out_count.value > self.CAND_CAP:
             raise CandidateOverflowError(
                 f"candidate buffer overflow: {out_count.value} "
                 f"candidates exceeded capacity {self.CAND_CAP} for "
@@ -329,24 +515,58 @@ class CudaContext:
                 f"be truncated and is refused",
                 total=out_count.value, start=start, count=count)
         raw = digests.raw
-        cands = [(nonces[i], raw[32 * i:32 * i + 32])
-                 for i in range(out_count.value)]
+        cands = []
+        for i in range(out_count.value):
+            nonce = nonces[i]
+            if not (start <= nonce < start + count):
+                raise RuntimeError(
+                    f"CUDA backend returned candidate nonce {nonce} "
+                    f"outside the searched range start={start} "
+                    f"count={count}")
+            cands.append((nonce, raw[32 * i:32 * i + 32]))
         return cands, {"kernel_ms": kernel_ms.value,
-                       "candidates_found": out_count.value}
+                       "candidates_found": out_count.value,
+                       "candidate_count": out_count.value,
+                       "unique_coverage": count,
+                       "device_hashes": count,
+                       "researched_hashes": 0,
+                       "overflow_splits": 0}
 
     def search_complete(self, header, target, start, count,
                         threads=256):
         """Guaranteed-coverage production search (Task 003.5):
         adaptive sub-batching plus split-on-overflow recovery via
         collect_candidates_complete. Returns (candidates, stats)
-        with every nonce of the range covered exactly once."""
+        with every nonce of the range covered exactly once.
+
+        Task 003.8: every argument is validated HERE, at the
+        public API boundary, before set_work or any other backend
+        call: header must be a bytes-like object of exactly 80
+        bytes; target an int in [0, 2**256) or exactly 32 raw
+        little-endian bytes; start and count must satisfy the
+        subtraction-based nonce-space rule; threads must be
+        within [1, 1024]. Invalid input raises TypeError or
+        ValueError naming the offending parameter."""
+        header = validate_header(header)
+        target = validate_target(target)
+        validate_nonce_range(start, count)
+        validate_threads(threads)
         self.set_work(header, target)
         return collect_candidates_complete(
             lambda s, n: self.search(header, target, s, n, threads),
-            target, start, count, self.CAND_CAP)
+            target, start, count, self.CAND_CAP,
+            max_chunk=self._max_count)
 
     def batch_diag(self, header, target, start, count, threads=128):
         """Diagnostic mode: every digest, for self-tests only."""
+        header = validate_header(header)
+        target = validate_target(target)
+        validate_nonce_range(start, count)
+        validate_threads(threads)
+        if count > self._max_count:
+            raise ValueError(
+                f"count {count} exceeds this context's max_count "
+                f"{self._max_count}")
         hashes = ctypes.create_string_buffer(32 * count)
         flags = ctypes.create_string_buffer(count)
         rc = self._lib.bal_cuda_ctx_batch_diag(
@@ -689,8 +909,77 @@ class ComputeEngine:
         raw = hashes.raw  # one copy; per-index .raw access is O(n^2)
         return [raw[32 * i:32 * i + 32] for i in range(count)]
 
+    def _check_pairs(self, header, target, start, count, pairs):
+        """Validate a backend's candidate pairs for batch_search:
+        every pair must be inside the searched range, unique, and
+        pass independent CPU verification. Returns
+        (clean_pairs, bad_count). Any failure poisons the whole
+        enumeration: a backend that lies about one candidate may
+        also have mis-flagged others, so callers recover the full
+        range with the trusted rescan instead of trusting the
+        remaining pairs."""
+        clean = []
+        seen = set()
+        bad = 0
+        for nonce, d in pairs:
+            if (not _is_plain_int(nonce)
+                    or not (start <= nonce < start + count)
+                    or nonce in seen
+                    or not verify_candidate(header, target, nonce, d)):
+                bad += 1
+                continue
+            seen.add(nonce)
+            clean.append((nonce, d))
+        return clean, bad
+
+    def _rescan_all_candidates(self, header, target, start, count,
+                               source, bad):
+        """Task 003.8 fail-closed recovery for batch enumeration:
+        rescan the WHOLE affected range with the trusted Python
+        hashlib implementation and return every verified
+        candidate in it, so after a backend verification failure
+        the range is independently covered in full. Records a
+        fallback event with the failure count and the rescan
+        attempt count. Returns (candidates, rescan_attempted)."""
+        candidates = []
+        attempted = 0
+        for i in range(count):
+            nonce = start + i
+            d = cpu_digest(header, nonce)
+            attempted += 1
+            if int.from_bytes(d, "little") <= target:
+                if not verify_candidate(header, target, nonce, d):
+                    raise RuntimeError(
+                        "trusted CPU rescan produced an invalid "
+                        "candidate; refusing to continue")
+                candidates.append({"nonce": nonce,
+                                   "hash": d[::-1].hex(),
+                                   "backend": "cpu-rescan"})
+        self.fallback_events.append({
+            "start": start, "count": count,
+            "reason": f"{bad} {source} candidate(s) failed CPU "
+                      f"verification in batch enumeration",
+            "retried_on": "cpu-hashlib-rescan",
+            "verification_failures": bad,
+            "rescan_attempted": attempted})
+        return candidates, attempted
+
     def batch_search(self, header, target, start, count):
-        """Return (candidates, stats). Candidates are CPU verified."""
+        """Return (candidates, stats). Candidates are CPU verified.
+
+        Accounting (Task 003.8): stats carry unique_coverage
+        (distinct nonces covered), backend_hashes (actual hash
+        computations across the backend and any recovery),
+        device_hashes (GPU computations only; 0 on non-CUDA
+        paths), researched_hashes (repeats caused by CUDA
+        overflow recovery), verification_rescan_hashes (repeats
+        caused by verification-failure recovery), overflow_splits,
+        candidate_count (candidates the backend presented for
+        verification), hashrate (actual backend computations per
+        second; on the CUDA path, device_hashes per second) and
+        coverage_per_second (unique coverage per second), plus a
+        coverage_status stating whether the range ended fully
+        covered and by whom."""
         if len(header) != 80:
             raise ValueError("header must be exactly 80 bytes")
         if not (0 <= start and 0 < count <= MAX_BATCH
@@ -707,29 +996,47 @@ class ComputeEngine:
             if pairs is None:
                 used = "cpu"
             else:
-                bad = 0
-                for nonce, d in pairs:
-                    if verify_candidate(header, target, nonce, d):
-                        candidates.append({"nonce": nonce,
-                                           "hash": d[::-1].hex(),
-                                           "backend": "c"})
-                    else:
-                        bad += 1
+                clean, bad = self._check_pairs(
+                    header, target, start, count, pairs)
+                rescan_attempted = 0
                 if bad:
-                    # Task 003.4: a batch enumerates the whole
-                    # range, so coverage is complete, but a failed
-                    # candidate is a backend defect and is recorded,
-                    # never silently dropped.
-                    self.fallback_events.append(
-                        {"start": start, "count": count,
-                         "reason": f"{bad} native C batch candidate(s) "
-                                   f"failed CPU verification",
-                         "retried_on": "none (full-range enumeration)"})
+                    # Task 003.8: fail closed. The enumeration is
+                    # poisoned, so the whole range is independently
+                    # re-covered by the trusted CPU rescan; the
+                    # backend's pairs are not trusted at all.
+                    candidates, rescan_attempted = \
+                        self._rescan_all_candidates(
+                            header, target, start, count,
+                            "native C batch", bad)
+                    used = "cpu-rescan"
+                else:
+                    candidates = [
+                        {"nonce": nonce, "hash": d[::-1].hex(),
+                         "backend": "c"} for nonce, d in clean]
                 seconds = max(time.perf_counter() - t0, 1e-9)
+                actual = count + rescan_attempted
                 return candidates, {
-                    "backend": used, "hashes": count, "seconds": seconds,
-                    "hashrate": count / seconds, "start": start,
+                    "backend": used, "original_backend": "c",
+                    "hashes": actual, "backend_hashes": actual,
+                    "device_hashes": 0,
+                    "seconds": seconds,
+                    "hashrate": actual / seconds,
+                    "coverage_per_second": count / seconds,
+                    "start": start,
+                    "unique_coverage": count,
+                    "researched_hashes": 0,
+                    "verification_rescan_hashes": rescan_attempted,
+                    "overflow_splits": 0,
+                    "candidate_count": len(pairs),
                     "verification_failures": bad,
+                    "rescanned": bool(bad),
+                    "rescan_attempted": rescan_attempted,
+                    "coverage_status": (
+                        "complete: trusted CPU rescan after "
+                        "verification failure" if bad else
+                        "complete: full-range enumeration, all "
+                        "candidates verified"),
+                    "fallback_events": len(self.fallback_events),
                 }
         if self.backend == "cuda" and self._cuda_ctx is not None:
             # Production CUDA path: only candidate records cross
@@ -740,31 +1047,54 @@ class ComputeEngine:
             try:
                 pairs, cstats = self._cuda_ctx.search_complete(
                     header, target, start, count)
-                bad = 0
-                for nonce, d in pairs:
-                    if verify_candidate(header, target, nonce, d):
-                        candidates.append({"nonce": nonce,
-                                           "hash": d[::-1].hex(),
-                                           "backend": "cuda"})
-                    else:
-                        bad += 1
+                clean, bad = self._check_pairs(
+                    header, target, start, count, pairs)
+                rescan_attempted = 0
                 if bad:
-                    self.fallback_events.append(
-                        {"start": start, "count": count,
-                         "reason": f"{bad} CUDA candidate(s) failed "
-                                   f"CPU verification",
-                         "retried_on": "none (full-range enumeration)"})
+                    # Task 003.8: fail closed, exactly as the CPU
+                    # batch path: discard the poisoned enumeration
+                    # and independently re-cover the whole range.
+                    candidates, rescan_attempted = \
+                        self._rescan_all_candidates(
+                            header, target, start, count,
+                            "CUDA", bad)
+                    used = "cpu-rescan"
+                else:
+                    candidates = [
+                        {"nonce": nonce, "hash": d[::-1].hex(),
+                         "backend": "cuda"} for nonce, d in clean]
+                    used = "cuda"
                 seconds = max(time.perf_counter() - t0, 1e-9)
+                device_hashes = cstats["device_hashes"]
                 return candidates, {
-                    "backend": "cuda", "hashes": count,
-                    "seconds": seconds, "hashrate": count / seconds,
+                    "backend": used, "original_backend": "cuda",
+                    "hashes": device_hashes,
+                    "backend_hashes": device_hashes + rescan_attempted,
+                    "device_hashes": device_hashes,
+                    "seconds": seconds,
+                    "hashrate": device_hashes / seconds,
+                    "coverage_per_second": count / seconds,
                     "start": start, "mode": "candidates_only",
                     "candidates_found": len(pairs),
+                    "candidate_count": cstats["candidate_count"],
                     "verification_failures": bad,
                     "overflow_events": cstats["overflow_events"],
+                    "overflow_splits": cstats["overflow_splits"],
                     "researched_hashes": cstats["researched_hashes"],
+                    "verification_rescan_hashes": rescan_attempted,
                     "sub_batches": cstats["sub_batches"],
                     "unique_coverage": cstats["unique_coverage"],
+                    "rescanned": bool(bad),
+                    "rescan_attempted": rescan_attempted,
+                    "initial_search_seconds":
+                        cstats["initial_search_seconds"],
+                    "recovery_search_seconds":
+                        cstats["recovery_search_seconds"],
+                    "coverage_status": (
+                        "complete: trusted CPU rescan after "
+                        "verification failure" if bad else
+                        "complete: CUDA search_complete, all "
+                        "candidates verified"),
                     "fallback_events": len(self.fallback_events),
                 }
             except RuntimeError as exc:
@@ -783,19 +1113,72 @@ class ComputeEngine:
                      "reason": "legacy CUDA batch returned failure",
                      "retried_on": "cpu"})
                 used = "cpu"
+        digest_source = used
         if digests is None:
             digests = [cpu_digest(header, start + i) for i in range(count)]
             used = "cpu"
+            digest_source = "cpu"
+        raw_candidates = 0
+        bad = 0
         for i, d in enumerate(digests):
             if int.from_bytes(d, "little") <= target:
+                raw_candidates += 1
                 nonce = start + i
                 if verify_candidate(header, target, nonce, d):
                     candidates.append({"nonce": nonce, "hash": d[::-1].hex(),
                                        "backend": used})
+                else:
+                    bad += 1
+        rescan_attempted = 0
+        if bad:
+            # Task 003.8: a digest that meets the target but fails
+            # verification is never silently dropped. Legacy CUDA
+            # digests are recovered by an independent trusted
+            # rescan of the whole range; a failure inside the CPU
+            # fallback's own enumeration has no independent
+            # implementation left to rescan with, so it is an
+            # explicit error, never a false no-hit.
+            if digest_source == "cuda":
+                candidates, rescan_attempted = \
+                    self._rescan_all_candidates(
+                        header, target, start, count,
+                        "legacy CUDA batch", bad)
+                used = "cpu-rescan"
+            else:
+                self.fallback_events.append({
+                    "start": start, "count": count,
+                    "reason": f"{bad} CPU fallback candidate(s) "
+                              f"failed CPU verification",
+                    "retried_on": "none (explicit error)",
+                    "verification_failures": bad})
+                raise RuntimeError(
+                    f"{bad} CPU fallback candidate(s) failed "
+                    f"verification in batch enumeration; refusing "
+                    f"to report an incomplete result")
         seconds = max(time.perf_counter() - t0, 1e-9)
+        actual = count + rescan_attempted
         return candidates, {
-            "backend": used, "hashes": count, "seconds": seconds,
-            "hashrate": count / seconds, "start": start,
+            "backend": used, "original_backend": digest_source,
+            "hashes": actual, "backend_hashes": actual,
+            "device_hashes": count if digest_source == "cuda" else 0,
+            "seconds": seconds,
+            "hashrate": (count if digest_source == "cuda" else actual)
+                         / seconds,
+            "coverage_per_second": count / seconds,
+            "start": start,
+            "unique_coverage": count,
+            "researched_hashes": 0,
+            "verification_rescan_hashes": rescan_attempted,
+            "overflow_splits": 0,
+            "candidate_count": raw_candidates,
+            "verification_failures": bad,
+            "rescanned": bool(rescan_attempted),
+            "rescan_attempted": rescan_attempted,
+            "coverage_status": (
+                "complete: trusted CPU rescan after verification "
+                "failure" if rescan_attempted else
+                "complete: full-range enumeration, all candidates "
+                "verified"),
             "fallback_events": len(self.fallback_events),
         }
 
