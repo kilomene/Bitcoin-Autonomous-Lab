@@ -123,9 +123,22 @@ nonces of one fixed template:
 - Inner block 2 rounds 0..2: 3 rounds, once per template.
 
 Ceiling: 67 of 192 rounds (about 34.9 percent) are
-reusable. Per-nonce work can never fall below 125 rounds
-(61 of block 2 plus 64 outer) by precomputation alone. The
-outer hash admits zero cross-candidate reuse beyond its
+reusable. The conventional evaluation's per-nonce
+remainder is 125 round evaluations (61 of block 2
+plus 64 outer) once precomputation has taken its
+67. CORRECTED (Phase 6, 2026-11-14): earlier text
+here said per-nonce work "can never fall below 125
+rounds". The precise statement is narrower in one
+direction and broader in another. Narrower: 125 is
+a count inside the conventional evaluation, not a
+proven universal lower bound on every equivalent
+computation graph; whether a different graph,
+representation, or algebraic formulation can
+produce the exact digest with less actual work is
+an open question (Phase 6 Workstream A). Broader:
+precomputation is not the only conceivable route
+to reduced work, merely the only one currently
+proven. The outer hash admits zero cross-candidate reuse beyond its
 constant initial state and padding words, because its
 input is the fully nonce-dependent inner digest.
 
@@ -283,16 +296,36 @@ Everything template-invariant is worth exactly 67 rounds
 (section 5). Everything else that looks like partial
 evaluation is one of: schedule-operand precomputation
 (section 7.3, rounds unchanged, operand preparation
-moved), or a claim that fails section 8.
+moved), or a computation-graph claim, which after the
+Phase 6 correction to section 8 must be settled by
+derivation and measurement rather than dismissed by
+definition.
 
 ## 8. What cannot change (ESTABLISHED, permanent)
 
-- The 192-round structure is the algorithm definition.
-  Any equivalent computation graph still evaluates the
-  same 192 round functions with the same dependencies;
-  equivalence can change instruction mix, issue order
-  across independent hashes, and operand preparation, and
-  nothing else.
+- The function is the algorithm definition: three
+  64-round compressions with the specified round
+  function, schedule, and feed-forward. Any correct
+  implementation computes exactly that function.
+  CORRECTED (Phase 6, 2026-11-14): earlier text
+  claimed any equivalent computation graph "still
+  evaluates the same 192 round functions with the
+  same dependencies" and that equivalence can change
+  "nothing else" beyond instruction mix, issue
+  order, and operand preparation. That is not
+  proven and is withdrawn. Equivalent graphs may in
+  principle restructure the computation itself
+  (different intermediate quantities, shared
+  subexpressions across what the conventional order
+  calls rounds, alternative addition networks);
+  no such graph is known to reduce the work, and
+  finding or excluding one is Phase 6's central
+  open problem. What is established is only this:
+  the output must be bit-identical, and every
+  shortcut that changes the function (fewer rounds
+  of the actual function, statistical screening)
+  is excluded by that requirement, not by a round
+  count.
 - No reduced-round or statistical shortcut exists at full
   rounds in any evidence this lab has produced. The lab's
   own bias curve (../results/RESEARCH.md): one-bit bias
