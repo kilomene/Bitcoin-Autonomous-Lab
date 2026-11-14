@@ -1704,3 +1704,319 @@ export bal_v_batchf2).
   the mid-batch lane-retirement reading of
   the hypothesis is structurally void, as
   recorded under Hypothesis above.
+
+## EXP-023: Midstate amortisation family (Y-076, Y-077, Y-079)
+
+Status: COMPLETE (2026-11-14). Three verdicts.
+Y-076 is REJECTED as specified (established
+negative): its premise is false in the code as
+built, proven by gate. Y-077 is a VERIFIED
+IMPROVEMENT at the data level under the adopted
+EXP-017 rule (pooled 18.49x for extranonce steps
+at 500 transactions, 22.06x for job families),
+with its compression-prefix sub-claim rejected
+as immaterial. Y-079 is delivered as a VERIFIED
+TABLE: all 32 field subsets plus two
+supplementary boundary rows verified by
+construction. No integration by this
+experiment: the amortised builder is a research
+prototype outside production files, and
+adopting it in mining/engine.py is a
+recommendation for the owner's decision.
+Production byte-identical. Raw artifacts:
+benchmarks/exp023/ (12 append-only sessions,
+the gates record, the audit, four analyses).
+Tools: benchmarks/exp023_snapshots.py (round
+stepper and snapshot ladder),
+benchmarks/exp023_amortized.py (two-level
+prototype), benchmarks/exp023_gates.py,
+benchmarks/exp023_audit.py,
+benchmarks/exp023_paired_bench.py,
+benchmarks/exp023_analyze.py (statistic,
+reusing the EXP-017 analyser unchanged).
+
+- **Claims and predeclared verdict rules.**
+  Y-076 as written: in the solo server's shape
+  each extranonce step changes the coinbase,
+  hence the merkle root, hence block 1's second
+  half; the midstate is rebuilt per step; cache
+  block 1's first 64 bytes' compression (fixed
+  per job) and rebuild only the second half,
+  success being per-step setup reduced by the
+  measured half-block share. Rule: VERIFIED
+  only if (i) the audit finds a per-extranonce
+  midstate rebuild in a lab serving path, (ii)
+  the named cached quantity is extranonce
+  independent (gate), and (iii) a paired bench
+  shows the predicted reduction. Failure of
+  (i) or (ii) closes it as an established
+  negative with the evidence. Y-077 as written:
+  pool jobs in a family share version and
+  prevhash and differ in merkle root and time;
+  template setup recomputes block 1 fully per
+  job; a two-level midstate cache (family level:
+  block 1's first-half compression, valid when
+  version, prevhash and the merkle head align;
+  job level: the rest) reduces per-job setup.
+  Rule: the cache is a VERIFIED IMPROVEMENT iff
+  per-unit setup over the predeclared
+  comparisons is significant in every session
+  and pooled under the EXP-017 statistic with
+  byte-identical output; the compression-prefix
+  level is assessed separately against its
+  alignment condition and its priced ceiling.
+  Y-079 as written: derive, per subset of
+  {version, prevhash head, merkle tail, time,
+  nbits}, the deepest valid snapshot (named
+  menu: block-1 half, full midstate, block-2
+  round 2, schedule round 17), verified per row
+  by construction. Rule: VERIFIED TABLE iff
+  every row's constructed deepest depth equals
+  the derived depth.
+- **Audit (what is actually recomputed today;**
+  benchmarks/exp023_audit.py, counting stub RPC,
+  zero latency, this host). In the GBT path,
+  MiningEngine.build_candidate is called once
+  per extranonce round by mine_cycle (64 rounds
+  per template) and recomputes, on every call:
+  every transaction's txid (strip and rehash)
+  and wtxid (500 of each at 500 transactions),
+  the witness commitment, the full merkle tree
+  over [coinbase] + txids (503 double hashes at
+  500 transactions), the block body join, one
+  validateaddress RPC and one getblockchaininfo
+  RPC (exactly one each per call, counted).
+  Medians on this host: 0.047 ms per call at 0
+  transactions, 0.247 at 10, 2.696 at 100,
+  17.811 at 500; per template over 64 extranonce
+  calls that is up to 1,139.9 ms of construction
+  at 500 transactions, plus 128 RPC round trips
+  (EXP-009 priced a real validateaddress round
+  trip at 3.96 ms median, so the stub-priced
+  figures are conservative for a live node).
+  The genuinely extranonce-dependent residue of
+  a call is the coinbase build, the coinbase
+  spine of the merkle tree (9 double hashes at
+  500 transactions, median 0.075 ms against
+  2.97 ms for the full rebuild in the same audit
+  pass) and header assembly: about 99.6 percent
+  of the repeated per-call work at 500
+  transactions is extranonce-independent
+  reusable state. In the stratum path
+  (mining/stratum_client.py build_header, the
+  live miner's per-extranonce2 step) a step
+  costs a median 117.9 us of coinbase and branch
+  hashing, which is 3.4e-7 of the full nonce
+  scan the step feeds at the recorded live rate:
+  negligible either way, cache or no cache. In
+  the solo server there is no midstate anywhere:
+  jobs are built per template (refresh_job) and
+  validate_share prices a submitted share at a
+  median 24.3 ms at 500 transactions, dominated
+  by its own full merkle rebuild; that is a
+  per-share cost, not per-extranonce, and the
+  server never steps an extranonce (the
+  extranonce arrives inside submitted shares).
+  The compression-prefix ceiling, priced with
+  the round stepper in pure Python: a full
+  block-1 compression costs 351.8 us, the R8
+  prefix 48.2 us, so a block-1 prefix snapshot
+  could save at most about 304 us per block-1
+  compression in a Python path, and no lab path
+  performs a per-step or per-job block-1
+  compression for it to attach to (hashlib
+  paths do not split blocks; the kernel
+  computes the midstate once per search batch).
+- **Gates (all PASS before timing;**
+  benchmarks/exp023_gates.py). G-A: the round
+  stepper's full compression equals
+  PureSHA256's block result on 200 randomised
+  blocks; inner digests completed from the MID,
+  B2R2 and SCH17 snapshots equal hashlib on 200
+  randomised headers, and the midstate equals
+  PureSHA256's post-block-1 state (hashlib
+  exposes no raw chaining state; the midstate
+  is pinned by PureSHA256 and by completion
+  against hashlib). G-B: 1,320 randomised
+  (template, extranonce) cases byte-identical
+  between build_candidate and the prototype
+  (header, body, target, height, fees, tx
+  count, witness count), covering 0 to 500
+  transactions, segwit mixes, coinbaseaux
+  flags and witness commitments; a mismatched
+  template fingerprint raises instead of
+  serving. G-C: the merkle spine equals
+  mining.pow.merkle_root at 47 leaf counts.
+  G-D (Y-076): over 20 randomised pairs, an
+  extranonce-driven root change alters header
+  bytes 36 onward and the midstate, and leaves
+  the R8 state identical: block 1's first 64
+  bytes are NOT fixed across extranonce steps,
+  and the deepest extranonce-independent
+  snapshot is R8 (rounds 0 to 8: version and
+  prevhash), not the half block. G-E (Y-077):
+  R11 is shared iff the merkle head (header
+  bytes 36 to 47) aligns, both directions by
+  construction. G-F (Y-079): all rows below.
+- **Implementation.** exp023_amortized.py:
+  FamilyContext pays the two per-call RPCs
+  once per (node, payout); PreparedTemplate
+  pays the transaction pass, the witness
+  commitment, the value check and the merkle
+  tree levels over a placeholder coinbase leaf
+  once per template; build() then pays only
+  the coinbase build, the coinbase spine walk
+  (ceil(log2(n+1)) double hashes), header and
+  body assembly per extranonce step. Audit
+  medians: prepare 32.5 ms and step 0.068 ms
+  at 500 transactions (prepare 9.1 ms, step
+  0.087 ms at 100), so against build_candidate
+  the cache breaks even at about 1.8 steps per
+  template and pays from the second step on.
+- **Measured result (adjusted pooled**
+  log-ratio, EXP-017 statistic; the paired
+  unit is 16 candidate builds; arm B builds
+  its caches inside the timed region).
+  steps500 (16 extranonce steps on one
+  500-transaction template; Y-077 primary,
+  level-2 reuse): sessions +2.9286, +3.0091,
+  +2.8175, every session significant; pooled
+  +2.9174 (CI +2.7884 to +3.0406), 18.49x (CI
+  16.26x to 20.92x), pairs won 1.000.
+  steps100: sessions +2.7885, +2.9499, +2.6858,
+  every session significant; pooled +2.8011
+  (CI +2.6223 to +2.9688), 16.46x (CI 13.77x
+  to 19.47x), pairs won 0.993. family500 (16
+  jobs of one family, one step each; Y-077's
+  job-family shape): sessions +3.0708,
+  +3.0663, +3.1539, every session significant;
+  pooled +3.0938 (CI +2.9410 to +3.2438),
+  22.06x (CI 18.93x to 25.63x), pairs won
+  1.000. churn500 (boundary control: each
+  job's tx set differs by five replaced
+  transactions, so level 2 is rebuilt per job
+  and only level 1 is reused): sessions
+  -0.0882, +0.0719, -0.0816, none significant;
+  pooled -0.0327 (CI -0.1207 to +0.0517),
+  0.97x, pairs won 0.480. The boundary lands
+  where the mechanism predicts: the win is
+  the reused transaction pass and tree, and
+  when the tx set churns every job there is
+  nothing left to reuse but the family
+  constants, which the zero-latency stub
+  prices at about zero (against a live node
+  the two saved RPC round trips per job
+  would still apply).
+- **Verdicts.** Y-076 REJECTED as specified,
+  established negative, on both prongs of its
+  rule: (i) no lab serving path rebuilds a
+  midstate per extranonce step, so the named
+  cost does not exist (the solo harness the
+  registry names contains no midstate and no
+  extranonce stepping, so its cache on/off
+  test is not expressible there); (ii) the
+  quantity it proposes to cache is not
+  extranonce independent: the merkle root
+  occupies block-1 bytes 36 to 63 and
+  avalanches, the midstate changes with every
+  extranonce step (G-D), and only the R8
+  prefix (9 of 64 rounds) survives. Its
+  success line (per-step setup reduced by the
+  half-block share) therefore has no referent
+  in this code. The whole-path objective
+  behind it, amortising the extranonce
+  dimension, is real and is what Y-077
+  measures. Y-077 VERIFIED IMPROVEMENT at the
+  data level (family constants, per-template
+  transaction pass, merkle spine) under the
+  adopted rule, in the serving path, as a
+  prototype: integration into
+  mining/engine.py is recommended to the
+  owner, noting the churn boundary (the win
+  requires steps per template above about 2,
+  or jobs sharing a tx set; mine_cycle's 64
+  extranonce rounds per template sit far
+  above break-even). Y-077's stated
+  compression-prefix mechanism is separately
+  REJECTED as a material saving: valid
+  without alignment only to R8, to R11 only
+  under merkle-head alignment (probability
+  2^-96 for unrelated roots), worth at most
+  about 304 us per block-1 compression in a
+  Python path and zero in the kernel path.
+  Y-079 VERIFIED TABLE, below.
+- **Y-079 verified table.** Fields as header
+  word groups (canonical doc usage): version
+  = block-1 W0; prevhash head = block-1
+  W1..W8; merkle tail = the merkle root as one
+  field, block-1 W9..W15 plus block-2 W0 (a
+  root change avalanches over all eight
+  words; the tail word's special role is
+  supplementary row S1); time = block-2 W1;
+  nbits = block-2 W2. The nonce always varies.
+  Deepest valid snapshot, by the shallowest
+  varying field (verified for all 32 subsets,
+  3 randomised instances each, equality at the
+  tabulated rung and inequality at every
+  deeper rung):
+    version varies: none (even R0 dies).
+    prevhash varies: R0 (state after block-1
+      round 0).
+    merkle varies: R8 (after round 8).
+    time varies: B2R0 (midstate plus block-2
+      round 0).
+    nbits varies: B2R1.
+    none of the five varies: SCH17 (block-2
+      state after round 2, plus schedule words
+      W16 and W17).
+  Against the registry's named menu (block-1
+  half, full midstate, block-2 round 2,
+  schedule round 17): block-1 half is R11,
+  and it is the deepest valid snapshot for
+  NO subset of the five fields: the common
+  serving variations sit below it (a root
+  change permits only R8, a prevhash change
+  only R0, a version change nothing), and it
+  becomes valid only under merkle-head
+  alignment (supplementary row S2: a root
+  change confined to bytes 12..27 leaves R11
+  deepest, verified). Full midstate is the
+  deepest named depth for time and nbits
+  rolls (true depths B2R0 and B2R1 sit
+  between the named rungs). Block-2 round 2
+  and schedule round 17 are valid exactly
+  when none of the five fields varies, and
+  schedule round 17 is then the deepest.
+  Supplementary row S1: a change confined to
+  the merkle tail word (bytes 64..67) leaves
+  the full midstate valid and kills B2R0,
+  verified. The serving rule the table
+  supports: cache R8 across root changes
+  inside a job family, the midstate across
+  time, nbits and tail-word rolls, and
+  SCH17 across nonces only; never key a
+  snapshot at R11 or deeper to a template
+  pair whose root or prevhash may differ.
+- **Environment.** All gates, audit and bench
+  sessions ran on the Intel Xeon Platinum
+  8321HC host (AVX-512F/BW/VL/VNNI, no SHA
+  extensions, no VBMI) recorded in every
+  session manifest, under co-tenancy with the
+  live miner and node, never touched. The
+  steps100, family500 and churn500 analyses
+  were completed after a runtime restart
+  replaced the host with an AMD EPYC 9D25;
+  the analysis is deterministic arithmetic
+  over the recorded session files and does
+  not depend on the analysing host.
+- **Follow-up.** If the owner adopts the
+  amortised builder, the integration shape
+  is: MiningEngine gains a prepared-template
+  object keyed by template fingerprint,
+  mine_cycle prepares once per template and
+  steps per extranonce, and the solo server's
+  validate_share can take the same cached
+  tree (its 24.3 ms per share at 500
+  transactions is the same full-rebuild cost
+  in a second path). Neither change is made
+  by this experiment.
