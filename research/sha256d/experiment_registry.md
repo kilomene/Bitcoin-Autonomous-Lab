@@ -571,4 +571,46 @@ in extreme_optimization/EXPERIMENT_REGISTRY.md;
 mathematics in phase6/MATHEMATICAL_DISCOVERIES.md
 MD-1). All Phase 6 records live in phase6/,
 starting with phase6/PHASE6_FINAL_REPORT.md. Next
-unreserved experiment ID: EXP-017.
+unreserved experiment ID at that point: EXP-017,
+which has since run; see the EXP-017 section
+below. Phase 6 reserves EXP-018 to EXP-020;
+next unreserved ID: EXP-021.
+
+## EXP-017: The measurement stack (2026-11-14)
+
+Phase 6's measurement experiment (Y-101, Y-102,
+Y-103). A paired benchmark driver alternates
+arms in 65,536-hash blocks with randomised
+order and per-call steal and runnable-load
+covariates; the predeclared statistic is the
+covariate-adjusted mean paired log-ratio with
+a 10,000-resample pairs bootstrap (definition
+written into phase6/EXPERIMENT_RESULTS.md
+before the runs). Twelve append-only sessions
+in phase6/benchmarks/exp017/: both equal-pair
+controls (production vs itself, AVX-512 MB vs
+itself) returned nulls in all three sessions
+each and pooled (adjusted +0.0137, CI -0.0786
+to +0.1081; +0.0077, CI -0.1047 to +0.1167),
+and the historical min/max rule passed a
+phantom difference in 0 of 6 control sessions.
+Real comparisons under the EXP-017 rule:
+AVX-512 MB vs production adjusted pooled
++1.2652 (CI 1.1546 to 1.3767, 3.55x),
+significant in every session; streams=4
+strided vs production +1.0298 (CI 0.9265 to
+1.1283, 2.80x), significant in every session.
+Covariate adjustment was priced near-neutral
+(pooled CI width ratios 0.970 to 0.999); the
+pairing carries the decision value. Variance
+decomposition and sessions-needed estimates
+are in the full record. This is a measurement
+result under stated contention, NOT an
+integration: the programme's integration
+criterion is unchanged, and a proposal to
+replace it with the EXP-017 rule is recorded
+for the owner in phase6/EXPERIMENT_RESULTS.md.
+Sub-verdicts: Y-103 PASS, Y-102 PASS at
+65,536 hashes, Y-101 PARTIAL. Full record:
+phase6/EXPERIMENT_RESULTS.md and
+extreme_optimization/EXPERIMENT_REGISTRY.md.
