@@ -454,6 +454,93 @@ by reference, without altering the originals.
   repricing belongs with any multi-buffer integration
   decision.
 
+### EXP-010: Part A decision closure, executed during IBD on the owner's immediate order
+
+- Hypothesis: at least one challenger (H-01
+  streams=4 strided, or the AVX-512 multi-buffer)
+  separates completely from production C at 2
+  threads under the predeclared rule, earning
+  integration (X-067's decision, Part A of the
+  Next Research Phase).
+- Justification: both challengers had beaten
+  production on medians in every prior session
+  (EXP-003 to EXP-007) but had never cleared the
+  beyond-spread criterion; the decision had to be
+  closed one way or the other.
+- Implementation: no new code. Contenders are the
+  production library (.local/cpu libbal_batch.so),
+  src/h01_geo.c streams=4 strided (mode 1), and
+  src/avx512_mb.c. Decision benchmark:
+  benchmarks/bench_exp010_decision.py; gates:
+  tests/test_exp010_partA.py.
+- Methodology: full gate set first, then one
+  session, 2 worker threads, round-robin
+  interleaved, 15 rounds of 1M hashes per
+  contender, attempted asserted per run. Per-round
+  1-minute load and per-round CPU steal recorded.
+  Predeclared rule, unchanged from EXP-004: a
+  candidate passes only if its minimum round rate
+  exceeds production's maximum round rate.
+  Execution context: the owner ordered immediate
+  execution during mainnet initial block download,
+  overriding the wait-for-sync condition; the
+  contention is part of the result. Node 410,518
+  to 410,520 of 975,803 headers, IBD true
+  throughout; 1-minute load 12.39 to 12.60 for the
+  whole session; session steal 1.63 percent.
+- Correctness evidence: all gates pass for all
+  three contenders: 108,000 randomized
+  differentials each, genesis digest and search,
+  boundaries, crossing and empty ranges rejected,
+  five template variations, target exact equality
+  and minus one, regtest-easy candidate set
+  identical to a Python recount (82 over 20,000),
+  exact accounting including wave-exact early exit
+  (50,001 production; 50,004 strided; 50,016
+  multi-buffer). No contender excluded.
+- Benchmark evidence (raw data in benchmarks/
+  exp010_partA_decision.json; 95 percent
+  percentile-bootstrap CIs for the medians):
+  production C median 1,209,879 (CI 1,078,769 to
+  1,714,289), min 886,493, max 2,288,008, spread
+  115.8 percent. Streams=4 strided median
+  3,342,449 (CI 3,065,806 to 3,895,558), min
+  1,440,195, max 5,128,658, spread 110.4 percent.
+  AVX-512 multi-buffer median 3,551,903 (CI
+  3,135,148 to 5,002,645), min 2,006,621, max
+  9,384,014, spread 207.7 percent.
+- Hardware: lab VM as EXP-004, under the heaviest
+  sustained contention of the programme (saturated
+  runnable queue, syncing node, live pool miner).
+- Statistical analysis: median ratios 2.76x and
+  2.94x with candidate median CIs clear of
+  production's CI, but the predeclared criterion
+  is a min-over-max separation test: streams=4
+  min 1,440,195 and multi-buffer min 2,006,621
+  both fall below production max 2,288,008.
+  Variance attribution for the multi-buffer
+  kernel: rate vs steal correlation +0.221, rate
+  vs load -0.095; calm-round median 3,562,042 vs
+  spiked-round median 3,515,186 (1.3 percent
+  apart); production control correlation -0.521.
+  Steal and load spikes do not explain the slow
+  rounds; the excess variance is implementation
+  behaviour under a saturated runnable queue.
+- Result: neither candidate passes; no
+  integration; production byte-identical. The
+  Part A decision is closed for this machine.
+- Rejection reason: the criterion is complete
+  separation, and both candidates' worst rounds
+  overlap production's best round, for the third
+  recorded time (EXP-003 decision, EXP-004,
+  EXP-010).
+- Follow-up: reopening requires a materially
+  quieter environment or a kernel whose minimum
+  clears production's maximum under the same
+  rule; Y-101 (contention-normalized decision
+  statistic) and Y-023 (register-resident
+  multi-buffer state) are the registered routes.
+
 ### EXP-011: Dual-batch interleaved AVX-512 multi-buffer
 
 - Hypothesis: two independent 16-lane batches
@@ -653,18 +740,24 @@ by reference, without altering the originals.
 
 ## Registry state
 
-Fifteen experiments recorded (EXP-000 to EXP-009
-and EXP-011 to EXP-015), plus Part B
-(HYPOTHESIS_REGISTRY_Y.md, Y-001 to Y-108) and
-Part C (PERFORMANCE_CEILING.md) of the Next
-Research Phase. EXP-010 is reserved for the Part A
-post-sync decision closure, which is handled by
-its own watcher and has not run. EXP-011 to
-EXP-015 ran as one batch on 2026-11-14; the batch
-report is EXP011_ONWARD_REPORT.md in this
-directory. No integration resulted and production
-is byte-identical: the batch produced no verified
-improvement, two closures (EXP-012, EXP-015), one
-implementation negative (EXP-014), and two
-unseparated promising results (EXP-011, EXP-013).
-Next unreserved ID: EXP-016.
+Sixteen experiments recorded (EXP-000 to
+EXP-015), plus Part B (HYPOTHESIS_REGISTRY_Y.md,
+Y-001 to Y-108) and Part C
+(PERFORMANCE_CEILING.md) of the Next Research
+Phase. EXP-011 to EXP-015 ran as one batch on
+2026-11-14; the batch report is
+EXP011_ONWARD_REPORT.md in this directory. No
+integration resulted from that batch and
+production is byte-identical: it produced no
+verified improvement, two closures (EXP-012,
+EXP-015), one implementation negative (EXP-014),
+and two unseparated promising results (EXP-011,
+EXP-013). EXP-010 (Part A decision closure) ran
+afterwards on the owner's immediate order, during
+initial block download rather than after sync:
+both challengers failed the predeclared
+beyond-spread criterion a third time, no
+integration was performed, production remains
+byte-identical, and the decision is closed for
+this machine (EXP010_PART_A_REPORT.md). Next
+unreserved ID: EXP-016.
