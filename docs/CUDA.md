@@ -32,3 +32,19 @@ reproduces the whole picture on demand (make cuda-diag).
 On any machine with a real NVIDIA device and driver, the same code
 path selects CUDA only after the live self-test batch matches the
 CPU digest for digest. Nothing about that claim is pre-baked.
+
+## Task 002 update (2026-11-14)
+
+The toolkit is currently ABSENT on this VM (a VM replacement
+removed /usr/local/cuda and the NVIDIA apt source); a restore was
+attempted from NVIDIA's official Ubuntu 24.04 repository. An older
+libbal_cuda.so build remains in .local/cuda and still answers the
+device-count call with error 35. The engine was rewritten around a
+persistent CUDA context: midstate kernel (first 64 header bytes
+compressed once per header), GPU-side target filtering, bounded
+candidate array with atomic counter and overflow flag, CUDA events
+for kernel timing, and a diagnostic batch mode for self-tests.
+Build and diagnostics now report separated states and the build
+exits nonzero when the requested build fails. Gates 6 (device
+execution) and 7 (GPU candidate accepted by regtest) are UNVERIFIED
+here; the full record is results/TASK002_GPU_CORRECTION.md.
