@@ -247,3 +247,24 @@ here and are labelled as such.
   selection.
 - Correction: cuda_producti
 ...[truncated 8537 chars]
+## Task 003.8 addendum (2026-11-14)
+
+The follow-up hardening task (results/TASK0038_CUDA_ABI_HARDENING.md)
+changed three things recorded in this report. (1) The CUDA
+accounting of section 003.5 now has the full five-field form:
+candidate_count and overflow_splits were added to
+collect_candidates_complete and to every batch_search stats
+dict, split depth is capped at 32, and CUDA-path hashrate is
+device_hashes per second with unique coverage per second
+reported separately. (2) The batch verification behavior of
+section 003.4 is now stronger: a C or CUDA batch candidate
+failing verification no longer merely gets counted while the
+remaining pairs are trusted; the whole enumeration is
+discarded and the range is independently re-covered by the
+trusted CPU rescan, so batch enumeration does provide
+complete independent coverage after a failure. (3) The legacy
+CUDA ABI and CudaContext public API gained the validation
+layers described in the Task 003.8 report (null pointers,
+maximum legacy batch 2^24, checked allocation sizes,
+out_ctx cleared on every create failure, Python boundary
+validation with zero backend calls on invalid input).
