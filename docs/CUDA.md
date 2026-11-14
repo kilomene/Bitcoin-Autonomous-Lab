@@ -61,6 +61,21 @@ immediately, so every failure path leaves the caller's pointer
 null. The persistent-context search validates its candidate
 output buffers before launching anything.
 
+## Task 003.9 accounting note (2026-11-14)
+
+Mining statistics follow the definitions in gpu/engine.py's
+module docstring. device_hashes counts CUDA device
+computations only (exactly 0 when no device executed work),
+and the identity device_hashes == unique_coverage +
+researched_hashes belongs to the CUDA candidate-recovery
+driver alone; it is not a property of CPU or C statistics.
+backend_hashes is the selected backend's own computations;
+independent verification and trusted rescans are reported
+separately as verification_hashes. ComputeEngine.benchmark
+accumulates actual per-batch backend computations (see
+benchmark_report), never the requested batch size. Full
+record: results/TASK0039_FINAL_ACCOUNTING_CORRECTION.md.
+
 ## Task 002 update (2026-11-14)
 
 The toolkit is currently ABSENT on this VM (a VM replacement
