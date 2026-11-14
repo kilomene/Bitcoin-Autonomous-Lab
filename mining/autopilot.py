@@ -74,8 +74,8 @@ POLL_S = float(os.environ.get("BAL_AP_POLL_S", "2"))
 STALE_S = float(os.environ.get("BAL_AP_STALE_S", "300"))
 HEARTBEAT_S = float(os.environ.get("BAL_AP_HEARTBEAT_S", "5"))
 UPDATE_CHECK_S = float(os.environ.get("BAL_AP_UPDATE_CHECK_S", "900"))
-BACKOFF_START_S = 2.0
-BACKOFF_CAP_S = 300.0
+BACKOFF_START_S = 1.0
+BACKOFF_CAP_S = 30.0  # no resting: a dead miner is back within 30 s worst case
 MIN_HEALTHY_S = 60.0  # a child living this long resets backoff
 
 
