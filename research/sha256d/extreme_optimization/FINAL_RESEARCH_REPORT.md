@@ -57,7 +57,7 @@ contended VM.
 
 | Claim | Evidence |
 |---|---|
-| Precomputation ceiling is 67 of 192 rounds; per-nonce floor 125 | Derivation, ../header_and_midstate_analysis.md |
+| Precomputation ceiling is 67 of 192 rounds; the conventional evaluation's per-nonce remainder is 125 round evaluations (not a proven universal lower bound; Phase 6 correction, 2026-11-14) | Derivation, ../header_and_midstate_analysis.md |
 | First nonce-dependent expanded schedule word is W18 | Recurrence index check, corrected 2026-11-14 |
 | Ch_alt, Maj_alt_A, Maj_alt_B are exactly equivalent | Exhaustive bit proof, 1M differential, z3 UNSAT |
 | Production is the OpenSSL midstate C library; its tuned rate is 1,627,792 H/s at 2 threads here | EXP-000 |
@@ -66,7 +66,7 @@ contended VM.
 | Interleaving streams multiplies per-worker throughput; the core is latency-bound in a single chain | EXP-003 stream scaling |
 | Reduced-round bias dies by round 24; no statistical shortcut at full rounds | ../results/RESEARCH.md measurements |
 | The full pipeline mines blocks Core accepts (regtest), and the solo stack works end to end | mining/engine.py acceptance rule; regtest block 390 via solo server |
-| Mining here is compute and latency bound, not memory bound | Probe bandwidth 2.739 GB/s vs about 106 MB/s of digest stores |
+| Mining here is compute and latency bound; DRAM bandwidth does not bind (register, spill and stack costs are first-order and counted separately; Phase 6 correction, 2026-11-14) | Probe bandwidth 2.739 GB/s vs about 106 MB/s of digest stores; spill and stack accounts in EXP-005, EXP-006, EXP-011 |
 
 ### Hypothetical (registered, mechanism stated, untested)
 
