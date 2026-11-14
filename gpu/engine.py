@@ -14,6 +14,50 @@ is returned. A CUDA failure at any point falls back to CPU and the
 reason is recorded on the engine (fallback_reason). Nothing about the
 GPU is ever claimed from compilation alone: backend selection is a
 runtime measurement.
+
+Mining accounting definitions (Task 003.9; these definitions govern
+every stats dict produced by this module):
+
+- requested_hashes: hash computations the caller asked for (the
+  nonce-range size of the request). A request is not work.
+- unique_coverage: distinct nonce values actually covered. For a
+  completed full-range enumeration it equals requested_hashes. For
+  an early-exit search it is the number of distinct nonces the
+  backend actually examined before stopping, which is usually far
+  below the request; when that number cannot be measured exactly
+  the field is None and a note says why.
+- backend_hashes: actual hash computations performed by the
+  selected mining backend itself (the CUDA device, the native C
+  library, or the Python hashlib enumeration, whichever executed
+  the search). Verification and rescan work is NEVER included.
+- device_hashes: actual hash computations performed by a CUDA
+  device. This is a CUDA-only metric: it is exactly 0 whenever no
+  CUDA device executed work, and CPU or C work is never reported
+  under it. On a CUDA path, backend_hashes == device_hashes.
+- researched_hashes: additional backend computations caused by
+  repeating already-covered work, currently the repeats driven by
+  CUDA candidate-buffer overflow recovery. Always a subset of
+  backend_hashes (on the CUDA path, of device_hashes), never an
+  addition to unique coverage.
+- overflow_splits: subdivisions of a nonce range caused by
+  candidate-buffer overflow during recovery.
+- verification_hashes: actual hash computations performed by the
+  independent verification and recovery layer: one per candidate
+  presented for CPU verification, plus every digest computed by a
+  trusted rescan (its enumeration pass and its re-verification of
+  each candidate it finds). Never included in backend_hashes or
+  device_hashes, so no computation is counted in two categories.
+- candidate_count: candidates the backend presented for
+  independent verification in this operation.
+
+The identity device_hashes == unique_coverage + researched_hashes
+is a property of the CUDA candidate-recovery driver
+(collect_candidates_complete and the CudaContext paths built on
+it) ONLY, where the wrapped backend is the CUDA device and the
+driver accounts every device computation. It does not apply to
+CPU or C execution: there device_hashes is 0, and the corresponding
+identity is backend_hashes + verification_hashes == total actual
+computations, reported per path in the stats.
 """
 
 import ctypes
@@ -232,16 +276,33 @@ def collect_candidates_complete(search_once, target, start, count,
     no candidate is silently discarded, and the returned list is
     deduplicated by nonce and sorted.
 
-    Accounting (Task 003.8): the stats distinguish
-    unique_coverage (distinct nonces covered by completing leaf
-    sub-batches; equals count on success), device_hashes (total
-    hashes the backend actually computed, including repeats),
-    researched_hashes (the repeated part caused by overflow
-    recovery), overflow_splits (overflow-driven subdivisions;
-    overflow_events is kept as the same count for older callers),
-    and candidate_count (candidates returned for verification).
-    For every completed call the invariant
-    device_hashes == unique_coverage + researched_hashes holds.
+    Accounting (Task 003.8, scoped by Task 003.9): the stats
+    distinguish unique_coverage (distinct nonces covered by
+    completing leaf sub-batches; equals count on success),
+    device_hashes (total hashes the wrapped search actually
+    computed, including repeats), backend_hashes (the same total
+    under the backend-neutral name; identical here because this
+    driver wraps exactly one backend), researched_hashes (the
+    repeated part caused by overflow recovery), overflow_splits
+    (overflow-driven subdivisions; overflow_events is kept as
+    the same count for older callers), candidate_count
+    (candidates returned for verification) and requested_hashes
+    (the caller's count).
+
+    SCOPE OF THE INVARIANT (Task 003.9): this driver is the CUDA
+    candidate-recovery driver; in production search_once is the
+    CUDA device search (CudaContext.search), so the wrapped
+    computations ARE device computations and the identity
+    device_hashes == unique_coverage + researched_hashes holds
+    for every completed call. The identity is CUDA-scoped: it
+    is a property of this driver accounting, NOT a general law
+    of mining statistics. It must never be applied to CPU or C
+    backend statistics, where device_hashes is 0 by definition
+    and work is reported as backend_hashes plus
+    verification_hashes. A caller that ever wraps this driver
+    around a non-CUDA backend must remap the totals (report
+    them as backend_hashes and set device_hashes to 0); the
+    production code never does this.
     Splits are depth-capped at MAX_OVERFLOW_SPLIT_DEPTH (32,
     enough to halve any 32-bit range down to single nonces); a
     backend that still overflows at the cap, or at a single
@@ -270,7 +331,8 @@ def collect_candidates_complete(search_once, target, start, count,
     stats = {"sub_batches": 0, "overflow_events": 0,
              "overflow_splits": 0,
              "researched_hashes": 0, "unique_coverage": 0,
-             "device_hashes": 0, "candidate_count": 0,
+             "device_hashes": 0, "backend_hashes": 0,
+             "candidate_count": 0, "requested_hashes": count,
              "initial_search_seconds": 0.0,
              "recovery_search_seconds": 0.0,
              "search_seconds": 0.0, "kernel_ms_total": 0.0}
@@ -287,6 +349,7 @@ def collect_candidates_complete(search_once, target, start, count,
     while stack:
         s, n, depth = stack.pop()
         stats["device_hashes"] += n
+        stats["backend_hashes"] += n
         t0 = time.perf_counter()
         try:
             cands, info = search_once(s, n)
@@ -527,8 +590,11 @@ class CudaContext:
         return cands, {"kernel_ms": kernel_ms.value,
                        "candidates_found": out_count.value,
                        "candidate_count": out_count.value,
+                       "requested_hashes": count,
                        "unique_coverage": count,
                        "device_hashes": count,
+                       "backend_hashes": count,
+                       "verification_hashes": 0,
                        "researched_hashes": 0,
                        "overflow_splits": 0}
 
@@ -737,7 +803,25 @@ class ComputeEngine:
         backend, thread count and requested range, so callers can
         account and report honestly. The fallback batch path scans
         the full range by construction, so its attempted count is
-        exactly the range size."""
+        exactly the range size.
+
+        Task 003.9: last_search_stats also carries the standard
+        accounting fields (definitions in the module docstring):
+        requested_hashes, backend_hashes (native backend
+        computations only), device_hashes (0 here unless the
+        batch path executed on CUDA; CPU and C work is never
+        device work), verification_hashes (the candidate
+        verification computation, plus trusted-rescan
+        computations when a bad candidate forced one),
+        unique_coverage (distinct nonces the backend actually
+        examined before stopping; None with a
+        unique_coverage_note when the exact union of examined
+        nonces cannot be measured, for example after a rescan or
+        on the legacy uncounted library), candidate_count,
+        researched_hashes and overflow_splits. The returned
+        "attempted" keeps its Task 001 meaning (total actual
+        attempts including any verification rescan) for existing
+        callers; backend_hashes is the backend-only part of it."""
         if len(header) != 80 or not (1 <= target < (1 << 256)):
             raise ValueError("bad header or target")
         if not (0 <= start and 0 < count and start + count <= NONCE_SPACE):
@@ -748,6 +832,12 @@ class ComputeEngine:
         backend_used = self.backend
         rescanned = False
         rescan_attempted = 0
+        # Task 003.9 accounting trackers for the final stats dict.
+        acct = {"backend_hashes": None, "device_hashes": 0,
+                "verification_hashes": 0, "unique_coverage": None,
+                "unique_coverage_note": None,
+                "candidate_count": 0, "researched_hashes": 0,
+                "overflow_splits": 0}
         if self.backend == "c" and hasattr(self._c_lib, "bal_c_search2"):
             out_nonce = ctypes.c_uint32(0)
             out_attempted = ctypes.c_uint64(0)
@@ -758,9 +848,13 @@ class ComputeEngine:
                 ctypes.byref(out_nonce), out_digest,
                 ctypes.byref(out_attempted))
             attempted = out_attempted.value
+            acct["backend_hashes"] = attempted
+            acct["unique_coverage"] = attempted
             if rc == 1:
                 nonce = out_nonce.value
                 digest = out_digest.raw
+                acct["candidate_count"] = 1
+                acct["verification_hashes"] += 1
                 if verify_candidate(header, target, nonce, digest):
                     hit = (nonce, digest)
                 else:
@@ -772,6 +866,19 @@ class ComputeEngine:
                     rescan_attempted = attempted - native_att
                     rescanned = True
                     backend_used = "cpu-rescan"
+                    # The rescan's computations are verification
+                    # work; the exact union of backend-examined
+                    # and rescan-examined nonces is not measurable
+                    # (the backend's set is scattered across its
+                    # thread partitions), so coverage is reported
+                    # as unavailable rather than invented.
+                    acct["verification_hashes"] += rescan_attempted
+                    acct["unique_coverage"] = None
+                    acct["unique_coverage_note"] = (
+                        "backend examined "
+                        f"{native_att} distinct nonces and the "
+                        "verification rescan re-examined a prefix; "
+                        "their exact union is not measurable")
             elif rc == 0:
                 hit = None
             else:
@@ -787,9 +894,13 @@ class ComputeEngine:
                                           C_THREADS, target_le,
                                           ctypes.byref(out_nonce),
                                           out_digest)
+            legacy_verification = 0
+            legacy_presented = 0
             if rc == 1:
                 nonce = out_nonce.value
                 digest = out_digest.raw
+                legacy_presented = 1
+                legacy_verification += 1
                 if verify_candidate(header, target, nonce, digest):
                     hit = (nonce, digest)
                 else:
@@ -801,27 +912,64 @@ class ComputeEngine:
                     rescan_attempted = attempted - native_att
                     rescanned = True
                     backend_used = "cpu-rescan"
+                    legacy_verification += rescan_attempted
+            legacy_seconds = time.perf_counter() - t0
             self.last_search_stats = {
                 "backend": backend_used, "threads": C_THREADS,
                 "start": start, "requested": count,
+                "requested_hashes": count,
                 "attempted": attempted, "counted": False,
+                "backend_hashes": count,
+                "device_hashes": 0,
+                "verification_hashes": legacy_verification,
+                "unique_coverage": None,
+                "unique_coverage_note": (
+                    "legacy bal_c_search does not report attempts; "
+                    "backend_hashes is the range size as an upper "
+                    "bound (see counted=False) and exact unique "
+                    "coverage is unavailable"),
+                "candidate_count": legacy_presented,
+                "researched_hashes": 0, "overflow_splits": 0,
                 "rescanned": rescanned, "rescan_attempted": rescan_attempted,
-                "seconds": time.perf_counter() - t0, "hit": bool(hit)}
+                "seconds": legacy_seconds, "hit": bool(hit),
+                "hashrate": count / legacy_seconds
+                if legacy_seconds > 0 else 0.0}
             return hit, attempted, self.last_search_stats["seconds"]
         else:
             cands, _stats = self.batch_search(header, target, start, count)
             backend_used = _stats["backend"]
+            acct["backend_hashes"] = _stats["backend_hashes"]
+            acct["device_hashes"] = _stats["device_hashes"]
+            acct["verification_hashes"] = _stats["verification_hashes"]
+            acct["unique_coverage"] = _stats["unique_coverage"]
+            acct["candidate_count"] = _stats["candidate_count"]
+            acct["researched_hashes"] = _stats["researched_hashes"]
+            acct["overflow_splits"] = _stats["overflow_splits"]
             if cands:
                 hit = (cands[0]["nonce"],
                        bytes.fromhex(cands[0]["hash"])[::-1])
         seconds = time.perf_counter() - t0
+        backend_hashes = acct["backend_hashes"]
         self.last_search_stats = {
             "backend": backend_used,
             "threads": C_THREADS if backend_used == "c" else 1,
-            "start": start, "requested": count, "attempted": attempted,
+            "start": start, "requested": count,
+            "requested_hashes": count,
+            "attempted": attempted,
             "counted": True, "seconds": seconds, "hit": bool(hit),
+            "backend_hashes": backend_hashes,
+            "device_hashes": acct["device_hashes"],
+            "verification_hashes": acct["verification_hashes"],
+            "unique_coverage": acct["unique_coverage"],
+            "unique_coverage_note": acct["unique_coverage_note"],
+            "candidate_count": acct["candidate_count"],
+            "researched_hashes": acct["researched_hashes"],
+            "overflow_splits": acct["overflow_splits"],
             "rescanned": rescanned, "rescan_attempted": rescan_attempted,
-            "hashrate": attempted / seconds if seconds > 0 else 0.0}
+            "hashrate": (backend_hashes / seconds
+                         if backend_hashes is not None and seconds > 0
+                         else attempted / seconds if seconds > 0
+                         else 0.0)}
         return hit, attempted, seconds
 
     def _try_cuda(self, lib_path):
@@ -913,24 +1061,32 @@ class ComputeEngine:
         """Validate a backend's candidate pairs for batch_search:
         every pair must be inside the searched range, unique, and
         pass independent CPU verification. Returns
-        (clean_pairs, bad_count). Any failure poisons the whole
-        enumeration: a backend that lies about one candidate may
-        also have mis-flagged others, so callers recover the full
-        range with the trusted rescan instead of trusting the
+        (clean_pairs, bad_count, verify_count), where verify_count
+        is the number of independent verification hash computations
+        actually performed (Task 003.9: one per pair that reached
+        verify_candidate; pairs rejected by the cheap range or
+        duplicate checks cost no hash). Any failure poisons the
+        whole enumeration: a backend that lies about one candidate
+        may also have mis-flagged others, so callers recover the
+        full range with the trusted rescan instead of trusting the
         remaining pairs."""
         clean = []
         seen = set()
         bad = 0
+        verify_count = 0
         for nonce, d in pairs:
             if (not _is_plain_int(nonce)
                     or not (start <= nonce < start + count)
-                    or nonce in seen
-                    or not verify_candidate(header, target, nonce, d)):
+                    or nonce in seen):
+                bad += 1
+                continue
+            verify_count += 1
+            if not verify_candidate(header, target, nonce, d):
                 bad += 1
                 continue
             seen.add(nonce)
             clean.append((nonce, d))
-        return clean, bad
+        return clean, bad, verify_count
 
     def _rescan_all_candidates(self, header, target, start, count,
                                source, bad):
@@ -940,14 +1096,24 @@ class ComputeEngine:
         candidate in it, so after a backend verification failure
         the range is independently covered in full. Records a
         fallback event with the failure count and the rescan
-        attempt count. Returns (candidates, rescan_attempted)."""
+        attempt count. Returns (candidates, rescan_attempted,
+        verification_hashes). rescan_attempted counts only the
+        enumeration pass (one digest per nonce);
+        verification_hashes (Task 003.9) counts every hash
+        computation this recovery performed: the enumeration
+        digests plus one re-verification computation per
+        candidate found. All of it is verification-layer work:
+        callers report it under verification_hashes, never under
+        backend_hashes or device_hashes."""
         candidates = []
         attempted = 0
+        verify_count = 0
         for i in range(count):
             nonce = start + i
             d = cpu_digest(header, nonce)
             attempted += 1
             if int.from_bytes(d, "little") <= target:
+                verify_count += 1
                 if not verify_candidate(header, target, nonce, d):
                     raise RuntimeError(
                         "trusted CPU rescan produced an invalid "
@@ -962,24 +1128,38 @@ class ComputeEngine:
             "retried_on": "cpu-hashlib-rescan",
             "verification_failures": bad,
             "rescan_attempted": attempted})
-        return candidates, attempted
+        return candidates, attempted, attempted + verify_count
 
     def batch_search(self, header, target, start, count):
         """Return (candidates, stats). Candidates are CPU verified.
 
-        Accounting (Task 003.8): stats carry unique_coverage
-        (distinct nonces covered), backend_hashes (actual hash
-        computations across the backend and any recovery),
-        device_hashes (GPU computations only; 0 on non-CUDA
-        paths), researched_hashes (repeats caused by CUDA
-        overflow recovery), verification_rescan_hashes (repeats
-        caused by verification-failure recovery), overflow_splits,
-        candidate_count (candidates the backend presented for
-        verification), hashrate (actual backend computations per
-        second; on the CUDA path, device_hashes per second) and
-        coverage_per_second (unique coverage per second), plus a
-        coverage_status stating whether the range ended fully
-        covered and by whom."""
+        Accounting (Task 003.8, corrected by Task 003.9; full
+        definitions in the module docstring): stats carry
+        requested_hashes (the caller's count), unique_coverage
+        (distinct nonces covered; equals the count on every
+        completed call here, because batch enumeration always
+        covers the full range), backend_hashes (actual hash
+        computations performed by the selected mining backend
+        itself; verification and rescan work is NEVER included),
+        device_hashes (CUDA device computations only; exactly 0
+        on CPU and C paths, where no device work exists),
+        researched_hashes (repeats caused by CUDA overflow
+        recovery; a subset of device_hashes on the CUDA path),
+        verification_hashes (every hash computation performed by
+        the independent verification and recovery layer: one per
+        candidate presented for verification, plus all trusted
+        rescan computations), verification_rescan_hashes (the
+        rescan enumeration attempts alone, kept for older
+        callers), overflow_splits, candidate_count (candidates
+        the backend presented for verification), hashrate
+        (backend_hashes per second; on the CUDA path that is
+        device_hashes per second, since the device is the
+        backend) and coverage_per_second (unique coverage per
+        second), plus a coverage_status stating whether the
+        range ended fully covered and by whom. The legacy
+        "hashes" key is the total of backend_hashes plus
+        verification_hashes: every actual computation, each
+        counted in exactly one category."""
         if len(header) != 80:
             raise ValueError("header must be exactly 80 bytes")
         if not (0 <= start and 0 < count <= MAX_BATCH
@@ -996,15 +1176,17 @@ class ComputeEngine:
             if pairs is None:
                 used = "cpu"
             else:
-                clean, bad = self._check_pairs(
+                clean, bad, verify_count = self._check_pairs(
                     header, target, start, count, pairs)
                 rescan_attempted = 0
+                rescan_verification = 0
                 if bad:
                     # Task 003.8: fail closed. The enumeration is
                     # poisoned, so the whole range is independently
                     # re-covered by the trusted CPU rescan; the
                     # backend's pairs are not trusted at all.
-                    candidates, rescan_attempted = \
+                    candidates, rescan_attempted, \
+                        rescan_verification = \
                         self._rescan_all_candidates(
                             header, target, start, count,
                             "native C batch", bad)
@@ -1014,15 +1196,24 @@ class ComputeEngine:
                         {"nonce": nonce, "hash": d[::-1].hex(),
                          "backend": "c"} for nonce, d in clean]
                 seconds = max(time.perf_counter() - t0, 1e-9)
-                actual = count + rescan_attempted
+                # Task 003.9: the C batch computed exactly count
+                # digests (full-range enumeration by construction).
+                # Verification computations and any rescan work
+                # are verification-layer work, reported only under
+                # verification_hashes, never inside backend_hashes.
+                backend_hashes = count
+                verification_hashes = verify_count + rescan_verification
                 return candidates, {
                     "backend": used, "original_backend": "c",
-                    "hashes": actual, "backend_hashes": actual,
+                    "hashes": backend_hashes + verification_hashes,
+                    "backend_hashes": backend_hashes,
+                    "verification_hashes": verification_hashes,
                     "device_hashes": 0,
                     "seconds": seconds,
-                    "hashrate": actual / seconds,
+                    "hashrate": backend_hashes / seconds,
                     "coverage_per_second": count / seconds,
                     "start": start,
+                    "requested_hashes": count,
                     "unique_coverage": count,
                     "researched_hashes": 0,
                     "verification_rescan_hashes": rescan_attempted,
@@ -1047,14 +1238,16 @@ class ComputeEngine:
             try:
                 pairs, cstats = self._cuda_ctx.search_complete(
                     header, target, start, count)
-                clean, bad = self._check_pairs(
+                clean, bad, verify_count = self._check_pairs(
                     header, target, start, count, pairs)
                 rescan_attempted = 0
+                rescan_verification = 0
                 if bad:
                     # Task 003.8: fail closed, exactly as the CPU
                     # batch path: discard the poisoned enumeration
                     # and independently re-cover the whole range.
-                    candidates, rescan_attempted = \
+                    candidates, rescan_attempted, \
+                        rescan_verification = \
                         self._rescan_all_candidates(
                             header, target, start, count,
                             "CUDA", bad)
@@ -1066,15 +1259,23 @@ class ComputeEngine:
                     used = "cuda"
                 seconds = max(time.perf_counter() - t0, 1e-9)
                 device_hashes = cstats["device_hashes"]
+                # Task 003.9: on the CUDA path the device IS the
+                # backend, so backend_hashes == device_hashes.
+                # CPU verification and rescan computations are
+                # verification-layer work and are never added to
+                # either device or backend totals.
+                verification_hashes = verify_count + rescan_verification
                 return candidates, {
                     "backend": used, "original_backend": "cuda",
-                    "hashes": device_hashes,
-                    "backend_hashes": device_hashes + rescan_attempted,
+                    "hashes": device_hashes + verification_hashes,
+                    "backend_hashes": device_hashes,
+                    "verification_hashes": verification_hashes,
                     "device_hashes": device_hashes,
                     "seconds": seconds,
                     "hashrate": device_hashes / seconds,
                     "coverage_per_second": count / seconds,
                     "start": start, "mode": "candidates_only",
+                    "requested_hashes": count,
                     "candidates_found": len(pairs),
                     "candidate_count": cstats["candidate_count"],
                     "verification_failures": bad,
@@ -1130,6 +1331,7 @@ class ComputeEngine:
                 else:
                     bad += 1
         rescan_attempted = 0
+        rescan_verification = 0
         if bad:
             # Task 003.8: a digest that meets the target but fails
             # verification is never silently dropped. Legacy CUDA
@@ -1139,7 +1341,7 @@ class ComputeEngine:
             # implementation left to rescan with, so it is an
             # explicit error, never a false no-hit.
             if digest_source == "cuda":
-                candidates, rescan_attempted = \
+                candidates, rescan_attempted, rescan_verification = \
                     self._rescan_all_candidates(
                         header, target, start, count,
                         "legacy CUDA batch", bad)
@@ -1156,16 +1358,27 @@ class ComputeEngine:
                     f"verification in batch enumeration; refusing "
                     f"to report an incomplete result")
         seconds = max(time.perf_counter() - t0, 1e-9)
-        actual = count + rescan_attempted
+        # Task 003.9: the enumeration itself (Python hashlib or
+        # the legacy CUDA batch) computed exactly count digests:
+        # that is the backend work, and on the legacy CUDA source
+        # it is also the device work. Every target-meeting digest
+        # cost exactly one verification computation
+        # (raw_candidates of them); those and any rescan work are
+        # verification-layer computations only.
+        backend_hashes = count
+        device_hashes = count if digest_source == "cuda" else 0
+        verification_hashes = raw_candidates + rescan_verification
         return candidates, {
             "backend": used, "original_backend": digest_source,
-            "hashes": actual, "backend_hashes": actual,
-            "device_hashes": count if digest_source == "cuda" else 0,
+            "hashes": backend_hashes + verification_hashes,
+            "backend_hashes": backend_hashes,
+            "verification_hashes": verification_hashes,
+            "device_hashes": device_hashes,
             "seconds": seconds,
-            "hashrate": (count if digest_source == "cuda" else actual)
-                         / seconds,
+            "hashrate": backend_hashes / seconds,
             "coverage_per_second": count / seconds,
             "start": start,
+            "requested_hashes": count,
             "unique_coverage": count,
             "researched_hashes": 0,
             "verification_rescan_hashes": rescan_attempted,
@@ -1182,19 +1395,125 @@ class ComputeEngine:
             "fallback_events": len(self.fallback_events),
         }
 
-    def benchmark(self, seconds_hint_batches=3, batch=65536):
-        # A hard target (hit rate about 1 in 65536) keeps candidate
-        # verification from dominating the measurement; this measures
-        # raw batch hashing throughput of the selected backend.
+    def benchmark_report(self, seconds_hint_batches=3, batch=65536):
+        """Benchmark the selected backend on batch_search and
+        report ACTUAL work, never requested work (Task 003.9).
+
+        The pre-003.9 benchmark accumulated `hashes += batch`:
+        the REQUESTED batch size. That undercounts actual
+        computations whenever a backend does more work than
+        requested (CUDA overflow recovery recomputes nonces, so
+        device_hashes exceeds the request) and it silently folded
+        verification work into a single rate. This report instead
+        accumulates the per-batch statistics returned by
+        batch_search and keeps every category separate
+        (definitions in the module docstring):
+
+        - elapsed_seconds: sum of the per-batch monotonic
+          elapsed seconds reported by batch_search.
+        - requested_hashes: what the caller asked for.
+        - unique_coverage and coverage_per_second: distinct
+          nonces covered, and that coverage per second.
+        - backend_hashes and hashrate: actual computations by
+          the selected backend, and that rate. This is the rate
+          benchmark() returns.
+        - device_hashes and device_hashes_per_second: CUDA
+          device computations only; exactly 0 (with a note) when
+          no CUDA device executed work. CPU verification work is
+          never mixed into the device rate.
+        - verification_hashes: independent verification and
+          rescan computations, reported as overhead.
+        - researched_hashes and researched_share: overflow
+          recovery repeats, and their share of backend work, so
+          recovery can never silently distort the rates.
+        - overflow_splits and candidate_count totals.
+
+        A batch that raises stops the run: the report is marked
+        failed with the error and the partial totals of the
+        completed batches only, and benchmark() raises instead
+        of returning a clean-looking rate. Zero requested
+        batches yields an all-zero report, not phantom hashes."""
+        # A hard target (hit rate about 1 in 65536) keeps
+        # candidate verification from dominating the measurement.
         header = bytes(80)
         target = (1 << 240)
-        total = 0.0
-        hashes = 0
+        totals = {"requested_hashes": 0, "unique_coverage": 0,
+                  "backend_hashes": 0, "device_hashes": 0,
+                  "verification_hashes": 0, "researched_hashes": 0,
+                  "overflow_splits": 0, "candidate_count": 0}
+        elapsed = 0.0
+        runs = []
+        failed = False
+        error = None
         for _ in range(seconds_hint_batches):
-            _, stats = self.batch_search(header, target, 0, batch)
-            total += stats["seconds"]
-            hashes += batch
-        return hashes / max(total, 1e-9)
+            try:
+                _cands, stats = self.batch_search(
+                    header, target, 0, batch)
+            except Exception as exc:
+                failed = True
+                error = f"{type(exc).__name__}: {exc}"
+                break
+            elapsed += stats["seconds"]
+            for key in totals:
+                totals[key] += stats.get(key, 0) or 0
+            runs.append({
+                "backend": stats["backend"],
+                "seconds": stats["seconds"],
+                **{key: stats.get(key, 0) for key in totals}})
+        backend_hashes = totals["backend_hashes"]
+        device_hashes = totals["device_hashes"]
+        report = {
+            "backend": self.backend,
+            "batches_requested": seconds_hint_batches,
+            "batches_completed": len(runs),
+            "batch": batch,
+            "failed": failed,
+            "error": error,
+            "elapsed_seconds": elapsed,
+            "hashrate": backend_hashes / elapsed if elapsed > 0
+            else 0.0,
+            "backend_hashes_per_second": backend_hashes / elapsed
+            if elapsed > 0 else 0.0,
+            "coverage_per_second": totals["unique_coverage"]
+            / elapsed if elapsed > 0 else 0.0,
+            "device_hashes_per_second": device_hashes / elapsed
+            if elapsed > 0 else 0.0,
+            "device_hashes_note": (
+                None if device_hashes else
+                "no CUDA device executed work in this benchmark; "
+                "device rate is 0 by definition, not a GPU "
+                "measurement"),
+            "verification_share": (
+                totals["verification_hashes"]
+                / (backend_hashes + totals["verification_hashes"])
+                if (backend_hashes
+                    + totals["verification_hashes"]) > 0 else 0.0),
+            "researched_share": (
+                totals["researched_hashes"] / backend_hashes
+                if backend_hashes > 0 else 0.0),
+            "runs": runs,
+        }
+        report.update(totals)
+        return report
+
+    def benchmark(self, seconds_hint_batches=3, batch=65536):
+        """Actual backend computations per second, measured over
+        batch_search (Task 003.9). This keeps the historical
+        float return contract used by the dashboard, the
+        autonomous agent and mining/cpu/miner.py, but the number
+        is now accumulated from the actual per-batch statistics
+        (see benchmark_report), NOT from the requested batch
+        size: the old implementation did `hashes += batch`,
+        which undercounts whenever overflow recovery or any
+        other backend behavior makes actual computations differ
+        from the request. Raises RuntimeError when a batch
+        fails, instead of returning a clean-looking rate over
+        partial work."""
+        report = self.benchmark_report(seconds_hint_batches, batch)
+        if report["failed"]:
+            raise RuntimeError(
+                f"benchmark batch failed: {report['error']}")
+        return report["hashrate"]
 
     def describe(self):
         return {
