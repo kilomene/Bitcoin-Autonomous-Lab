@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from gpu.benchmark import run_benchmark
 from gpu.cuda.build import build
-from gpu.engine import ComputeEngine, cpu_digest
+from gpu.engine import ComputeEngine, cpu_digest, verify_candidate
 
 GENESIS_HASH = ("000000000019d6689c085ae165831e934ff763ae46a"
                 "2a6c172b3f1b60a8ce26f")
@@ -148,7 +148,16 @@ def main():
     assert attempted == 1
     hit, attempted, _ = eng.search_first_counted(
         header, REGTEST_TARGET, 0xFFFFFFFE, 2)
-    assert attempted == 2
+    # Both boundary nonces meet this easy target, so either
+    # may be the published winner, and an early-exit backend
+    # may legitimately never examine the other: attempted
+    # counts examined nonces only (1 or 2). The boundary
+    # invariant is that the range is accepted, the hit is one
+    # of the two boundary nonces, verifies, and nothing wraps.
+    assert hit and hit[0] in (0xFFFFFFFE, 0xFFFFFFFF), hit
+    assert verify_candidate(header, REGTEST_TARGET, hit[0],
+                            hit[1])
+    assert 1 <= attempted <= 2, attempted
     for bad_start, bad_count in ((0xFFFFFFFF, 2), (0, 0),
                                  (1 << 32, 1)):
         try:
@@ -162,7 +171,7 @@ def main():
 
     # --- Honest fallback and CUDA-only failure (Phases 7, 8) ---
     if not have_device:
-        assert eng.backend in ("c", "cpu"), eng.describe()
+        assert eng.backend in ("c", "cpu", "v512"), eng.describe()
         assert eng.describe()["cuda_context"] is False
         _, stats = eng.batch_search(header, REGTEST_TARGET, 0, 1024)
         assert stats["backend"] == eng.backend != "cuda", stats
