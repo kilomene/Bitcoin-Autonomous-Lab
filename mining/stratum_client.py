@@ -46,6 +46,67 @@ def target_for_difficulty(diff: float) -> int:
     return int(DIFF1_TARGET / diff)
 
 
+def target_from_nbits(nbits_hex: str) -> int:
+    """Decode the compact nbits form into the network target."""
+    n = int(nbits_hex, 16)
+    if n & 0x00800000:
+        raise ValueError("negative nbits mantissa")
+    exponent = n >> 24
+    mantissa = n & 0x007FFFFF
+    if exponent <= 3:
+        return mantissa >> (8 * (3 - exponent))
+    return mantissa << (8 * (exponent - 3))
+
+
+def validate_job(job, now=None):
+    """Judge a Stratum job before any work is spent on it.
+
+    Returns a list of problems; an empty list means the block
+    template is structurally sound and fresh enough to mine.
+    The lab's rule: the miner never spends its workforce on a
+    template it has not first confirmed is well formed, and it
+    only ever works on the freshest template offered.
+    """
+    problems = []
+
+    def is_hex(s, nbytes=None):
+        if not isinstance(s, str):
+            return False
+        try:
+            b = bytes.fromhex(s)
+        except ValueError:
+            return False
+        return nbytes is None or len(b) == nbytes
+
+    if not job.get("job_id"):
+        problems.append("missing job_id")
+    if not is_hex(job.get("prevhash"), 32):
+        problems.append("prevhash is not 32 bytes of hex")
+    if not is_hex(job.get("coinb1")) or not is_hex(job.get("coinb2")):
+        problems.append("coinbase parts are not hex")
+    branches = job.get("merkle_branch")
+    if not isinstance(branches, list) or any(
+            not is_hex(b, 32) for b in branches):
+        problems.append("merkle branch entries are not 32-byte hashes")
+    for f in ("version", "nbits", "ntime"):
+        if not is_hex(job.get(f), 4):
+            problems.append(f"{f} is not a 4-byte hex field")
+    if not problems:
+        try:
+            t = target_from_nbits(job["nbits"])
+            if not (0 < t < (1 << 256)):
+                problems.append("nbits decodes outside the target range")
+        except ValueError:
+            problems.append("nbits does not decode")
+        now = int(time.time()) if now is None else now
+        ntime = int(job["ntime"], 16)
+        if ntime > now + 7200:
+            problems.append("ntime is more than 2 hours in the future")
+        if ntime < now - 7200:
+            problems.append("ntime is more than 2 hours stale")
+    return problems
+
+
 def swap_words(data: bytes) -> bytes:
     """Reverse bytes inside each 4-byte word (Stratum prevhash encoding)."""
     out = bytearray()
@@ -190,9 +251,17 @@ class StratumClient:
                 "ntime": p[7],
                 "clean_jobs": p[8] if len(p) > 8 else False,
             }
+            problems = validate_job(job)
+            if problems:
+                self.ev.log("template_rejected",
+                            job_id=job.get("job_id"),
+                            problems=problems)
+                return
             with self.lock:
-                if job["clean_jobs"] or self.current_job is None:
-                    self.job_generation += 1
+                # Any accepted template supersedes the work in
+                # progress: the miner only ever works on the
+                # freshest block the pool offers.
+                self.job_generation += 1
                 self.current_job = job
                 gen = self.job_generation
             self.ev.log(
@@ -200,6 +269,12 @@ class StratumClient:
                 prevhash=job["prevhash"], nbits=job["nbits"],
                 ntime=job["ntime"], clean_jobs=job["clean_jobs"],
                 branches=len(job["merkle_branch"]),
+            )
+            self.ev.log(
+                "template_validated", job_id=job["job_id"],
+                generation=gen,
+                network_difficulty=DIFF1_TARGET
+                / target_from_nbits(job["nbits"]),
             )
         elif method == "mining.set_difficulty":
             self.difficulty = msg["params"][0]
