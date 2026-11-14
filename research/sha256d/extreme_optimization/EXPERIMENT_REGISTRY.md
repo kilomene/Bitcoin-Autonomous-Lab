@@ -791,10 +791,82 @@ by reference, without altering the originals.
   rewriting), which EXP-016 does not address;
   Y-066 and Y-090 lose their premise.
 
+### EXP-017: The measurement stack (Phase 6, Y-101, Y-102, Y-103)
+
+- Hypothesis: a fine-grained paired design with
+  a predeclared covariate-adjusted statistic
+  returns stable verdicts on this VM where three
+  whole-round min/max decisions (EXP-003
+  decision, EXP-004, EXP-010) failed on
+  variance.
+- Mathematical basis: paired log-ratios of
+  equal-size counted batches cancel drift slower
+  than a block pair; OLS adjustment on the
+  per-arm steal and runnable-load differences;
+  pairs bootstrap intervals. Statistic and
+  decision rule were written into the Phase 6
+  record before the validation runs.
+- Implementation: ../phase6/benchmarks/
+  exp017_paired_bench.py and exp017_analyze.py.
+  No kernel and no production code changed.
+- Correctness evidence: geo s=4 strided and
+  AVX-512 MB rebuilt from unchanged sources
+  (hashes in every session manifest) and passed
+  the full gate set (108,000 differentials
+  each); production verified on 100,000 digests
+  vs hashlib; the driver asserts attempted and
+  backend equal the 65,536 block size on every
+  call, and every session's coverage assertion
+  holds exactly.
+- Benchmark evidence: 12 append-only sessions
+  in ../phase6/benchmarks/exp017/ (four
+  comparisons, three sessions each, 160 pairs
+  of 65,536-hash blocks at 2 threads, node in
+  IBD throughout, heights 410,864 to 410,947;
+  analysis_20261114T145128Z.json). Controls,
+  adjusted pooled log-ratio: production vs
+  itself +0.0137 (CI -0.0786 to +0.1081); MB vs
+  itself +0.0077 (CI -0.1047 to +0.1167); all
+  six control sessions contain 0; the old
+  min/max rule passed a phantom difference in
+  0 of 6 control sessions. Real comparisons,
+  adjusted pooled: MB vs production +1.2652
+  (CI 1.1546 to 1.3767, 3.55x), significant in
+  every session; geo s4 strided vs production
+  +1.0298 (CI 0.9265 to 1.1283, 2.80x),
+  significant in every session.
+- Statistical analysis: within-session variance
+  of the paired log-ratio 1.12 to 1.61;
+  between-session component 0.000 for three
+  comparisons and 0.0434 for geo (its session
+  means genuinely move). Covariate adjustment
+  priced: pooled CI width ratios 0.970 to
+  0.999 versus unadjusted, point shifts at most
+  0.0004; the pairing carries the value, the
+  covariates are near-neutral on this data.
+  Injected-effect recovery: known +0.20
+  recovered with bias at most 0.0006 over 1,000
+  residual-resampled simulations per control
+  design.
+- Result: Y-103 PASS, Y-102 PASS at 65,536
+  hashes, Y-101 PARTIAL (statistic valid,
+  adjustment near-neutral). Both candidates
+  are significantly faster than production
+  under the EXP-017 measurement rule. That is
+  a measurement result, not an integration.
+- Decision: measurement stack adopted for
+  Phase 6 records from EXP-018 onward. A
+  proposal to replace the integration decision
+  rule with the EXP-017 rule is recorded in
+  ../phase6/EXPERIMENT_RESULTS.md for the
+  owner; it is not enacted.
+- Follow-up: EXP-018 (Y-023) is decided under
+  this statistic.
+
 ## Registry state
 
-Seventeen experiments recorded (EXP-000 to
-EXP-016), plus Part B (HYPOTHESIS_REGISTRY_Y.md,
+Eighteen experiments recorded (EXP-000 to
+EXP-017), plus Part B (HYPOTHESIS_REGISTRY_Y.md,
 Y-001 to Y-108) and Part C
 (PERFORMANCE_CEILING.md) of the Next Research
 Phase. EXP-011 to EXP-015 ran as one batch on
@@ -819,6 +891,9 @@ and memory conclusions in place, ranked all 108
 Y hypotheses, built the discovery system's first
 component, and executed EXP-016, which refuted
 Y-065 and Y-075 as work reductions with proof
-grade evidence. Phase 6 records live in
+grade evidence. EXP-017 (the measurement stack)
+has since run and is recorded above; Phase 6
+reserves EXP-018 to EXP-020 for its designed
+experiments. Phase 6 records live in
 ../phase6/ (plan, results, final report). Next
-unreserved ID: EXP-017.
+unreserved ID: EXP-021.
