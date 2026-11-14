@@ -265,7 +265,10 @@ def main():
     ap.add_argument("--pool", default="public-pool.io")
     ap.add_argument("--port", type=int, default=21496)
     ap.add_argument("--address", required=True, help="Lab BTC payout address (public only)")
-    ap.add_argument("--worker", default="bal1")
+    ap.add_argument("--worker", default=None,
+                    help="pool worker name; default is this "
+                         "machine's hostname, so every agent "
+                         "mines under its own worker")
     ap.add_argument("--duration", type=int, default=120)
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--miner", default="./bal-miner")
@@ -280,6 +283,9 @@ def main():
                          "without it the pool assigns 100000")
     args = ap.parse_args()
 
+    if not args.worker:
+        from mining.autopilot import default_worker
+        args.worker = default_worker()
     ev = Evidence(args.evidence)
     user = f"{args.address}.{args.worker}"
     ev.log("session_start", user=user, pool=f"{args.pool}:{args.port}",
