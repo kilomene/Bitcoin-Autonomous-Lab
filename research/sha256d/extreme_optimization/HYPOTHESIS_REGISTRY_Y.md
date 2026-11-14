@@ -1873,6 +1873,35 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
   MB realization.
 - Workstream C / Difficulty medium / Confidence
   high / Cost medium.
+- Status (2026-11-14, EXP-022): TESTED,
+  VERIFIED IMPROVEMENT in batch scope. The
+  mask-register realization (bal_v_batchf2 in
+  avx512_mb_flags.c: opmask-carried vector
+  compare in v_meets significance order, one
+  flag bit per hash, extraction only for
+  flagged lanes) passed all gates (154,316
+  density-1 differentials vs hashlib,
+  candidate-set parity at four densities,
+  genesis, target boundaries, accounting
+  parity), then beat production batch under
+  the EXP-017 paired protocol in every
+  session and pooled at all three stated
+  densities: pooled 1.82x at candidate
+  density approx 0 (adjusted +0.5984, CI
+  +0.5042 to +0.6905), 1.59x at 2^-8, 1.33x
+  at density 1; pure-flags form 1.89x at
+  density approx 0. The mechanism is the
+  removed production batch epilogue, roughly
+  half the batch call at sparse densities.
+  Scope stays as written here: batch-shaped
+  consumers only, no search-mode effect (the
+  search path never paid the epilogue, and
+  mid-batch lane retirement is structurally
+  void in the lockstep kernel). Adopting the
+  flags output shape for the engine's batch
+  consumers is an owner interface decision;
+  production byte-identical. Full record:
+  phase6/EXPERIMENT_RESULTS.md, EXP-022.
 
 ### Y-085: Orientation parity carried in the H-01 walker
 - Limitation: H-01 waves repack state orientation
@@ -2118,6 +2147,30 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
   cross-family pair.
 - Workstream G / Difficulty low / Confidence medium /
   Cost low.
+- Status (2026-11-14, EXP-021): TESTED, REJECTED
+  as an improvement on this guest. The pool bench
+  ran wider than the one-session design above (all
+  pairwise comparisons at two and four threads,
+  three sessions each, EXP-017 paired protocol,
+  pool gates in full). Adjusted pooled log-ratios
+  under the predeclared makespan statistic:
+  mixed2 vs mb2 -0.1884 (CI -0.294 to -0.082),
+  mixed2 vs shani2 +0.0125 (null), mb2 vs shani2
+  +0.3100; mixed22 vs mb4 -0.1285, mixed22 vs
+  shani4 +0.1442, mb4 vs shani4 +0.2848. A
+  secondary recomputation under
+  continuous-assignment semantics (sum of the
+  recorded per-worker rates) gives the same
+  ordering, and per-worker medians show no
+  cross-family contention relief (MB worker
+  3.02M beside SHA-NI vs 3.10M beside MB;
+  SHA-NI worker 1.68M beside MB vs 1.76M beside
+  SHA-NI). The success line above (a
+  heterogeneous total above both homogeneous
+  totals, reproduced) is not met; the
+  reproduced total is below the MB pool's.
+  Established negative. Full record:
+  ../phase6/EXPERIMENT_RESULTS.md, EXP-021.
 
 ### Y-098: Prefix sharing inside the dual-batch walker
 - Limitation: Y-093 combines at the kernel level;
