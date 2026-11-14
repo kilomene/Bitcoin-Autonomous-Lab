@@ -35,8 +35,14 @@ W_{t-2}. Two consequences drive the research:
 
 ## Research questions, in registry order
 
-- H-02: build the schedule with MSG1/MSG2 in a direct SHA-NI
-  kernel; measure the gap closure against B2's baseline.
+- H-02: DONE 2026-11-14 (EXP-002). The MSG1/MSG2 schedule
+  (whitepaper GENA/GENB construction, alignr supplying the
+  W[i+9] terms) is built, proven equivalent to the scalar
+  recurrence by a twin build, and worth about 2.6x over the
+  scalar schedule at equal rounds in-session. Zero scalar
+  schedule words remain; the only scalar rounds are the
+  once-per-template round 2 and the mode-2 variant's
+  per-nonce round 3, both state rounds, not schedule.
 - H-07: circular vs full schedule inside that kernel,
   decided by stack frame and benchmark, not preference.
 - H-01: with 2 or 4 interleaved streams, schedules interleave
@@ -52,7 +58,9 @@ W_{t-2}. Two consequences drive the research:
 ## Rejected schedule ideas on record
 
 - Precomputing the whole block-2 schedule per template:
-  impossible, W3 (nonce) feeds the recurrence from W19 on,
-  and rounds consume W3 at round 3 regardless.
+  impossible, W3 (nonce) feeds the expanded recurrence from
+  W18 on (first expanded word depending on W3; corrected
+  from W19, see header_and_midstate_analysis.md), and rounds
+  consume W3 at round 3 regardless.
 - Skipping schedule words for nonces "unlikely" to win:
   changes the function; banned by the programme rules.
