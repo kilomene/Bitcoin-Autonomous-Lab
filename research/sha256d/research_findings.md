@@ -232,3 +232,33 @@ Tier classification: no verified improvement at
 the integration standard; the median superiority
 under stated contention is a verified
 measurement, not an integration.
+
+## Pointer: Phase 6, first assignment (2026-11-14)
+
+Phase 6's first assignment is complete. Headline
+results: EXP-016 derived the nonce dependency of
+block 2 exactly and refuted Y-065 and Y-075 as
+work reductions (z3 proofs plus a numerically
+verified counterexample at schedule word W20;
+state affine in the nonce only after round 3,
+fully nonlinear from the state after round 7 in
+0-based indexing). The audit corrected three
+overbroad conclusions in place: the 125-round
+figure is the conventional evaluation's remaining
+count, not a proven universal lower bound; the
+ceiling models are labelled implementation-model
+estimates with their assumptions collected; and
+the memory conclusion is narrowed to DRAM
+bandwidth, with register, spill and stack costs
+recorded as first-order. All 108 Y hypotheses are
+ranked under a published method
+(phase6/HYPOTHESIS_RANKING.md), the discovery
+system's first component is built and
+seed-validated (phase6/COMPUTATION_GRAPH_RESEARCH
+.md), and the next four experiments are selected
+(EXP-017 measurement stack, EXP-018
+register-resident dual-batch, EXP-019 carry-save
+pricing, EXP-020 full-round rewriting). No
+production change, no verified improvement
+claimed. Full report: phase6/PHASE6_FINAL_REPORT
+.md.
