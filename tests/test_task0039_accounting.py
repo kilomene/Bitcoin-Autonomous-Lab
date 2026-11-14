@@ -244,7 +244,7 @@ def test_native_c_batch_accounting():
     target = 1 << 255
     start, count = 0, 2000
     want = recount(GENESIS, target, start, count)
-    eng = ComputeEngine()
+    eng = ComputeEngine(requested="c")
     assert eng.backend == "c", eng.describe()
     cands, st = eng.batch_search(GENESIS, target, start, count)
     got = {c["nonce"]: bytes.fromhex(c["hash"])[::-1]
@@ -279,7 +279,7 @@ def test_full_range_coverage_odd_count():
 # ----------------------------------------------------------------
 
 def test_early_exit_accounting():
-    eng = ComputeEngine()
+    eng = ComputeEngine(requested="c")
     assert eng.backend == "c"
     hit, attempted, _s = eng.search_first_counted(
         GENESIS, DIFF1, GENESIS_NONCE - 3, 100000)
@@ -332,7 +332,7 @@ def _first_hit_attempts(header, target, start, count):
 def test_early_exit_rescan_accounting():
     target = REGTEST_TARGET
     want_attempts = _first_hit_attempts(GENESIS, target, 0, 2000)
-    eng = ComputeEngine()
+    eng = ComputeEngine(requested="c")
     assert eng.backend == "c"
     eng._c_lib = FakeSearch2Lib()
     hit, attempted, _s = eng.search_first_counted(
@@ -367,7 +367,7 @@ def test_batch_rescan_accounting_split():
     start, count = 0, 2000
     want = recount(GENESIS, target, start, count)
     first_nonce = min(want)
-    eng = ComputeEngine()
+    eng = ComputeEngine(requested="c")
     assert eng.backend == "c"
     eng._c_batch_flagged = lambda *a, **k: [
         (first_nonce, b"\x00" * 32)]
@@ -539,7 +539,7 @@ def test_regtest_block():
             rpc.call("createwallet", "bal-regtest")
     wallet = BitcoinRPC(wallet="bal-regtest")
     payout = wallet.call("getnewaddress", "", "bech32")
-    compute = ComputeEngine()
+    compute = ComputeEngine(requested="c")
     assert compute.backend == "c", compute.describe()
     eng = MiningEngine(rpc, payout, compute=compute,
                        batch_size=100_000)
