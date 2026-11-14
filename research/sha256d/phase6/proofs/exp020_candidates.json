@@ -1,0 +1,124 @@
+{
+  "experiment": "EXP-020",
+  "candidates": [
+    {
+      "id": "P6C-005",
+      "cone": "full round + schedule (t >= 16)",
+      "source_transformation": "Search A equality saturation with term-level ternlog folding; extraction under the AVX-512 cost model",
+      "target_expression": "production round, source form (classic)",
+      "candidate_expression": {
+        "a_out": "('add', ('add', ('var', 'h'), ('add', ('add', ('ternlog', 202, ('var', 'e'), ('var', 'f'), ('var', 'g')), ('add', ('var', 'K'), ('var', 'W'))), ('ternlog', 150, ('rotr', ('var', 'e'), 25), ('rotr', ('var', 'e'), 6), ('rotr', ('var', 'e'), 11)))), ('add', ('ternlog', 150, ('rotr', ('var', 'a'), 22), ('rotr', ('var', 'a'), 2), ('rotr', ('var', 'a'), 13)), ('ternlog', 232, ('var', 'c'), ('var', 'a'), ('var', 'b'))))",
+        "e_out": "('add', ('var', 'd'), ('add', ('var', 'h'), ('add', ('add', ('ternlog', 202, ('var', 'e'), ('var', 'f'), ('var', 'g')), ('add', ('var', 'K'), ('var', 'W'))), ('ternlog', 150, ('rotr', ('var', 'e'), 25), ('rotr', ('var', 'e'), 6), ('rotr', ('var', 'e'), 11)))))",
+        "Wn": "('add', ('add', ('add', ('var', 'Q'), ('var', 'P')), ('ternlog', 150, ('rotr', ('var', 'Y'), 17), ('rotr', ('var', 'Y'), 19), ('shr', ('var', 'Y'), 10))), ('ternlog', 150, ('rotr', ('var', 'Xm'), 18), ('shr', ('var', 'Xm'), 3), ('rotr', ('var', 'Xm'), 7)))"
+      },
+      "proof": {
+        "method": "z3 UNSAT (joint, all outputs) + 1M-sample differential",
+        "artifact": "proofs/exp020_candidates.json",
+        "z3": "unsat",
+        "differential_mismatches": 0
+      },
+      "cost": {
+        "incumbent_source_classic": 38,
+        "incumbent_emitted": 29,
+        "candidate": 28,
+        "model": "AVX-512 vector op census, round + schedule"
+      },
+      "compiler_config": null,
+      "assembly_audit": null,
+      "benchmark": "not run",
+      "status": "proven; census equals the vocabulary lower bound derived in Search B; see P6C-007 for the one op the emitted code leaves open",
+      "note": "Extraction saturated: campaign 2 found no cheaper form."
+    },
+    {
+      "id": "P6C-006",
+      "cone": "full round + schedule (t >= 16)",
+      "source_transformation": "Search A extraction under the classic op library (Maj_alt forms admitted)",
+      "target_expression": "production round, source form",
+      "candidate_expression": {
+        "a_out": "('add', ('add', ('add', ('xor', ('and', ('var', 'e'), ('var', 'f')), ('and', ('var', 'g'), ('not', ('var', 'e')))), ('add', ('var', 'W'), ('add', ('var', 'K'), ('var', 'h')))), ('xor', ('rotr', ('var', 'e'), 25), ('xor', ('rotr', ('var', 'e'), 6), ('rotr', ('var', 'e'), 11)))), ('add', ('xor', ('xor', ('rotr', ('var', 'a'), 2), ('rotr', ('var', 'a'), 13)), ('rotr', ('var', 'a'), 22)), ('xor', ('and', ('var', 'a'), ('var', 'c')), ('and', ('var', 'b'), ('xor', ('var', 'c'), ('var', 'a'))))))",
+        "e_out": "('add', ('var', 'd'), ('add', ('add', ('xor', ('and', ('var', 'e'), ('var', 'f')), ('and', ('var', 'g'), ('not', ('var', 'e')))), ('add', ('var', 'W'), ('add', ('var', 'K'), ('var', 'h')))), ('xor', ('rotr', ('var', 'e'), 25), ('xor', ('rotr', ('var', 'e'), 6), ('rotr', ('var', 'e'), 11)))))",
+        "Wn": "('add', ('add', ('add', ('var', 'Q'), ('var', 'P')), ('xor', ('xor', ('rotr', ('var', 'Y'), 17), ('shr', ('var', 'Y'), 10)), ('rotr', ('var', 'Y'), 19))), ('xor', ('xor', ('shr', ('var', 'Xm'), 3), ('rotr', ('var', 'Xm'), 7)), ('rotr', ('var', 'Xm'), 18)))"
+      },
+      "proof": {
+        "method": "z3 UNSAT + 1M-sample differential",
+        "artifact": "proofs/exp020_candidates.json",
+        "z3": "unsat",
+        "differential_mismatches": 0
+      },
+      "cost": {
+        "incumbent_source_classic": 38,
+        "candidate": 37,
+        "model": "classic op census"
+      },
+      "compiler_config": null,
+      "assembly_audit": null,
+      "benchmark": "not run",
+      "status": "proven; the classic saving over the source form is exactly the Maj alt form (5 to 4 ops)",
+      "note": "Not promotable: the AVX-512 library supersedes the classic one on this machine."
+    },
+    {
+      "id": "P6C-007",
+      "cone": "Maj subcone, as emitted",
+      "source_transformation": "single VPTERNLOGD 0xE8 in place of the two chained VPTERNLOGD (0x60 then 0x78) that gcc emits for Maj_alt_B",
+      "target_expression": "Maj as emitted in production v_compress16 (2 ternlog ops, serial)",
+      "candidate_expression": "('ternlog', 232, a, b, c)",
+      "proof": {
+        "method": "z3 UNSAT (EXP-012 result, re-gated inside P6C-005 joint proof)",
+        "artifact": "proofs/exp020_candidates.json",
+        "z3": "unsat"
+      },
+      "cost": {
+        "incumbent_emitted_round": 29,
+        "candidate_round": 28,
+        "model": "emitted arithmetic census per steady-state round"
+      },
+      "compiler_config": "gcc -O3 -mavx512f -mavx512bw (build.py production flags)",
+      "assembly_audit": "analysis/exp020_asm_audit.json",
+      "benchmark": "EXP-017 paired protocol vs production MB, 3 sessions + 1 control: pooled adjusted log-ratio +0.0493 (CI -0.067 to +0.167), not significant in any session or pooled; benchmarks/exp020/analysis_20261114T165200Z.json",
+      "status": "PROMOTED TO VARIANT KERNEL under the predeclared threshold and benchmarked; rate effect NOT significant under the adopted rule (pooled CI contains 0), so no verified improvement is claimed and nothing is integrated",
+      "note": "The one op the whole search leaves on the table, and it is a codegen gap, not a graph discovery: the graph form was already known (EXP-012); gcc does not emit it."
+    },
+    {
+      "id": "P6C-008",
+      "cone": "T1 association",
+      "source_transformation": "addition-tree reassociation: S1 enters last, ((h + K) + (Ch + W)) + S1",
+      "target_expression": "T1 source association ((h + S1) + (Ch + K)) + W",
+      "candidate_expression": "depth-optimal association over the 5 operands (1,680 trees enumerated)",
+      "proof": {
+        "method": "exact by associativity and commutativity of modular addition; covered by the joint z3 proofs",
+        "artifact": "proofs/exp020_candidates.json"
+      },
+      "cost": {
+        "incumbent": "4 adds, T1 depth 5 (AVX-512 model, source association)",
+        "candidate": "4 adds, T1 depth 4",
+        "model": "depth at equal census"
+      },
+      "compiler_config": null,
+      "assembly_audit": "analysis/exp020_asm_audit.json: the emitted code already adds S1 last (association ((Ch + W) + (h + K)) + S1), so the depth is already realised",
+      "benchmark": "not run",
+      "status": "proven, already emitted; codegen fact, not a discovery",
+      "note": "Recorded so the depth question is closed with evidence."
+    },
+    {
+      "id": "P6C-009",
+      "cone": "T1 / schedule addition networks",
+      "source_transformation": "carry-save forms priced at the EXP-019 price list (3 ops per 3:2 level)",
+      "target_expression": "plain VPADDD trees (4 adds T1, 3 adds schedule)",
+      "candidate_expression": "{\"T1_5_operand\": [{\"ops\": 4, \"form\": \"4 VPADDD tree\"}, {\"ops\": 6, \"form\": \"1 carry-save level(s) then 3 VPADDD\"}, {\"ops\": 8, \"form\": \"2 carry-save level(s) then 2 VPADDD\"}], \"schedule_4_operand\": [{\"ops\": 3, \"form\": \"3 VPADDD tree\"}, {\"ops\": 5, \"form\": \"1 carry-save level(s) then 2 VPADDD\"}, {\"ops\": 7, \"form\": \"2 carry-save level(s) then 1 VPADDD\"}]}",
+      "proof": {
+        "method": "exact by construction (compressor identities proven in EXP-012/019)",
+        "artifact": "proofs/exp020_candidates.json"
+      },
+      "cost": {
+        "incumbent": "T1 4 ops, schedule 3 ops",
+        "candidate": "T1 >= 6 ops, schedule >= 5 ops",
+        "model": "EXP-019 corrected pricing"
+      },
+      "compiler_config": null,
+      "assembly_audit": null,
+      "benchmark": "not run",
+      "status": "REJECTED by the cost model before any kernel work (mirrors EXP-019 measurement)",
+      "note": "No candidate record corpse is dropped: this is the priced rejection."
+    }
+  ]
+}
