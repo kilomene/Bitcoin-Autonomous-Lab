@@ -104,6 +104,14 @@ struct BalCudaCtx {
 extern "C" int bal_cuda_ctx_create(uint32_t max_count, uint32_t cand_cap,
                                    void** out_ctx) {
   if (!out_ctx || !max_count || !cand_cap) return -1;
+  // Task 003.7: allocation sizes are products (max_count * 32,
+  // cand_cap * 32). They are computed in size_t and the inputs are
+  // uint32_t, so on a 64-bit host they cannot overflow; the caps
+  // below additionally bound them to sane sizes (diagnostic buffer
+  // at most 512 MiB, candidate digests at most 128 MiB) and reject
+  // absurd requests with an explicit error instead of relying on
+  // the allocator to fail.
+  if (max_count > (1u << 24) || cand_cap > (1u << 22)) return -5;
   *out_ctx = nullptr;
   BalCudaCtx* ctx = (BalCudaCtx*)calloc(1, sizeof(BalCudaCtx));
   if (!ctx) return -2;
@@ -198,7 +206,10 @@ extern "C" int bal_cuda_ctx_search(void* vctx, uint64_t start,
                                    float* out_kernel_ms) {
   BalCudaCtx* ctx = (BalCudaCtx*)vctx;
   if (!ctx || !ctx->has_work || !count || count > ctx->max_count) return -1;
-  if (start + count > 0x100000000ULL) return -1;
+  // Task 003.7: subtraction-based range validation (the shared
+  // bal_nonce_range_valid); the old start + count form could wrap
+  // for start near 2^64 and admit an invalid range.
+  if (!bal_nonce_range_valid(start, count)) return -4;
   if (!out_count || !out_overflow) return -1;
   dim3 grid;
   int grc = bal_ctx_grid(count, threads, &grid);
@@ -247,7 +258,7 @@ extern "C" int bal_cuda_ctx_batch_diag(void* vctx, uint64_t start,
                                        uint8_t* hashes, uint8_t* flags) {
   BalCudaCtx* ctx = (BalCudaCtx*)vctx;
   if (!ctx || !count || count > ctx->max_count || !hashes || !flags) return -1;
-  if (start + count > 0x100000000ULL) return -1;
+  if (!bal_nonce_range_valid(start, count)) return -4;
   int rc = bal_cuda_ctx_set_work(ctx, header, target_le);
   if (rc != 0) return rc;
   dim3 grid;
@@ -282,7 +293,7 @@ extern "C" int bal_cuda_batch(const uint8_t* header, uint64_t start,
                               const uint8_t* target_le, uint8_t* hashes,
                               uint8_t* flags) {
   if (!count || !threads || threads > 1024) return -1;
-  if (start + count > 0x100000000ULL) return -1;
+  if (!bal_nonce_range_valid(start, count)) return -4;
   uint8_t *d_header = nullptr, *d_target = nullptr, *d_hashes = nullptr,
           *d_flags = nullptr;
   cudaError_t e = cudaSuccess;
