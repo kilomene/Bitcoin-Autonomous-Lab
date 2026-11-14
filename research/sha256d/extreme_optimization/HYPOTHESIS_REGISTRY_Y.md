@@ -366,6 +366,24 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
   element is the full-round vector slice.
 - Workstream F / Difficulty high / Confidence low /
   Cost medium.
+- Status (2026-11-14, EXP-020): TESTED, bounded
+  negative on the round cone. The solver-guided leg
+  ran as Search B of EXP-020 (this entry's mechanism
+  is numbered Y-015 in HYPOTHESIS_RANKING.md and in
+  the EXP-020 assignment; the two registry titles
+  here are transposed relative to the ranking, and
+  EXP-020 ran both engines on identical cones, so
+  both entries are decided by it). The Boolean BFS
+  re-derived the EXP-012 minima (Ch 3, Maj 4, XOR3 2);
+  addition-network BFS proved T1 at 4 adds and the
+  schedule sum at 3 (exhaustive) and reached level 3
+  of the (a', e') pair in its 600 s budget, the exact
+  pair bound of 7 completed by counting proof; z3 SAT
+  counterexamples closed the unmaterialised-sigma
+  routes; a 20,000-proposal superoptimiser found
+  nothing below the saturation extraction. Stated
+  success form met: a bounded negative. See
+  EXP-020 in ../phase6/EXPERIMENT_RESULTS.md.
 
 ### Y-015: Equality saturation (e-graph) over the round expression
 - Limitation: hand and SAT searches explore small
@@ -387,6 +405,27 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
   recorded saturation at the current cost.
 - Workstream F / Difficulty high / Confidence medium /
   Cost medium.
+- Status (2026-11-14, EXP-020): TESTED, saturation
+  outcome as the success line's second form. The
+  e-graph leg ran as Search A of EXP-020 (this
+  entry's mechanism is numbered Y-014 in
+  HYPOTHESIS_RANKING.md and in the EXP-020
+  assignment; the two registry titles here are
+  transposed relative to the ranking, and EXP-020
+  ran both engines on identical cones, so both
+  entries are decided by it). Campaign 1 saturated
+  at 388 expressions (98 classes, fixpoint) and
+  extracted the vocabulary optimum, 28 vector ops
+  per steady-state round, matching the independent
+  lower bound assembled in Search B; campaign 2
+  (490 expressions) found no new winner. The
+  extracted graph equals the emitted production
+  code except Maj, which gcc emits as two ternlogs
+  where the proven form is one; that candidate
+  (P6C-007) promoted, gated, and benchmarked to a
+  non-significant result (pooled +0.0493, CI
+  -0.067 to +0.167). See EXP-020 in
+  ../phase6/EXPERIMENT_RESULTS.md.
 
 ### Y-016: Genetic search over schedule-generation instruction sequences
 - Limitation: the MB schedule generation is a fixed
