@@ -665,3 +665,30 @@ and extreme_optimization/EXPERIMENT_REGISTRY
 (EXP-000 to EXP-018); next unreserved ID
 remains EXP-021 (EXP-019 and EXP-020 are
 reserved for the remaining Phase 6 designs).
+
+## Integration record: AVX-512 MB production backend (2026-11-14)
+
+Not an experiment: an integration under a
+decision. The owner adopted the EXP-017
+statistic as the programme's integration
+decision rule on 2026-11-14 (replacing the
+min/max separation rule) and named the
+AVX-512 multi-buffer kernel the target on
+its EXP-017 evidence (pooled 3.55x against
+production, CI 3.17x to 3.97x, significant
+in every session). The kernel is integrated
+as ComputeEngine backend "v512" behind
+runtime CPUID dispatch (AVX-512F plus
+AVX-512BW; flag-free probe plus digest
+self-test; clean fallback to the OpenSSL C
+backend; requested="c" unchanged). Gates
+through the production path passed
+(196,608 differentials, accounting parity,
+fresh regtest blocks at heights 630 and
+700), test-all passes except the
+pre-existing test-rtl environment failure,
+and the live miner was deployed and
+verified on the new backend. Classification:
+VERIFIED IMPROVEMENT under the adopted rule.
+Full record: phase6/PHASE6_FINAL_REPORT.md,
+addendum of 2026-11-14.
