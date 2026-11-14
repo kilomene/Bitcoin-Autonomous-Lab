@@ -14,6 +14,7 @@ Usage: python3 mining/mainnet_live.py --duration 3600
 """
 
 import argparse
+import hashlib
 import json
 import os
 import struct
@@ -24,7 +25,8 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from gpu.engine import ComputeEngine
-from mining.stratum_client import StratumClient, Evidence, build_header
+from mining.stratum_client import (StratumClient, Evidence,
+                                   build_header, target_from_nbits)
 
 DEFAULT_ADDRESS = "bc1q528egeqsvv8aa382j43edxskqw6x7zxc2xpcf3"
 ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -94,13 +96,43 @@ def main():
             nonce += span
             if hit is not None:
                 found, digest = hit
+                # Confirm the candidate before anything is
+                # submitted: recompute the digest with hashlib,
+                # independent of the search backend, recheck it
+                # against the pool target and the network target
+                # from the job's nbits, and confirm the template
+                # is still the freshest one. Only a candidate
+                # that passes every check is a good block
+                # candidate; only confirmed candidates are sent.
+                check_header, _m, _c = build_header(
+                    job, client.extranonce1, en2, found, "wordswap")
+                indep = hashlib.sha256(
+                    hashlib.sha256(check_header).digest()).digest()
+                value = int.from_bytes(digest, "little")
+                net_target = target_from_nbits(job["nbits"])
+                with client.lock:
+                    fresh = client.job_generation == gen
+                confirmed = (indep == digest
+                             and value <= target
+                             and fresh)
                 d = difficulty_of(digest)
                 best = max(best, d)
-                client.submit(job, en2, found)
-                submitted += 1
-                ev.log("share_submitted", nonce=found, difficulty=d,
-                       job_id=job.get("job_id"))
-                print(f"SHARE submitted nonce={found} diff={d:.2f}", flush=True)
+                ev.log("candidate_confirmed" if confirmed
+                       else "candidate_rejected",
+                       nonce=found, difficulty=d,
+                       job_id=job.get("job_id"),
+                       independent_hash_match=indep == digest,
+                       meets_pool_target=value <= target,
+                       meets_network_target=value <= net_target,
+                       template_still_fresh=fresh)
+                if confirmed:
+                    client.submit(job, en2, found)
+                    submitted += 1
+                    ev.log("share_submitted", nonce=found,
+                           difficulty=d, job_id=job.get("job_id"),
+                           is_block_candidate=value <= net_target)
+                    print(f"SHARE submitted nonce={found} "
+                          f"diff={d:.2f}", flush=True)
                 nonce = max(nonce, found + 1)
         now = time.time()
         if now - last_log > 10:
