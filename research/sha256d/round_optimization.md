@@ -59,3 +59,20 @@ The credible gains are systemic: fewer non-round
 instructions per round (wrapper and schedule supply, B1 and
 B2), and more rounds in flight per core (interleaving,
 multi-buffer). The registry ranks accordingly.
+
+## Stage 5 measurement note (2026-11-14)
+
+Both systemic gains are now measured, in the research tree
+(EXP-002, EXP-003). Removing the scalar schedule entirely
+(MSG1/MSG2 supply) is worth about 2.6x at equal rounds
+in-session, and interleaving independent round chains adds
+a further 2.36x per worker at 2 streams. The prefix-round
+saving (rounds 0..2 per template) is real arithmetic but
+its 2.4 percent effect is under this VM's noise floor: the
+three snapshot variants' benchmark spreads fully overlap,
+so no per-round claim is made from it here. What the data
+does not support is a claim that RNDS2 is throughput-bound
+on this core: if it were, interleaving could not have
+produced the measured gains. The binding constraint the
+measurements actually show is single-chain latency plus
+this guest's scheduling noise.
