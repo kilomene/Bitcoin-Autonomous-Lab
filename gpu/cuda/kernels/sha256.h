@@ -318,6 +318,21 @@ BAL_HD static inline void bal_record_candidate(uint32_t* counter, uint32_t cap,
   }
 }
 
+// Nonce-range validation (Task 003.7), shared by the CUDA C ABI
+// and the host validation build so the exact logic is testable
+// without a device. Subtraction-based: count is validated FIRST,
+// so 0x100000000 - count can never underflow, and start is compared
+// against that remainder instead of computing start + count (which
+// can wrap for start near 2^64). A valid range is a non-empty
+// half-open interval [start, start+count) inside the 32-bit nonce
+// space; the endpoint may be exactly 2^32.
+BAL_HD static inline int bal_nonce_range_valid(uint64_t start, uint64_t count) {
+  if (count == 0) return 0;
+  if (count > 0x100000000ULL) return 0;
+  if (start > 0x100000000ULL - count) return 0;
+  return 1;
+}
+
 // Target check: digest and target are both 32-byte little-endian values.
 BAL_HD static inline int bal_meets_target(const uint8_t* digest, const uint8_t* target_le) {
   for (int i=31;i>=0;i--) {
