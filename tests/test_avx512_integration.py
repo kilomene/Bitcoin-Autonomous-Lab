@@ -12,7 +12,10 @@ PRODUCTION engine path (never the research harness):
   and AVX-512BW (the exact feature set of the kernel's
   restricted-flag build); requesting "c" still selects the C
   backend alone; on a CPU without the features the engine
-  falls back cleanly and records why.
+  falls back cleanly and records why. A symbol-incomplete
+  library (probe present, kernel entry points missing) is
+  rejected as a whole with the same clean fallback (audit
+  defect D-1 regression gate).
 - Digest exactness: well over 100,000 randomized differentials
   against hashlib through the production batch ABI, candidate
   sets equal to an independent hashlib recount, genesis exact,
@@ -35,11 +38,15 @@ Run: python3 tests/test_avx512_integration.py
 
 import os
 import random
+import shutil
+import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from gpu.engine import ComputeEngine, cpu_digest, verify_candidate
+from mining.cpu import build as cpu_build
 from mining.cpu.build import build as build_c, build_v512
 
 GENESIS = bytes.fromhex(
@@ -78,6 +85,78 @@ def test_dispatch(supported):
               f"back cleanly to {eng.backend} with the reason "
               "recorded")
     return eng
+
+
+PROBE_STUB_C = (
+    "int bal_v512_supported(void) { return 1; }\n"
+    "unsigned bal_v512_feature_bits(void) { return 3u; }\n")
+BATCH_STUB_C = "int bal_v_batch2(void) { return 0; }\n"
+
+
+def _build_fake_v512(tmp, name, sources):
+    out = os.path.join(tmp, name)
+    cc = shutil.which("gcc") or shutil.which("cc")
+    proc = subprocess.run(
+        [cc, "-shared", "-fPIC", "-O2", "-o", out] + sources,
+        capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    return out
+
+
+def test_incomplete_library_fallback():
+    """Regression gate for audit defect D-1: a libbal_v512.so
+    that exports the CPUID probe but lacks one or both kernel
+    entry points must be rejected as a whole, with the missing
+    symbol(s) named on v512_reason and selection falling back
+    to C; ComputeEngine construction must never raise
+    AttributeError. The fake libraries use a stub probe that
+    always reports support, so the guard is exercised on every
+    machine, not only AVX-512 ones. The build smoke test must
+    likewise return its designed error, not raise."""
+    cc = shutil.which("gcc") or shutil.which("cc")
+    if not cc:
+        print("ok incomplete-library fallback: skipped, no C "
+              "compiler available to build the fake libraries")
+        return
+    tmp = tempfile.mkdtemp(prefix="bal-d1-")
+    probe_c = os.path.join(tmp, "probe_stub.c")
+    with open(probe_c, "w") as fh:
+        fh.write(PROBE_STUB_C)
+    batch_c = os.path.join(tmp, "batch_stub.c")
+    with open(batch_c, "w") as fh:
+        fh.write(BATCH_STUB_C)
+    probe_only = _build_fake_v512(
+        tmp, "libfake_probe_only.so", [probe_c])
+    no_search = _build_fake_v512(
+        tmp, "libfake_no_search.so", [probe_c, batch_c])
+    real_probe = os.path.join(
+        os.path.dirname(__file__), "..", "mining", "cpu",
+        "bal_avx512_probe.c")
+    real_probe_only = _build_fake_v512(
+        tmp, "libfake_real_probe_only.so", [real_probe])
+    cases = [
+        (probe_only, ("bal_v_batch2", "bal_v_search2")),
+        (no_search, ("bal_v_search2",)),
+        (real_probe_only, ()),
+    ]
+    for path, missing in cases:
+        eng = ComputeEngine(v_lib_path=path)
+        assert eng.backend == "c", (path, eng.describe())
+        assert eng.v512_reason, (path, eng.describe())
+        for name in missing:
+            assert name in eng.v512_reason, \
+                (path, name, eng.v512_reason)
+        hit, _attempted, _s = eng.search_first_counted(
+            GENESIS, DIFF1, GENESIS_NONCE - 3, 1000)
+        assert hit and hit[0] == GENESIS_NONCE, (path, hit)
+    err, _supported = cpu_build._smoke_v512(probe_only)
+    assert err is not None and "bal_v_batch2" in err, err
+    print("ok incomplete-library fallback (D-1 regression): "
+          "probe-only and search-less v512 libraries are "
+          "rejected with the missing entry points named, the "
+          "engine falls back to C and mines genesis, and the "
+          "build smoke test returns its error instead of "
+          "raising")
 
 
 def test_differentials(eng):
@@ -208,6 +287,7 @@ def main():
     assert v["ok"], v
     supported = bool(v["supported"])
     eng = test_dispatch(supported)
+    test_incomplete_library_fallback()
     if supported:
         test_differentials(eng)
         test_candidate_sets(eng)
