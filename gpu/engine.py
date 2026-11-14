@@ -35,6 +35,7 @@ import os as _os
 _C_THREADS_ENV = _os.environ.get("BAL_C_THREADS")
 C_THREADS = int(_C_THREADS_ENV) if _C_THREADS_ENV else 2
 C_THREADS_TUNED = _C_THREADS_ENV is not None
+LAST_PROBE_RATE = 0.0  # H/s measured by the last auto-tune probe
 
 
 def tune_c_threads(engine):
@@ -44,7 +45,7 @@ def tune_c_threads(engine):
     fixed nonce range and keeps the fastest. Runs once per
     process; any failure leaves the safe default in place.
     """
-    global C_THREADS, C_THREADS_TUNED
+    global C_THREADS, C_THREADS_TUNED, LAST_PROBE_RATE
     if C_THREADS_TUNED:
         return C_THREADS
     C_THREADS_TUNED = True
@@ -70,6 +71,7 @@ def tune_c_threads(engine):
             if rc in (0, 1) and dt > 0 and probe / dt > best_rate:
                 best_n, best_rate = n, probe / dt
         C_THREADS = best_n
+        LAST_PROBE_RATE = best_rate
         print(f"full-workforce: C search threads auto-tuned to "
               f"{best_n} on this machine "
               f"(probe {best_rate:,.0f} H/s)", flush=True)
