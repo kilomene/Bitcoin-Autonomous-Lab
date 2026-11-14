@@ -150,3 +150,43 @@ about 7 million cores at the optimistic per-core ceiling
 estimate of about 20 MH/s), and a final report whose first
 recommended experiment is the quiet-window decision re-run
 this file already calls for. Production remains unchanged.
+
+## Batch EXP-004 to EXP-009 (2026-11-14)
+
+Full records: extreme_optimization/EXPERIMENT_REGISTRY.md
+and extreme_optimization/EXP004_009_REPORT.md.
+
+- EXP-004: the X-067 decision re-run failed the strict
+  beyond-spread criterion a second time (streams=4 median
+  4,212,571 vs production 1,463,346 at 2 threads; streams=4
+  min 2,057,942 below production max 2,346,013; steal only
+  2.24 percent, so runnable-load fluctuation is the noise).
+  No integration; production byte-identical.
+- EXP-005: geometry map complete (streams 1, 2, 3, 4, 6;
+  blocked and strided; all gate-verified with wave-exact
+  accounting). Best at 2 threads: streams=4 strided.
+- EXP-006: schedule-first hand scheduling cuts spill ops
+  790 to 117 and gains nothing; spills are not the binding
+  cost. Negative result, mechanism recorded.
+- EXP-007: AVX-512 16-way multi-buffer is the fastest
+  measured implementation on this VM on a median basis at
+  2 threads (6,526,467 and 3,195,024 H/s in two interleaved
+  sessions), widest variance, no separation claim. X-041
+  frequency gate inconclusive under contention.
+- EXP-008: phase pipelining is at parity with a second
+  same-phase stream; no phase premium on this core.
+- EXP-009: X-059 priced by measurement (validateaddress
+  round trip 3.963 ms median dominates build_candidate
+  below about 250 transactions; re-verification about
+  17.8 us per transaction; exactly one validateaddress
+  and one getblockchaininfo per call). No span-size
+  interaction measurable; search is 99.958 percent of a
+  stub mine cycle's wall at an empty template.
+
+Tier summary (MASTER_RESEARCH_PLAN.md classification):
+VERIFIED IMPROVEMENT: MSG schedule, stream interleaving,
+strided assignment tendency, AVX-512 multi-buffer medians,
+the X-059 prices. PROMISING HYPOTHESIS: hand-scheduled
+assembly (weakened), phase pipelining elsewhere, AVX2
+8-way for narrower machines. UNPROVEN BREAKTHROUGH:
+anything beyond the per-core ceiling narrative.
