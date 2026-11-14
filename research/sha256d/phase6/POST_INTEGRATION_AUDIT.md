@@ -291,3 +291,66 @@ flags, feature set, self-test, fallback for missing and
 unsupported libraries, gate counts, regtest heights 630
 and 700, deployment pid and node state all reproduced
 under independent re-derivation.
+
+## Resolution of D-1 and N-2 (2026-11-14, fix pass)
+
+D-1 RESOLVED. gpu/engine.py _try_v512 now checks, after a
+positive CPUID probe and before any argtypes assignment,
+that both kernel entry points exist (hasattr on
+bal_v_batch2 and bal_v_search2, mirroring the C path's
+guards on its optional symbols). A library missing either
+is rejected as a whole: v512_reason names the missing
+entry point(s), _try_v512 returns, and selection falls
+back to the C backend. mining/cpu/build.py _smoke_v512
+gained the matching guard for bal_v_batch2 (its
+bal_v_search2 access was already guarded): it now
+returns its designed error tuple ("library lacks the
+bal_v_batch2 entry point", 1) instead of letting an
+AttributeError escape build_v512.
+
+Regression evidence, before and after: with the audit's
+probe-only library (the real probe translation unit
+linked alone), ComputeEngine construction raised
+"AttributeError: undefined symbol: bal_v_batch2" at the
+argtypes assignment before the fix, and _smoke_v512
+raised the same AttributeError. After the fix, the same
+library is rejected with v512_reason "AVX-512 library is
+incomplete: missing kernel entry point(s) bal_v_batch2,
+bal_v_search2; rejecting the library as a whole and
+falling back", the engine selects "c" and mines the
+genesis nonce exactly (2083236893). A second malformed
+variant (probe plus a bal_v_batch2 stub, no
+bal_v_search2) is likewise rejected naming bal_v_search2
+alone and falls back to C and genesis. A permanent
+regression gate, test_incomplete_library_fallback in
+tests/test_avx512_integration.py (part of make
+test-avx512 and test-all), builds stub-probe fake
+libraries so the guard is exercised on every machine,
+and asserts clean fallback, named missing symbols,
+genesis mining on the C backend, and the smoke test's
+error return. Full test-all after the fix: 20 of 21
+targets pass; the only failure is test-rtl (iverilog
+absent from this VM, pre-existing environment,
+unchanged). Normal dispatch on this VM is unaffected:
+ComputeEngine() still selects "v512" with the complete
+library and its self-test passes, and the integration
+suite mined a fresh regtest block at height 703 during
+the fix verification run.
+
+Deployment note: the live miner and autopilot were NOT
+restarted for this fix. The deployed library is complete
+(nm-verified in Area 2), so D-1 is unreachable in the
+current deployment; the fix takes effect on the next
+natural miner restart.
+
+N-2 RESOLVED. The mining/mainnet_live.py module
+docstring no longer describes the runner as "(C midstate
+batch, early-exit search)"; it now describes the runtime
+dispatched backend (AVX-512 multi-buffer where the CPUID
+probe confirms it, otherwise the C midstate batch;
+early-exit search).
+
+N-1 NOT CHANGED. The mainnet_live.py status counter span
+accounting is pre-existing behaviour awaiting the
+owner's word; this pass left the code exactly as the
+audit recorded it.
