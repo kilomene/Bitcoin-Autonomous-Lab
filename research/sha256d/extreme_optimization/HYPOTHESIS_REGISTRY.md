@@ -62,6 +62,7 @@ Rules applied to every entry:
 ## Workstream B: stream geometry and SHA-NI kernel structure
 
 ### X-001: Three-stream interleave
+- Status update 2026-11-14 (EXP-005): MEASURED. Three streams built and gate-verified; medians sit on the flat top of the geometry curve (blocked s3 1,999,538 at 2 threads; strided s3 3,360,311).
 - Statement: 3 interleaved SHA-NI streams per worker beat
   both 2 streams (less latency hidden) and 4 streams
   (fewer spills) per worker on this core.
@@ -73,6 +74,7 @@ Rules applied to every entry:
   Confidence: medium. Cost: hours. Status: untested.
 
 ### X-002: Six-stream interleave with a spill budget
+- Status update 2026-11-14 (EXP-005): MEASURED. Six streams built and gate-verified (blocked s6 median 2,593,711 at 2 threads); the spill budget is spent in the inlined walk body (frame 1,536 B, 790 xmm stack ops shared with s4).
 - Statement: 6 streams, accepting planned spills, still
   gain over 4 streams because the core remains
   latency-bound at 4.
@@ -93,6 +95,7 @@ Rules applied to every entry:
   Confidence: high. Cost: hours. Status: untested.
 
 ### X-004: Strided versus blocked nonce assignment
+- Status update 2026-11-14 (EXP-005): MEASURED. Strided assignment (mode 1) meets or beats blocked at counts 3 and 4 at 2 threads in the combined session.
 - Statement: assigning stream nonces strided (stream s
   takes nonces congruent to s mod streams) rather than in
   blocked chunks changes throughput measurably through
@@ -105,6 +108,7 @@ Rules applied to every entry:
   Status: untested.
 
 ### X-005: Wave size decoupled from stream count
+- Status update 2026-11-14 (EXP-005): MEASURED in part. Wave dispatch remains coupled to stream count in the geo build (greedy 6/4/3/2/1 partial waves); the decoupled wave-size question stays open, low priority after the flat geometry curve.
 - Statement: running waves of 8 nonces through 4 stream
   slots (double-buffered waves) beats waves of exactly
   the stream count, by keeping slots fed across wave
@@ -117,6 +121,7 @@ Rules applied to every entry:
   untested.
 
 ### X-006: Hand-scheduled assembly, 2 streams, explicit allocation
+- Status update 2026-11-14 (EXP-006): TESTED via the schedule-first restructuring. Spill ops cut 6.7x, throughput not improved; premise weakened. Stays PROMISING HYPOTHESIS.
 - Statement: a hand-written 2-stream kernel with explicit
   register allocation beats the compiler's 2-stream build
   by keeping all state and schedule vectors resident.
@@ -129,6 +134,7 @@ Rules applied to every entry:
   untested.
 
 ### X-007: Hand-scheduled assembly, 4 streams, spill layout
+- Status update 2026-11-14 (EXP-006): TESTED in its fused-K-reuse part inside the schedule-first build. The explicit spill-layout assembly was not built: at 4 streams the schedule-first evidence shows spill traffic is not the binding cost.
 - Statement: a hand-written 4-stream kernel whose spill
   slots are laid out so one wave's spill traffic touches
   the fewest possible cache lines beats the compiler's
@@ -156,6 +162,7 @@ Rules applied to every entry:
   Status: untested.
 
 ### X-009: Cross-nonce phase pipelining in one worker
+- Status update 2026-11-14 (EXP-008): TESTED, not supported on this core. Phase pipelining matches a second same-phase stream and loses to deeper interleaving. Open only for other cores.
 - Statement: interleaving the outer hash of nonce n with
   block 2 of nonce n+1 in the same worker (two half-chains
   at different phases) beats same-phase stream layouts at
@@ -436,6 +443,7 @@ Rules applied to every entry:
 ## Workstream B continued: the vector multi-buffer family
 
 ### X-031: AVX-512 16-way multi-buffer SHA-256d
+- Status update 2026-11-14 (EXP-007): MEASURED, supported on a median basis. Fastest medians on this VM at 2 threads in two interleaved sessions (6,526,467 and 3,195,024 H/s); widest variance; no separation claim. VERIFIED IMPROVEMENT (median basis, stated conditions).
 - Statement: a 16-lane zmm multi-buffer implementation
   (vector rounds with vprold rotates, proven Ch/Maj
   alternative forms, vector schedule) beats the H-01
@@ -449,6 +457,7 @@ Rules applied to every entry:
   untested.
 
 ### X-032: AVX-512 8-way multi-buffer
+- Status update 2026-11-14 (EXP-007): NOT BUILT. Note this entry is the 8-lane AVX-512 form; the AVX2 form discussed in EXP-007 shares its register-file logic. The 16-way result decided the family ranking first; remains for narrower machines.
 - Statement: the 8-lane variant (one hash per 32-bit lane
   pair avoided; 8 active lanes in zmm or 8 in ymm with
   AVX-512VL) beats the 16-lane variant per hash because
@@ -555,6 +564,7 @@ Rules applied to every entry:
   Confidence: high. Cost: days. Status: untested.
 
 ### X-041: Sustained AVX-512 frequency behaviour
+- Status update 2026-11-14 (EXP-007 gate): MEASURED, inconclusive. Two alternating-block runs, both contention-dominated; no catastrophic AVX-512 penalty; the flat AVX-512 response while scalar rates rose 36 percent is recorded unresolved.
 - Statement: sustained zmm-heavy work on this guest
   either does or does not degrade clocks (its own or the
   co-running miner's) over a 10-minute window; the
@@ -770,6 +780,7 @@ Rules applied to every entry:
 ## Workstream E: mining pipeline
 
 ### X-059: Candidate construction caching in MiningEngine
+- Status update 2026-11-14 (EXP-009): MEASURED. build_candidate makes exactly one validateaddress and one getblockchaininfo RPC per call; validateaddress is a 3.963 ms median round trip on the regtest node; per-transaction re-verification is about 17.8 us. The fix is a production change and waits for an integration window.
 - Statement: MiningEngine.build_candidate re-verifies
   every template transaction (strip_witness plus two
   hashes per tx) and performs a validateaddress RPC call
@@ -875,6 +886,7 @@ Rules applied to every entry:
 ## Workstream G: measurement, statistics, reproducibility
 
 ### X-067: Quiet-window integration decision re-run
+- Status update 2026-11-14 (EXP-004): TESTED. The re-run ran at the best observed dip (node still in IBD); streams=4 median 4,212,571 vs production 1,463,346 at 2 threads, but streams=4 minimum 2,057,942 does not exceed production maximum 2,346,013. Criterion failed a second time; no integration.
 - Statement: repeating the EXP-003 decision protocol
   (round-robin interleaved, 2 threads, production versus
   H-02 versus H-01 streams 2 and 4) in a window with the
@@ -916,6 +928,7 @@ Rules applied to every entry:
   Cost: hours. Status: untested.
 
 ### X-070: Steal-time covariate
+- Status update 2026-11-14 (EXP-004): APPLIED in lite form. Steal was 2.24 percent of jiffies during the 2-thread decision config; runnable-load fluctuation, not steal, drives the spreads.
 - Statement: recording guest steal time (visible in
   /proc/stat) during each benchmark run and regressing
   measured rate against steal explains a majority of the
