@@ -36,7 +36,7 @@ def wallet_rpc(rpc):
 def test_c_backend():
     built = build_c(log=lambda *a: None)
     assert built["lib"], built
-    eng = ComputeEngine()
+    eng = ComputeEngine(requested="c")
     assert eng.backend == "c", eng.describe()
     bench = eng.benchmark()
     py = ComputeEngine(requested="cpu")
@@ -155,7 +155,7 @@ def test_dashboard(rpc):
                 time.sleep(0.5)
         assert data, "dashboard API never answered"
         assert data["chain"]["blocks"] == rpc.get_block_count()
-        assert data["compute"]["backend"] in ("c", "cuda", "cpu")
+        assert data["compute"]["backend"] in ("c", "cuda", "cpu", "v512")
         with urllib.request.urlopen("http://127.0.0.1:18765/",
                                     timeout=10) as resp:
             page = resp.read().decode()
