@@ -129,3 +129,45 @@ FINAL_RESEARCH_REPORT.md, EXP011_ONWARD_REPORT.md
 updated: extreme_optimization/EXPERIMENT_REGISTRY
 .md (EXP-016), ../experiment_registry.md (pointer),
 ../research_findings.md (Phase 6 pointer).
+
+## Addendum (2026-11-14): EXP-017, the measurement stack
+
+EXP-017 has run. The paired protocol (65,536-hash
+blocks, randomised order, 160 pairs per session,
+three sessions per comparison) and its
+predeclared covariate-adjusted paired log-ratio
+statistic are validated as instruments: both
+equal-pair controls returned nulls in every
+session and pooled, the historical min/max rule
+passed a phantom difference in 0 of 6 control
+sessions, and an injected +0.20 effect was
+recovered with bias at most 0.0006. The covariate
+adjustment was priced near-neutral (pooled CI
+width ratios 0.970 to 0.999); the pairing carries
+the decision value. Under the EXP-017 rule, and
+only under it, both AVX-512 MB (pooled +1.2652,
+3.55x) and streams=4 strided (+1.0298, 2.80x) are
+significantly faster than production in every
+session. Conclusions under the three tiers:
+
+- VERIFIED IMPROVEMENT: the programme's decision
+  capability. Kernel comparisons that three
+  whole-round decisions could not settle are now
+  decidable at 65,536-hash pairing on this VM,
+  with controls certifying the null. The rate
+  ordering above is a verified measurement under
+  the stated contention, not an integration.
+- PROMISING HYPOTHESIS: none new; the geo
+  comparison's between-session variance
+  component (0.0434) is a measured property to
+  re-check in EXP-018's sessions, not assume.
+- UNPROVEN BREAKTHROUGH: unchanged. Nothing in
+  EXP-017 speaks to the computation graph.
+
+A proposal to replace the integration decision
+rule with the EXP-017 rule is recorded in
+EXPERIMENT_RESULTS.md for the owner. It is not
+enacted; production is unchanged, and no kernel
+was integrated by this experiment. Full record:
+EXPERIMENT_RESULTS.md, EXP-017; raw data in
+benchmarks/exp017/.
