@@ -5,11 +5,15 @@ Measurement discipline:
   gives median and spread, never a single best run.
 - End-to-end batch time uses a monotonic host clock
   (time.perf_counter inside ComputeEngine.batch_search).
-- Rates follow the Task 003.8 accounting definitions: hashrate is
-  ACTUAL backend hash computations per second (on the CUDA path,
-  device_hashes per second, including overflow-recovery repeats),
-  and unique coverage per second is reported separately as
-  coverage_per_second. The two are never conflated.
+- Rates follow the Task 003.9 accounting definitions (module
+  docstring of gpu/engine.py): hashrate is ACTUAL computations
+  by the selected mining backend per second (on the CUDA path,
+  device_hashes per second, including overflow-recovery
+  repeats), unique coverage per second is reported separately
+  as coverage_per_second, and verification_hashes (independent
+  verification and rescan computations) are reported as their
+  own overhead line. The three are never conflated, and no CPU
+  verification work is ever mixed into a device rate.
 - Kernel-only time comes from CUDA events and is reported ONLY when
   a batch actually executed on CUDA (stats carry kernel_ms). It is
   never mixed into or compared against end-to-end numbers.
@@ -40,9 +44,14 @@ def run_benchmark(batches=5, batch=65536, engine=None):
         runs.append({
             "backend": stats["backend"],
             "hashes": stats["hashes"],
+            "requested_hashes": stats.get("requested_hashes",
+                                          batch),
             "backend_hashes": stats.get("backend_hashes",
                                         stats["hashes"]),
             "device_hashes": stats.get("device_hashes"),
+            "verification_hashes": stats.get(
+                "verification_hashes",
+                stats.get("verification_rescan_hashes", 0)),
             "unique_coverage": stats.get("unique_coverage", batch),
             "coverage_per_second": stats.get(
                 "coverage_per_second", stats["hashrate"]),
@@ -78,13 +87,27 @@ def run_benchmark(batches=5, batch=65536, engine=None):
         "min_hashrate": min(rates),
         "max_hashrate": max(rates),
         "hashrate_definition": (
-            "actual backend hash computations per second "
+            "actual computations by the selected mining backend "
+            "per second, verification and rescan work excluded "
             "(device_hashes per second on the CUDA path)"),
         "median_coverage_per_second": statistics.median(
             coverage_rates),
         "coverage_definition": (
             "unique nonce coverage per second, reported separately "
             "from actual hash computations"),
+        "total_backend_hashes": sum(r["backend_hashes"]
+                                    for r in runs),
+        "total_device_hashes": sum(r["device_hashes"] or 0
+                                   for r in runs),
+        "total_verification_hashes": sum(
+            r["verification_hashes"] for r in runs),
+        "total_unique_coverage": sum(r["unique_coverage"]
+                                     for r in runs),
+        "verification_definition": (
+            "hash computations performed by independent candidate "
+            "verification and trusted rescans, reported as "
+            "overhead and never mixed into backend or device "
+            "rates"),
         "runs": runs,
         "cpu_vs_gpu_comparison": (
             "available in runs above (cuda batches) against a CPU "
