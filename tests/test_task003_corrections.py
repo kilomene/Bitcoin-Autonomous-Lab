@@ -346,7 +346,7 @@ def test_invalid_native_candidate():
     want_nonce, _d, want_attempts = _first_hit(header, target, 0, 2000)
     assert want_nonce is not None
     for mode, native_att in (("corrupt_digest", 6), ("wrong_nonce", 8)):
-        eng = ComputeEngine()
+        eng = ComputeEngine(requested="c")
         assert eng.backend == "c"
         eng._c_lib = FakeSearch2Lib(mode)
         before = len(eng.fallback_events)
@@ -364,7 +364,7 @@ def test_invalid_native_candidate():
         st = eng.last_search_stats
         assert st["rescanned"] is True and st["backend"] == "cpu-rescan", st
     # A native hard failure propagates; it is not softened.
-    eng = ComputeEngine()
+    eng = ComputeEngine(requested="c")
     eng._c_lib = FakeSearch2Lib("hard_failure")
     try:
         eng.search_first_counted(header, target, 0, 100)
@@ -372,7 +372,7 @@ def test_invalid_native_candidate():
     except RuntimeError as exc:
         assert "-7" in str(exc) or "returned" in str(exc)
     # The real native candidate passes with no rescan.
-    eng = ComputeEngine()
+    eng = ComputeEngine(requested="c")
     hit, _att, _s = eng.search_first_counted(
         header, DIFF1, GENESIS_NONCE - 3, 10)
     assert hit is not None and hit[0] == GENESIS_NONCE
@@ -540,7 +540,7 @@ def test_range_validation_and_differential():
     assert lines[3] == "random_mismatches 0", lines
     # Differential: C batch (via ComputeEngine) vs hashlib on
     # randomized headers, including the final nonce.
-    eng = ComputeEngine()
+    eng = ComputeEngine(requested="c")
     assert eng.backend == "c"
     rng = random.Random(3003)
     for _ in range(25):
@@ -563,7 +563,7 @@ def test_range_validation_and_differential():
 # ----------------------------------------------------------------
 
 def test_performance_snapshot():
-    eng = ComputeEngine()
+    eng = ComputeEngine(requested="c")
     header = bytes(80)
     hard = 1 << 200
     rates = {}
@@ -610,7 +610,7 @@ def test_regtest_block():
             rpc.call("createwallet", "bal-regtest")
     wallet = BitcoinRPC(wallet="bal-regtest")
     payout = wallet.call("getnewaddress", "", "bech32")
-    compute = ComputeEngine()
+    compute = ComputeEngine(requested="c")
     assert compute.backend == "c", compute.describe()
     # batch_size 100000 does not divide 2^32: the production cycle
     # exercises the Task 003.2 clamping on the real path.
