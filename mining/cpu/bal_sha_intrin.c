@@ -38,11 +38,18 @@
 
 _Atomic int bal_create_fail_after = -1;
 _Atomic int bal_create_fail_calls = 0;
+_Atomic int bal_mutex_fail_mask = 0;
 
 /* Test hook: fail pthread_create after n successes (-1 disables). */
 void bal_i_test_set_create_fail_after(int n) {
   atomic_store(&bal_create_fail_calls, 0);
   atomic_store(&bal_create_fail_after, n);
+}
+
+/* Test hook (Task 003.1): bit 0 fails mutex initialization,
+ * bit 1 fails mutex locking, 0 disables. */
+void bal_i_test_set_mutex_fail_mask(int mask) {
+  atomic_store(&bal_mutex_fail_mask, mask);
 }
 
 #if !defined(__SHA__)
@@ -313,7 +320,7 @@ int bal_i_search2(const uint8_t *header, uint64_t start, uint64_t count,
   Template tp;
   template_init(&tp, header);
   BalSearchCtx ctx;
-  bal_ctx_init(&ctx);
+  if (bal_ctx_init(&ctx) != 0) return -4; /* no worker is started */
   uint64_t begins[16], ends[16];
   unsigned spans = bal_partition(count, threads, begins, ends);
   pthread_t tids[16];
@@ -333,6 +340,10 @@ int bal_i_search2(const uint8_t *header, uint64_t start, uint64_t count,
     uint64_t total = 0;
     for (unsigned s = 0; s < spans; s++) total += jobs[s].attempted;
     *out_attempted = total;
+  }
+  if (bal_ctx_publish_failed(&ctx)) {
+    bal_ctx_destroy(&ctx);
+    return -3; /* winner publication failed: result is not trusted */
   }
   int found = ctx.found_valid;
   if (found) {
