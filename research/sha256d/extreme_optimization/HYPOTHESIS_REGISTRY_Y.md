@@ -58,6 +58,21 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
   are known 16 rounds early.
 - Workstream A / Difficulty high / Confidence medium /
   Cost medium.
+- Status (2026-11-14, EXP-019): REJECTED as a
+  work reduction on this instruction set, at
+  the pricing level. The engine was not built:
+  its design point (Y-002) failed the price
+  gate, and the recurrence bounds deferral to
+  separation 1 (sigma1 consumes W[t] for
+  W[t+2]; a sigma cannot consume a redundant
+  pair, because the bits of a sum are not a
+  bitwise function of the pair's bits), where
+  the measured carry-save price is worst. The
+  mechanism text above also undercounts the
+  compressor: a software 3:2 level is 2
+  VPTERNLOGD plus 1 VPSLLD of carry alignment,
+  not 2 ternlog steps. Full record:
+  ../phase6/EXPERIMENT_RESULTS.md, EXP-019.
 
 ### Y-002: Four-input schedule addition via one carry-save level, costed against the add tree
 - Limitation: same 4-input schedule addition as Y-001,
@@ -77,6 +92,23 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
 - Success: a measured per-distance winner table.
 - Workstream A / Difficulty low / Confidence high /
   Cost low.
+- Status (2026-11-14, EXP-019): REJECTED as a
+  cheaper materialization; the experiment's
+  own success (a measured per-distance winner
+  table) is delivered, and the winner at every
+  relevant distance is the incumbent add tree.
+  Resolved carry-save costs 5 instructions and
+  a 4-stage chain (one level) or 7 and 5 (two
+  levels) against 3 VPADDD and 3 stages,
+  because a software compressor is 2
+  VPTERNLOGD plus 1 VPSLLD of carry alignment,
+  a term the costing above omits. Measured:
+  1.17 to 1.53 times the incumbent at the
+  separations where resolution is forced (0
+  and 1), and slower at every separation from
+  1 up under L1-resident operands. Full
+  record: ../phase6/EXPERIMENT_RESULTS.md,
+  EXP-019.
 
 ### Y-003: Balanced T1 addition tree under a measured vector port model
 - Limitation: T1 accumulates five operands (h, S1, Ch,
