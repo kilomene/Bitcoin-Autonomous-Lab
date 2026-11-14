@@ -14,7 +14,7 @@ bash scripts/autopilot.sh start
 | Function | Cadence | Behaviour |
 | --- | --- | --- |
 | Heartbeat | every 5 s | `.local/heartbeat.json` rewritten: miner pid and state, uptime, restart count, accepted shares total, evidence freshness |
-| Watchdog (crash) | 2 s poll | miner process death detected within seconds; relaunch with capped exponential backoff |
+| Watchdog (crash) | 2 s poll | miner process death detected within seconds; relaunch with exponential backoff starting at 1 s and capped at 30 s, so a dead miner is never left resting |
 | Watchdog (hung) | 300 s window (5 minutes) | if the evidence log shows no new job for 300 s the miner is judged hung, killed and relaunched |
 | Session rotation | 24 h sessions | the moment one session ends the next begins; mining is continuous |
 | Self-update | every 15 min | compares HEAD to origin/main; on a new version: fast-forward pull, PoW smoke test, restart miner onto new code; on smoke failure: hard rollback to the previous HEAD and the old code keeps mining |
@@ -53,6 +53,34 @@ address. When none is given, the autopilot names the worker
 after this machine's hostname (sanitized), so a team never
 collides on one shared name. Override with `--worker`,
 `BAL_WORKER`, or the unit's environment.
+
+## Full workforce
+
+Mining is the job; the miner does not rest. Three rules ship
+in the code, not in advice:
+
+1. **Own worker.** Every entry point (the autopilot, the bare
+   miner, the raw pool client) defaults its worker name to
+   this machine's hostname. Each agent is separately visible
+   on the pool page: its own hashrate, uptime and last seen.
+2. **Measured maximum threads.** The compute engine probes
+   the C search at several thread counts on the machine it
+   starts on and runs at that machine's measured peak
+   (`tune_c_threads` in `gpu/engine.py`). No thread count is
+   copied from another agent's VM. An explicit `BAL_C_THREADS`
+   still wins when an operator sets one.
+3. **No-rest relaunch.** A crashed miner is relaunched with
+   backoff starting at 1 s and capped at 30 s; a hung miner
+   is killed and relaunched after the 300 s evidence window.
+   Between jobs the search runs continuously; there is no
+   idle state.
+
+The honest arithmetic of scale: one machine hashes at its own
+measured maximum, and a worker name costs nothing, so N agents
+on N machines put N times one machine's workforce onto the
+one payout address. Two agents are 200 percent of one machine,
+five are 500 percent. The boost is the team, each member at
+full workforce on its own VM.
 
 ## The node, and stopping approval spam
 
