@@ -6,8 +6,32 @@ Backends:
   candidate-path self-test (cuda_production_selftest), whose
   results are re-verified on the CPU. A diagnostic or legacy batch
   success alone never selects CUDA (Task 003.6).
+- v512: the AVX-512 16-way multi-buffer CPU kernel
+  (mining/cpu/bal_avx512_mb.c, built as .local/cpu/libbal_v512.so),
+  integrated 2026-11-14 under the owner's adopted EXP-017 decision
+  rule (pooled 3.55x vs the C backend, CI 3.17x to 3.97x,
+  significant in every session). Selection is runtime CPUID
+  dispatch: the flag-free probe compiled into the library
+  (bal_v512_supported) must confirm AVX-512F and AVX-512BW, the
+  exact feature set of the kernel's restricted-flag build, and
+  the batch must then reproduce hashlib digests exactly. Any
+  failure at any step falls back cleanly to the C backend, and
+  machines without AVX-512 behave exactly as before. Requesting
+  "c" explicitly still selects the C backend alone.
+- c: the OpenSSL midstate C library (.local/cpu/libbal_batch.so).
 - cpu: hashlib batch search (this machine also has the C SHA-NI
   engine in mining/cpu for the Stratum path).
+
+AVX-512 accounting note: the v512 kernel works in 16-lane waves.
+A started wave always completes, so on an early exit the counted
+search reports attempted as the real nonces of every completed
+wave (wave-exact semantics, as established in EXP-010), while
+backend_hashes counts actual lane computations including dummy
+lanes in a partial final wave: backend_hashes is the ceiling of
+the examined work to whole waves and is never below attempted.
+Batch enumeration covers the full range, so unique_coverage
+equals the requested count while backend_hashes may exceed it
+by the dummy lanes of the final partial wave of each span.
 
 Every candidate from any backend is re-verified on the CPU before it
 is returned. A CUDA failure at any point falls back to CPU and the
@@ -71,6 +95,7 @@ NONCE_SPACE = 1 << 32
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LIB_PATH = os.path.join(ROOT, ".local", "cuda", "libbal_cuda.so")
 C_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_batch.so")
+V_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_v512.so")
 import os as _os
 # Full-workforce thread count for the C search. An explicit
 # BAL_C_THREADS always wins. Otherwise the engine measures the
@@ -120,6 +145,54 @@ def tune_c_threads(engine):
         LAST_PROBE_RATE = best_rate
         print(f"full-workforce: C search threads auto-tuned to "
               f"{best_n} on this machine "
+              f"(probe {best_rate:,.0f} H/s)", flush=True)
+    except Exception:
+        pass
+    return C_THREADS
+
+
+def tune_v512_threads(engine):
+    """Measure this machine for the AVX-512 backend and set
+    C_THREADS (the thread argument of every native counted
+    call) to its peak, mirroring tune_c_threads: probes several
+    thread counts with the real counted MB search over a fixed
+    nonce range and keeps the fastest. Runs once per process;
+    any failure leaves the safe default in place. Also records
+    LAST_PROBE_RATE so span sizing in the live miner reflects
+    the selected backend's real rate."""
+    global C_THREADS, C_THREADS_TUNED, LAST_PROBE_RATE
+    if C_THREADS_TUNED:
+        return C_THREADS
+    C_THREADS_TUNED = True
+    if getattr(engine, "backend", None) != "v512" or not hasattr(
+            engine._v_lib, "bal_v_search2"):
+        return C_THREADS
+    try:
+        header = bytes(range(80))
+        target_le = (1).to_bytes(32, "little")
+        probe = 1 << 20
+        cpus = os.cpu_count() or 2
+        best_n, best_rate = C_THREADS, 0.0
+        for n in sorted({1, 2, 4, cpus, cpus * 2}):
+            if n < 1 or n > 32:
+                continue
+            out_nonce = ctypes.c_uint32(0)
+            out_attempted = ctypes.c_uint64(0)
+            out_backend = ctypes.c_uint64(0)
+            out_digest = ctypes.create_string_buffer(32)
+            t0 = time.time()
+            rc = engine._v_lib.bal_v_search2(
+                header, 0, probe, n, target_le,
+                ctypes.byref(out_nonce), out_digest,
+                ctypes.byref(out_attempted),
+                ctypes.byref(out_backend))
+            dt = time.time() - t0
+            if rc in (0, 1) and dt > 0 and probe / dt > best_rate:
+                best_n, best_rate = n, probe / dt
+        C_THREADS = best_n
+        LAST_PROBE_RATE = best_rate
+        print(f"full-workforce: AVX-512 search threads auto-tuned "
+              f"to {best_n} on this machine "
               f"(probe {best_rate:,.0f} H/s)", flush=True)
     except Exception:
         pass
@@ -646,13 +719,16 @@ class CudaContext:
 
 class ComputeEngine:
     def __init__(self, lib_path=LIB_PATH, requested="auto",
-                 c_lib_path=C_LIB_PATH):
+                 c_lib_path=C_LIB_PATH, v_lib_path=V_LIB_PATH):
         self.requested = requested
         self.backend = "cpu"
         self.fallback_reason = None
         self.device_count = 0
         self._lib = None
         self._c_lib = None
+        self._v_lib = None
+        self.v512_reason = None
+        self._v_last_counts = None
         self._cuda_ctx = None
         self.cuda_ctx_reason = None
         self.cuda_fallback_reason = None
@@ -661,7 +737,10 @@ class ComputeEngine:
         if requested in ("auto", "cuda", "cuda-only"):
             self._try_cuda(lib_path)
             self.cuda_fallback_reason = self.fallback_reason
-        if self.backend != "cuda" and requested in ("auto", "c"):
+        if self.backend != "cuda" and requested in ("auto", "v512"):
+            self._try_v512(v_lib_path)
+        if self.backend not in ("cuda", "v512") and requested in (
+                "auto", "c", "v512"):
             self._try_c(c_lib_path)
         if requested == "cuda-only" and self.backend != "cuda":
             raise RuntimeError(
@@ -669,12 +748,14 @@ class ComputeEngine:
                 f"{self.cuda_fallback_reason or self.fallback_reason}")
         if self.backend == "cuda":
             self.fallback_reason = None
-        elif self.backend == "c":
+        elif self.backend in ("c", "v512"):
             self.fallback_reason = self.cuda_fallback_reason
         if requested == "cuda" and self.backend != "cuda":
             self.fallback_reason = self.fallback_reason or "CUDA requested but unavailable"
         if self.backend == "c":
             tune_c_threads(self)
+        elif self.backend == "v512":
+            tune_v512_threads(self)
 
     def _try_c(self, c_lib_path):
         if not os.path.isfile(c_lib_path):
@@ -739,6 +820,118 @@ class ComputeEngine:
                              hashes, flags)
         if rc != 0:
             return None
+        raw = hashes.raw
+        flag_bytes = flags.raw
+        if want_all:
+            return [(start + i, raw[32 * i:32 * i + 32])
+                    for i in range(count)]
+        out = []
+        pos = 0
+        while True:
+            i = flag_bytes.find(b"\x01", pos)
+            if i < 0:
+                break
+            out.append((start + i, raw[32 * i:32 * i + 32]))
+            pos = i + 1
+        return out
+
+    def _try_v512(self, v_lib_path):
+        """Runtime CPUID dispatch for the AVX-512 multi-buffer
+        backend. The library is loaded (loading never executes
+        kernel code), the flag-free probe compiled into it must
+        confirm AVX-512F and AVX-512BW, and only then is a
+        kernel batch run and checked digest by digest against
+        the CPU. Any failure leaves the engine unselected with
+        the reason recorded on v512_reason; selection failure
+        is never fatal, the C backend is tried next."""
+        if not os.path.isfile(v_lib_path):
+            self.v512_reason = (f"AVX-512 library not built "
+                                f"({v_lib_path})")
+            return
+        try:
+            lib = ctypes.CDLL(v_lib_path)
+        except OSError as exc:
+            self.v512_reason = f"AVX-512 library failed to load: {exc}"
+            return
+        if not hasattr(lib, "bal_v512_supported"):
+            self.v512_reason = ("AVX-512 library has no CPUID "
+                                "probe; refusing to call the kernel")
+            return
+        lib.bal_v512_supported.restype = ctypes.c_int
+        try:
+            supported = lib.bal_v512_supported()
+        except Exception as exc:
+            self.v512_reason = f"AVX-512 CPUID probe failed: {exc}"
+            return
+        if not supported:
+            bits = None
+            if hasattr(lib, "bal_v512_feature_bits"):
+                lib.bal_v512_feature_bits.restype = ctypes.c_uint
+                bits = lib.bal_v512_feature_bits()
+            self.v512_reason = (
+                "CPUID dispatch: this CPU cannot execute the "
+                "AVX-512 multi-buffer kernel (requires AVX-512F "
+                f"and AVX-512BW; feature bits {bits})")
+            return
+        lib.bal_v_batch2.restype = ctypes.c_int
+        lib.bal_v_batch2.argtypes = [
+            ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+            ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint64),
+            ctypes.POINTER(ctypes.c_uint64)]
+        lib.bal_v_search2.restype = ctypes.c_int
+        lib.bal_v_search2.argtypes = [
+            ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+            ctypes.c_uint, ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_uint32), ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_uint64),
+            ctypes.POINTER(ctypes.c_uint64)]
+        header = bytes(range(80))
+        got = self._v_batch(lib, header, 1 << 255, 0, 256)
+        if got is None:
+            self.v512_reason = "AVX-512 self-test batch failed"
+            return
+        for nonce in range(256):
+            if got[nonce] != cpu_digest(header, nonce):
+                self.v512_reason = "AVX-512 self-test digest mismatch"
+                return
+        self._v_lib = lib
+        self.backend = "v512"
+        self.v512_reason = ("selected: CPUID probe confirms "
+                            "AVX-512F and AVX-512BW and the batch "
+                            "reproduces hashlib digests")
+
+    def _v_batch(self, lib, header, target, start, count):
+        pairs = self._v_batch_flagged(lib, header, target, start,
+                                      count, want_all=True)
+        if pairs is None:
+            return None
+        digests = [b""] * count
+        for nonce, digest in pairs:
+            digests[nonce - start] = digest
+        return digests
+
+    def _v_batch_flagged(self, lib, header, target, start, count,
+                         want_all=False):
+        """Run an AVX-512 batch and return (nonce, digest) pairs
+        (all of them, or only the target-flagged ones), located
+        through the kernel's flags array. The counted ABI's
+        actuals (real nonces covered, lane computations
+        including dummy lanes) are stashed on
+        self._v_last_counts for the caller's accounting."""
+        hashes = ctypes.create_string_buffer(32 * count)
+        flags = ctypes.create_string_buffer(count)
+        target_le = target.to_bytes(32, "little")
+        out_attempted = ctypes.c_uint64(0)
+        out_backend = ctypes.c_uint64(0)
+        rc = lib.bal_v_batch2(header, start, count, C_THREADS,
+                              target_le, hashes, flags,
+                              ctypes.byref(out_attempted),
+                              ctypes.byref(out_backend))
+        if rc != 0:
+            return None
+        self._v_last_counts = (out_attempted.value,
+                               out_backend.value)
         raw = hashes.raw
         flag_bytes = flags.raw
         if want_all:
@@ -838,7 +1031,52 @@ class ComputeEngine:
                 "unique_coverage_note": None,
                 "candidate_count": 0, "researched_hashes": 0,
                 "overflow_splits": 0}
-        if self.backend == "c" and hasattr(self._c_lib, "bal_c_search2"):
+        if self.backend == "v512":
+            out_nonce = ctypes.c_uint32(0)
+            out_attempted = ctypes.c_uint64(0)
+            out_backend = ctypes.c_uint64(0)
+            out_digest = ctypes.create_string_buffer(32)
+            target_le = target.to_bytes(32, "little")
+            rc = self._v_lib.bal_v_search2(
+                header, start, count, C_THREADS, target_le,
+                ctypes.byref(out_nonce), out_digest,
+                ctypes.byref(out_attempted),
+                ctypes.byref(out_backend))
+            if rc not in (0, 1):
+                raise RuntimeError(f"bal_v_search2 returned {rc}")
+            # Wave accounting (EXP-010 semantics): attempted is
+            # the real nonces of every completed 16-lane wave;
+            # backend_hashes is the lane computations behind
+            # them, dummy lanes of partial waves included, so
+            # backend_hashes >= attempted always.
+            attempted = out_attempted.value
+            acct["backend_hashes"] = out_backend.value
+            acct["unique_coverage"] = attempted
+            if rc == 1:
+                nonce = out_nonce.value
+                digest = out_digest.raw
+                acct["candidate_count"] = 1
+                acct["verification_hashes"] += 1
+                if verify_candidate(header, target, nonce, digest):
+                    hit = (nonce, digest)
+                else:
+                    # Task 003.4 discipline, applied to the MB
+                    # backend identically: never a silent miss.
+                    native_att = attempted
+                    hit, attempted = self._recover_bad_candidate(
+                        header, target, start, count, attempted,
+                        "native AVX-512 MB (bal_v_search2)")
+                    rescan_attempted = attempted - native_att
+                    rescanned = True
+                    backend_used = "cpu-rescan"
+                    acct["verification_hashes"] += rescan_attempted
+                    acct["unique_coverage"] = None
+                    acct["unique_coverage_note"] = (
+                        "backend examined "
+                        f"{native_att} distinct nonces and the "
+                        "verification rescan re-examined a prefix; "
+                        "their exact union is not measurable")
+        elif self.backend == "c" and hasattr(self._c_lib, "bal_c_search2"):
             out_nonce = ctypes.c_uint32(0)
             out_attempted = ctypes.c_uint64(0)
             out_digest = ctypes.create_string_buffer(32)
@@ -952,7 +1190,8 @@ class ComputeEngine:
         backend_hashes = acct["backend_hashes"]
         self.last_search_stats = {
             "backend": backend_used,
-            "threads": C_THREADS if backend_used == "c" else 1,
+            "threads": C_THREADS if backend_used in ("c", "v512")
+            else 1,
             "start": start, "requested": count,
             "requested_hashes": count,
             "attempted": attempted,
@@ -1170,9 +1409,14 @@ class ComputeEngine:
         t0 = time.perf_counter()
         candidates = []
         used = self.backend
-        if self.backend == "c":
-            pairs = self._c_batch_flagged(self._c_lib, header, target,
-                                          start, count)
+        if self.backend in ("c", "v512"):
+            is_v = self.backend == "v512"
+            if is_v:
+                pairs = self._v_batch_flagged(
+                    self._v_lib, header, target, start, count)
+            else:
+                pairs = self._c_batch_flagged(
+                    self._c_lib, header, target, start, count)
             if pairs is None:
                 used = "cpu"
             else:
@@ -1189,22 +1433,29 @@ class ComputeEngine:
                         rescan_verification = \
                         self._rescan_all_candidates(
                             header, target, start, count,
-                            "native C batch", bad)
+                            "native AVX-512 MB batch" if is_v
+                            else "native C batch", bad)
                     used = "cpu-rescan"
                 else:
                     candidates = [
                         {"nonce": nonce, "hash": d[::-1].hex(),
-                         "backend": "c"} for nonce, d in clean]
+                         "backend": self.backend}
+                        for nonce, d in clean]
                 seconds = max(time.perf_counter() - t0, 1e-9)
                 # Task 003.9: the C batch computed exactly count
                 # digests (full-range enumeration by construction).
+                # The AVX-512 batch computed the lane count its
+                # counted ABI reports: the full range plus the
+                # dummy lanes of each span's final partial wave.
                 # Verification computations and any rescan work
                 # are verification-layer work, reported only under
                 # verification_hashes, never inside backend_hashes.
-                backend_hashes = count
+                backend_hashes = (self._v_last_counts[1] if is_v
+                                  else count)
                 verification_hashes = verify_count + rescan_verification
                 return candidates, {
-                    "backend": used, "original_backend": "c",
+                    "backend": used,
+                    "original_backend": self.backend,
                     "hashes": backend_hashes + verification_hashes,
                     "backend_hashes": backend_hashes,
                     "verification_hashes": verification_hashes,
@@ -1523,6 +1774,11 @@ class ComputeEngine:
             "fallback_reason": self.fallback_reason,
             "cuda_fallback_reason": self.cuda_fallback_reason,
             "c_backend": bool(self._c_lib),
+            "v512_backend": bool(self._v_lib),
+            "v512_reason": self.v512_reason,
+            "native_impl": (
+                "avx512-mb" if self.backend == "v512" else
+                "openssl-c" if self.backend == "c" else None),
             "c_threads": C_THREADS,
             "c_attempt_counting": bool(
                 self._c_lib and hasattr(self._c_lib, "bal_c_search2")),
