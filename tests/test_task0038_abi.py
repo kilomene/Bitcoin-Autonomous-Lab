@@ -22,7 +22,13 @@ Layers covered, stated precisely:
   (collect_candidates_complete) with a Python stub implementing
   the device primitive's bounded semantics: the five Task 003.8
   fields and the invariant device_hashes == unique_coverage +
-  researched_hashes on every completed call.
+  researched_hashes on every completed call. Task 003.9 scope
+  note: that invariant belongs to this CUDA recovery driver
+  (the stub simulates the device); it is not a property of CPU
+  or C backend statistics, where device_hashes is 0, and the
+  fail-closed accounting assertions below follow the Task
+  003.9 definitions (backend work and verification work are
+  separate fields).
 - Fail-closed batch verification in ComputeEngine.batch_search:
   corrupt C and CUDA enumerations are discarded and the whole
   range is independently re-covered by the trusted CPU rescan;
@@ -504,7 +510,16 @@ def test_batch_verification_fail_closed():
     assert st["verification_failures"] == 1, st
     assert st["rescanned"] is True and st["rescan_attempted"] == count
     assert st["unique_coverage"] == count
-    assert st["backend_hashes"] == count + count
+    # Task 003.9 redefinition (supersedes the 003.8 mixed total):
+    # backend_hashes is the backend's own work only (count); the
+    # rescan and every verification computation are reported
+    # separately under verification_hashes: 1 presented-candidate
+    # verification + count rescan enumeration digests + one
+    # re-verification per candidate the rescan found.
+    assert st["backend_hashes"] == count
+    assert st["verification_hashes"] == 1 + count + len(want), st
+    assert st["hashes"] == st["backend_hashes"] + \
+        st["verification_hashes"]
     assert st["candidate_count"] == 1
     assert "rescan" in st["coverage_status"], st
     assert len(eng.fallback_events) == before + 1
@@ -535,8 +550,12 @@ def test_batch_verification_fail_closed():
     assert got == want
     assert st["verification_failures"] == 1
     assert st["device_hashes"] == count, st
-    assert st["backend_hashes"] == count + count, st
+    # Task 003.9 redefinition: on the CUDA path the device is the
+    # backend, so backend_hashes == device_hashes; CPU rescan
+    # work is verification work only and never inflates either.
+    assert st["backend_hashes"] == count, st
     assert st["verification_rescan_hashes"] == count
+    assert st["verification_hashes"] == 1 + count + len(want), st
     assert st["hashrate"] == st["device_hashes"] / st["seconds"]
 
     # CPU fallback enumeration whose verification authority
