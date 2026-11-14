@@ -365,13 +365,222 @@ rule, and is not used for EXP-017 verdicts.
 
 ## EXP-018: Register-resident dual-batch MB (Y-023)
 
-Status: NOT RUN. Designed in PHASE6_RESEARCH_PLAN
-.md section 3 and HYPOTHESIS_RANKING.md. Primary
-metric is the assembly spill audit (state spills:
-target zero, against EXP-011's 48 vmovdqa64);
-the rate decision waits for EXP-017. Artifacts,
-when run: benchmarks/exp018/ plus the assembly
-record in the kernel's experiment file.
+Status: RUN 2026-11-14. Verdict: register
+residency achieved at the near-zero level (one of
+sixteen state vectors homed in a single stack
+slot, the other fifteen with no stack traffic at
+all), but the paired statistic does not show a
+significant gain over single-batch MB in any
+session or pooled, so under the predeclared
+definitions Y-023 is NOT a verified improvement.
+The finding is the second predeclared branch:
+state traffic was not the binding cost. Tier:
+PROMISING HYPOTHESIS with measured support.
+
+- **Hypothesis.** EXP-011's dual-batch kernel
+  produced the programme's highest single-session
+  2-thread median (8.27M H/s) but never reproduced
+  it, and its audit showed the dual body carrying
+  48 vmovdqa64 with state handled through arrays.
+  Y-023 asks whether a restructured dual-batch
+  kernel that holds both batches' state sets in
+  zmm registers across the round body removes
+  enough of that traffic to produce a
+  reproducible gain over single-batch MB.
+- **Mathematical basis.** The SHA-256 round's
+  state rotation is a relabelling: after a round,
+  the new state is (T1+T2, a, b, c, d+T1, e, f,
+  g). Writing the new A into the physical vector
+  that held h and the new E into the physical
+  vector that held d, then rotating the argument
+  tuple at compile time, implements the rotation
+  with no data movement at all. After eight
+  rounds the physical orientation repeats, so an
+  eight-round unit can loop eight times with the
+  state in the same sixteen named vector
+  variables throughout. Exact by construction;
+  the gates decide equivalence.
+- **Predicted effect.** State rename moves and
+  state stack traffic fall to zero or near-zero
+  in the hot loop; if EXP-011's irreproducibility
+  was state-traffic driven, the dual-batch rate
+  becomes reproducibly above single-batch MB
+  under the EXP-017 statistic.
+- **Implementation.** New source
+  extreme_optimization/src/avx512_mb_reg.c
+  (exports bal_r_batch2 and bal_r_search2,
+  library libbal_r512.so), derived from the
+  EXP-011 walker and group code, which are not
+  modified; avx512_mb.c and avx512_mb2.c are
+  untouched and production is byte-identical.
+  The dual compress v_compress16x2_reg keeps
+  both batches' states in sixteen named __m512i
+  variables, generates both schedule rings just
+  in time in stack arrays (16 state vectors plus
+  two full rings cannot fit the 32-register
+  file; residency is claimed for state, not for
+  the rings), uses the EXP-012 VPTERNLOGD cones
+  (XOR3 0x96, Ch 0xCA, Maj 0xE8), and advances
+  both batches through an eight-round ring
+  unit repeated eight times. Two structures
+  were compiled and audited: a full 64-round
+  unroll came out at 3,872 instructions with a
+  3,776-byte frame and 214 zmm stack accesses in
+  its low spill region (the compiler's long
+  live ranges defeated residency), and was
+  superseded by the eight-round repeating unit
+  recorded below; the full-unroll numbers are
+  kept here as the documented first attempt.
+- **Assembly audit (primary metric).**
+  benchmarks/exp018/asm_audit.json, produced by
+  benchmarks/exp018_asm_audit.py from objdump;
+  stack regions are taken from each function's
+  own prologue memcpy destinations. EXP-018
+  dual body v_compress16x2_reg: 1,014 static
+  instructions (the eight-round unit, executed
+  eight times per compression), frame 2,368
+  bytes; vmovdqa64 99 total, of which 21 are
+  stack-relative and all 21 fall inside the two
+  schedule ring regions; zmm stack-operand
+  instructions 90, of which 80 are schedule
+  ring accesses (40 per ring) and 10 are in the
+  spill area below the first ring, at offsets
+  0x0 (2), 0x80 (5) and 0xc0 (3). Of those 10,
+  only the 0xc0 slot carries state: exactly one
+  of the sixteen state vectors is homed there
+  (one store, one fused reload, one store in
+  the loop body); the other fifteen state
+  vectors have no stack traffic. State spill
+  count: 1 vector, 1 slot, near-zero as
+  predeclared. EXP-011 dual body
+  v_compress16x2, rebuilt from unchanged source
+  for this audit: 212 static instructions (the
+  EXP-011 report recorded 239 under its own
+  count), frame 2,112 bytes, vmovdqa64 48 (16
+  entry loads, 16 exit stores, 16 register
+  renames executed per loop iteration), zero
+  stack-relative vmovdqa64; its schedule rings
+  are stack arrays addressed through base
+  pointers. Single-batch v_compress16: 111
+  instructions, frame 1,088 bytes, vmovdqa64
+  24, zero stack-relative. So the restructure
+  removes the per-iteration rename moves and
+  holds state resident, at the price of a
+  larger static body; it does not remove the
+  schedule ring traffic, which is comparable
+  in all three bodies.
+- **Correctness evidence.** Full gate set in
+  extreme_optimization/tests/test_exp018.py,
+  all passing before any benchmark: 108,000
+  randomized SHA-256d differentials vs hashlib
+  (bad 0); genesis digest and genesis search
+  (nonce 2083236893); boundary nonces and odd
+  counts; crossing range returns -2, empty
+  range -1; template variations (version,
+  prevhash, merkle root, timestamp, nBits);
+  target exact equality accepted, target minus
+  one rejected; regtest-easy candidate set
+  equal to the Python recount (82 candidates
+  in 20,000); exact accounting: batch attempted
+  equals count, search miss attempted 5,000,
+  genesis early exit attempted exactly 50,016
+  (32-group atomic), partial group at count
+  100,003 backend 100,016, sub-group at count
+  5 backend 16, group-edge batch at 0xFFFFFFF0
+  matching hashlib for all 16 nonces straddling
+  2^32.
+- **Benchmark methodology.** EXP-017 protocol
+  only, via benchmarks/exp018_paired_bench.py
+  and exp018_analyze.py (copies of the EXP-017
+  tools with the EXP-018 arms). Paired 65,536
+  hash blocks, randomised AB or BA order, 160
+  recorded pairs per session after 8 warmup
+  pairs, 2 worker threads, per-call steal and
+  runnable-load covariates, adjusted paired
+  log-ratio with OLS adjustment and a 10,000
+  resample pairs bootstrap. Three independent
+  sessions per real comparison plus one
+  equal-pair control session (reg vs itself).
+  Node in IBD throughout: session files record
+  heights 411,173 to 411,194 of 975,810
+  headers where the RPC answered; four of the
+  seven session-start RPC reads returned
+  unavailable under benchmark load and are
+  recorded as such in the session files. Raw
+  data: benchmarks/exp018/session_*.json (7
+  files, append-only); analysis:
+  benchmarks/exp018/analysis_20261114T151341Z
+  .json.
+- **Raw results, primary comparison (reg vs
+  single-batch MB).** Adjusted log-ratios per
+  session: +0.1536 (CI -0.0382 to +0.3540),
+  +0.0330 (CI -0.1499 to +0.2185), +0.0521 (CI
+  -0.1367 to +0.2336); pooled +0.0836 (CI
+  -0.0247 to +0.1902), ratio 1.087x (CI 0.976x
+  to 1.210x), pairs won 0.554. Session median
+  rates: MB 5.39M, 5.69M, 5.64M H/s; reg 6.85M,
+  6.45M, 6.37M H/s. The point estimate is
+  positive in all three sessions, but every
+  interval contains 0, so the comparison is
+  not significant in any session or pooled.
+- **Raw results, context comparison (reg vs
+  production).** Adjusted log-ratios per
+  session: +1.5629 (CI 1.3956 to 1.7307),
+  +1.4893 (CI 1.3030 to 1.6699), +1.4630 (CI
+  1.2811 to 1.6352); pooled +1.5027 (CI 1.4010
+  to 1.6011), ratio 4.49x (CI 4.06x to 4.96x),
+  pairs won 0.881: significant in every
+  session and pooled, as expected for any
+  member of the AVX-512 MB family against
+  production under this rule.
+- **Raw results, control.** Reg vs itself, one
+  session: adjusted -0.0945 (CI -0.2770 to
+  +0.0884), pairs won 0.512, a null as required;
+  the historical min/max rule passed a phantom
+  difference in 0 of 1 control sessions; the
+  injected +0.20 effect was recovered with
+  mean bias +0.0002 over 1,000 simulations.
+- **Statistical assessment.** Within-session
+  variance of the paired log-ratio: 1.495
+  (primary), 1.279 (context), 1.442 (control);
+  between-session component 0.000 in all three.
+  Covariate adjustment priced near-neutral
+  again: pooled CI width ratios (adjusted over
+  unadjusted) 0.979 (primary), 0.990 (context),
+  0.965 (control). The primary comparison's
+  pooled interval halfwidth is about 0.107 log
+  units, so an effect of the observed size
+  (0.084) sits just inside the noise this
+  design can resolve at three sessions; the
+  variance decomposition estimates roughly 5
+  sessions at 160 pairs would be needed for a
+  0.10 halfwidth on this comparison, and the
+  honest statement is that the data show a
+  small positive point estimate that this
+  experiment cannot separate from zero.
+- **Decision.** Y-023 is not a verified
+  improvement under its predeclared
+  definitions: residency (the mechanical half)
+  is achieved, significance (the rate half) is
+  not. The recorded finding is that state
+  traffic was not the binding cost in the
+  dual-batch shape on this machine; the
+  remaining schedule ring traffic and the
+  round dependency chains are the costs that
+  stay. No integration, production unchanged.
+- **Follow-up.** The register-resident dual
+  body is retained as a gated, benchmarked
+  variant in the tree. If Y-024 (triple-batch)
+  or a schedule-residency design is run, this
+  record's audit method (regions from the
+  prologue, spill slots listed by offset) is
+  the template. A larger session count for the
+  primary comparison is a possible revisit,
+  but no further EXP-018 sessions were run:
+  three sessions per comparison is the
+  predeclared design, and adding sessions
+  after seeing the intervals would change the
+  design mid-experiment.
 
 ## EXP-019: Carry-save schedule pricing, then engine (Y-002, Y-001)
 
