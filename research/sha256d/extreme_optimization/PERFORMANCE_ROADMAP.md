@@ -75,6 +75,28 @@ pay as implemented, and bitslicing is refuted by
 measurement at about 0.03x of MB16. The target
 arithmetic of section 3 is unchanged.
 
+Update 2026-11-14 (EXP-010, Part A decision
+closure; EXP010_PART_A_REPORT.md): executed on
+the owner's immediate order during initial block
+download (load 12.39 to 12.60, the heaviest
+contention recorded), the decision is now closed.
+At 2 threads over 15 interleaved rounds of 1M:
+production C median 1,209,879 H/s (min 886,493,
+max 2,288,008); streams=4 strided median
+3,342,449 (min 1,440,195); AVX-512 multi-buffer
+median 3,551,903 (min 2,006,621, spread 207.7
+percent). Both candidates failed the predeclared
+beyond-spread criterion on their minimum rounds,
+for the third time. No integration; production
+stands. The multi-buffer variance is attributed
+to implementation behaviour under a saturated
+runnable queue, not to steal or load spikes
+(calm vs spiked medians 1.3 percent apart).
+Reopening requires a materially quieter
+environment or a kernel whose minimum clears
+production's maximum under the same rule. The
+target arithmetic of section 3 is unchanged.
+
 ## 2. The per-core ceiling (estimate, arithmetic shown)
 
 Per-nonce work after all proven precomputation: 125
