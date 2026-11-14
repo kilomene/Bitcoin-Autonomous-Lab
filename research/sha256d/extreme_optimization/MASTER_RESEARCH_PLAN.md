@@ -60,6 +60,51 @@ claims.
    and state the contention that creates, exactly as
    EXP-000 to EXP-003 did.
 
+## Claim classification (three tiers, binding)
+
+Added 2026-11-14 by owner instruction. Every result,
+hypothesis status, and claim in this programme's records
+carries exactly one of three labels. Ambition language
+never upgrades a tier; only reproduced measurement does.
+
+- VERIFIED IMPROVEMENT: actually measured and reproduced
+  under the stated conditions, with the conditions
+  (hardware, thread count, contention, spread) recorded
+  alongside the number.
+- PROMISING HYPOTHESIS: mathematically or architecturally
+  plausible, with a stated mechanism, awaiting
+  implementation or testing.
+- UNPROVEN BREAKTHROUGH: an idea needing substantial
+  investigation before any expectation is warranted.
+
+Retroactive labelling of the programme's headline claims
+(as of the EXP-004 to EXP-009 batch):
+
+- The MSG1/MSG2 schedule gain (about 2.6x over a scalar
+  schedule at equal rounds, EXP-002): VERIFIED
+  IMPROVEMENT.
+- Stream interleaving (H-01; 2.36x per worker at 2
+  streams, EXP-003): VERIFIED IMPROVEMENT under its
+  stated conditions. Its production integration remains
+  gated by the beyond-spread decision rule, which
+  EXP-004 did not pass.
+- The AVX-512 16-way multi-buffer (EXP-007): VERIFIED
+  IMPROVEMENT on a median basis at 2 threads, reproduced
+  in two interleaved sessions under contention; it holds
+  no separation (min over max) claim, and its variance is
+  the widest measured.
+- Hand-scheduled assembly as a route past the stream
+  kernels: PROMISING HYPOTHESIS. EXP-006's schedule-first
+  restructuring cut spill traffic but not time, so the
+  premise is weakened, not confirmed.
+- Cross-nonce phase pipelining (EXP-008): measured at
+  parity with a second same-phase stream; the phase
+  diversity premium is not supported on this core. It
+  stays PROMISING HYPOTHESIS only for other cores.
+- Anything beyond the per-core ceiling narrative of
+  PERFORMANCE_ROADMAP.md (fleet-scale rates, order-of-
+  magnitude single-core jumps): UNPROVEN BREAKTHROUGH.
+
 ## Workstreams
 
 The mandate's seven workstreams, mapped to concrete
