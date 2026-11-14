@@ -1,0 +1,20 @@
+[Unit]
+Description=Bitcoin Autonomous Lab solo Stratum server (own node, mainnet)
+After=network-online.target bal-bitcoind.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=REPLACE_REPO
+ExecStart=/usr/bin/python3 mining/solo_mainnet.py
+Restart=always
+RestartSec=5
+# The runner reads .local/mainnet/node-config.json for the node
+# RPC and .local/mining-endpoint.json for bind, port, share
+# difficulty and payout. It refuses to serve while the node is
+# in initial block download, so starting it early is safe; the
+# cutover watcher (scripts/solo_cutover.py) installs and starts
+# this unit only when the node has finished syncing.
+
+[Install]
+WantedBy=multi-user.target
