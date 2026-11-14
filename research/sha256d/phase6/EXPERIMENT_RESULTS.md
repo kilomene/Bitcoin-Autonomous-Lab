@@ -816,11 +816,322 @@ running throughout and were not touched).
 
 ## EXP-020: Automated full-round rewriting (Y-014, Y-015; seeds Y-048, Y-049)
 
-Status: NOT RUN. The discovery machinery's first
-component is built and seed-validated
-(src/discovery_harness.py; candidates P6C-001 to
-P6C-004 in proofs/discovery_demo_results.json, all
-proof-gated, none benchmarked). The experiment
-proper (full-round cone, both engines, promotion
-rules of COMPUTATION_GRAPH_RESEARCH.md section 8)
-runs when EXP-017 exists to decide its survivors.
+Status: COMPLETE (2026-11-14). Both engines ran
+over the joint cone of one full round plus the
+schedule cone that feeds it. The searches close
+with the incumbent's graph form proven optimal
+within the searched space (28 vector ops per
+steady-state round in the AVX-512 vocabulary,
+against a derived lower bound of 28), and with
+exactly one op left on the table, which is a
+compiler codegen gap, not a graph discovery:
+gcc emits Maj as two chained VPTERNLOGD where
+the proven form is one. That candidate (P6C-007)
+promoted to a variant kernel under the
+predeclared threshold, passed the full gate
+set, and was benchmarked under the EXP-017
+protocol: a positive point estimate in all
+three sessions but not significant in any
+session or pooled, so no verified improvement
+is claimed and nothing is integrated. Raw
+artifacts: analysis/exp020_search_results.json,
+analysis/exp020_asm_audit.json,
+proofs/exp020_candidates.json (P6C-005 to
+P6C-009), benchmarks/exp020/ (four append-only
+sessions plus the analysis). Tool:
+src/exp020_round_search.py.
+
+- **Hypothesis.** Y-014 (the saturation engine,
+  per HYPOTHESIS_RANKING.md's numbering): an
+  e-graph over the full round (S0, S1, Ch, Maj,
+  the T1 and T2 addition trees evaluated jointly
+  with shared subterms) finds an equivalent
+  formulation with fewer vector operations or a
+  shorter dependency chain than the production
+  round. Y-015 (the SAT/SMT engine): solver-guided
+  rewriting and bounded superoptimisation over
+  the same cones find forms the fixed rewrite
+  set cannot reach, including addition-tree
+  shapes and cross-term sharing the cone-by-cone
+  proofs of EXP-012 could not see. (Registry
+  note: HYPOTHESIS_REGISTRY_Y.md titles the two
+  mechanisms transposed relative to
+  HYPOTHESIS_RANKING.md; this experiment ran
+  both engines on identical cones and proof
+  gates, so both entries are decided by it
+  either way.)
+- **Mathematical basis.** The round as a
+  bit-vector expression DAG over the ten inputs
+  (a..h, W, K), outputs a' and e', plus the
+  schedule cone over (W[t-16], W[t-15], W[t-7],
+  W[t-2]) with output W[t], in the per-lane
+  scalar semantics of the multi-buffer kernel.
+  Equivalence standard: z3 bit-vector UNSAT on
+  all three outputs jointly, behind a
+  1,000,000-sample differential filter. Cost
+  model: the EXP-019 corrected census (every
+  vector op 1 in its class; a 3:2 compressor
+  level 3 ops; resolved carry-save sums 5 or 7)
+  with critical-path depth as second objective.
+  Methods hygiene, recorded because it mattered:
+  the first draft of the reference DAG encoded
+  Ch with the ANDNOT operands reversed, which
+  is a different function (truth table 0x90,
+  not 0xCA); the pipeline's own truth-table
+  check caught it before any search ran, and
+  the corrected reference was verified against
+  an independent scalar round implementation
+  (2,000 random states, 0 mismatches) and the
+  scalar schedule recurrence (2,000 random
+  templates, 0 mismatches).
+- **Predeclared promotion threshold** (written
+  into the search tool before the searches ran,
+  per COMPUTATION_GRAPH_RESEARCH.md section 8):
+  a candidate promotes to a variant kernel only
+  if it is proven equivalent as above, its full
+  round+schedule census is strictly below the
+  incumbent EMITTED census (mechanically
+  audited, 29 arithmetic ops), its depth does
+  not regress past the extracted optimum, and
+  the gain is not already present in the
+  emitted code.
+- **Incumbent.** Source form (classic library,
+  production association): 38 ops, output
+  depths a' 7, e' 7, W[t] 5. Emitted form
+  (production object, gcc -O3 -mavx512f
+  -mavx512bw, whole-function census of
+  v_compress16, which contains exactly one
+  round body): 29 arithmetic ops per
+  steady-state round: 10 vprold/vprord,
+  2 vpsrld, 7 vpternlogd (immediates 0x96 four
+  times for the sigma XOR triples, 0xE4 for
+  Ch, and 0x60 then 0x78 chained for Maj),
+  10 vpaddd. gcc already folds every sigma
+  triple and Ch into single ternlogs and
+  already adds S1 last in T1; Maj is the one
+  place it spends two ternlogs on a one-ternlog
+  function.
+- **Search A (saturation).** Rewrite set: the
+  lab's proven Boolean rules, Ch/Maj alt forms
+  recognised by truth table, term-level
+  VPTERNLOGD folding (any Boolean expression
+  over at most 3 frontier terms becomes one
+  ternlog of those terms), De Morgan and
+  ANDNOT introduction, commutativity, and
+  associativity restricted to flattened add
+  multisets of size at most 5 (cross-boundary
+  association is Search B's BFS territory).
+  Campaign 1 from the classic reference:
+  388 expressions, 98 classes, 15 passes to
+  fixpoint (the 500,000-node design budget was
+  not binding). Extraction: classic library
+  37 ops (depths 5, 5, 5; the entire classic
+  saving over the source form is the Maj alt
+  form, 5 to 4, plus depth-optimal
+  reassociation); AVX-512 library 28 ops
+  (depths a' 5, e' 5, W[t] 4). Campaign 2,
+  seeded additionally with the ternlog forms:
+  490 expressions, extracted 28 ops, no new
+  winner. Under the design's stopping rule
+  (two campaigns, no new proven candidate
+  beating the incumbent graph), the round cone
+  is characterised within this rewrite set and
+  vocabulary.
+- **Search B (SMT-guided and superoptimisation).**
+  (1) Boolean function-set BFS, cost-weighted,
+  all 256 three-input functions reached:
+  classic minima Ch 3, Maj 4, XOR3 2,
+  reproducing EXP-012 exactly; in the ternlog
+  library every nonconstant function costs 1.
+  (2) Addition-network BFS over disjoint
+  subset-sum intermediates: T1 minimum 4 adds
+  (exhaustive, 826 states), schedule sum
+  minimum 3 adds (exhaustive, 54 states). The
+  (a', e') pair BFS completed levels 0 to 3
+  (97,357 states) before its 600 s deadline;
+  the exact pair bound of 7 adds is completed
+  by counting proof: in any adds-only network
+  over the materialised atoms, a' (a 7-operand
+  sum) needs at least 6 adds among its
+  ancestors, e' (a 6-operand sum) at least 5,
+  and the ancestors the two can share are
+  subset sums of their 5 common atoms, at most
+  4 adds; total at least 6 + 5 - 4 = 7, and 7
+  is achieved by the incumbent structure.
+  (3) Sigma lower bounds by symbolic offset
+  support: the four sigmas' dependency supports
+  are exactly three distinct offsets each
+  (S0: 2, 13, 22 on a; S1: 6, 11, 25 on e;
+  s0: 7, 18, 3 on W[t-15]; s1: 17, 19, 10 on
+  W[t-2]), verified by symbolic propagation;
+  a value whose bits depend on k distinct
+  offsets of one variable, none of them 0,
+  needs at least k offset-producing ops
+  (induction on the DAG: a rotation permutes
+  the support, a bitwise op unions supports,
+  and the offset-op count dominates the
+  support size not containing 0), plus at
+  least one combining op per sigma. So each
+  sigma costs at least 4, and the four cost
+  at least 16 (12 offset ops + 4 combines).
+  (4) Sharing analysis on the hash-consed
+  reference: no nontrivial subexpression is
+  shared between any two of S1, Ch, S0, Maj,
+  s0, s1; the only sharing in the joint cone
+  is T1 between a' and e', already in the
+  incumbent. (5) Materialisation: z3 SAT
+  counterexamples confirm the rotated terms
+  cannot enter the addition network
+  unmaterialised (rotr6 + rotr11 differs from
+  rotr6 xor rotr11; the three-term sum differs
+  from S1), and entering them separately
+  costs more adds than the one combining
+  ternlog. (6) Carry-save forms for T1 and
+  the schedule sum, priced at EXP-019: T1
+  plain 4 vs 6 (one level) or 8 (two);
+  schedule plain 3 vs 5 or 7; rejected by the
+  cost model (record P6C-009). (7) Bounded
+  stochastic superoptimiser: 20,000 mutation
+  proposals over the joint DAG seeded at the
+  extracted optimum, 46 accepted moves, best
+  score (28 ops, depth 5): nothing below the
+  extraction.
+- **Lower bound, assembled.** Offset ops at
+  least 12, sigma combines at least 4, Ch and
+  Maj at least 1 each in the ternlog library,
+  adds at least 7 (round pair) + 3 (schedule)
+  = 10. Total at least 28 vector ops per
+  steady-state round in the vocabulary
+  {VPADDD, VPTERNLOGD, classic bitwise,
+  VPROLD, VPSRLD}. The extracted form achieves
+  28, so it is optimal in that vocabulary.
+  Out of the searched vocabulary, stated for
+  scope: GFNI affine (its byte-local bit
+  matrices cannot express these rotations on
+  their own), VPSHUFB byte rotations (one op
+  per offset, the same counting), and
+  carry-save (priced above).
+- **Proofs.** Both extracted forms: z3 UNSAT
+  on (a', e', W[t]) jointly against the
+  reference, and 1,000,000-sample differentials
+  with 0 mismatches (records P6C-005, P6C-006).
+- **Promotion and variant.** The extracted
+  graph equals what gcc already emits except
+  for Maj, so the single promotable candidate
+  is P6C-007 (Maj as one VPTERNLOGD 0xE8):
+  census 28 against the emitted 29, no depth
+  regression. Variant kernel:
+  extreme_optimization/src/avx512_mb_exp020.c,
+  a production-shaped copy of
+  mining/cpu/bal_avx512_mb.c with Ch and Maj
+  written as single ternlog intrinsics
+  (exports bal_p6_batch2 / bal_p6_search2);
+  production is untouched. Its emitted census
+  is mechanically 28 (6 vpternlogd:
+  0x96 four times, 0xCA, 0xE8; audit in
+  analysis/exp020_asm_audit.json). Full gate
+  set in extreme_optimization/tests/
+  test_exp020.py, all passing before any
+  benchmark: 108,000 randomized differentials
+  vs hashlib (bad 0), genesis digest and
+  search, boundary nonces and odd counts,
+  crossing and empty ranges rejected, template
+  variations, target exact equality accepted
+  and minus-one rejected, regtest-easy
+  candidate set equal to the Python recount
+  (82 in 20,000), exact accounting (search
+  miss 5,000; genesis early exit exactly
+  50,016; partial group at 100,003 backend
+  100,016; sub-group at 5 backend 16;
+  group-edge batch at 0xFFFFFFF0 matching
+  hashlib for all 16 nonces).
+- **Benchmark.** EXP-017 protocol only, via
+  benchmarks/exp020_paired_bench.py and
+  exp020_analyze.py: paired 65,536-hash
+  blocks, randomised AB or BA order, 160
+  recorded pairs per session after 8 warmup
+  pairs, 2 worker threads, per-call steal and
+  runnable-load covariates, adjusted paired
+  log-ratio with 10,000-resample bootstrap.
+  Three sessions of variant vs production MB
+  plus one equal-pair control session
+  (production MB vs itself). Session adjusted
+  log-ratios: +0.0853 (CI -0.106 to +0.291),
+  +0.0277 (CI -0.166 to +0.228), +0.0204 (CI
+  -0.204 to +0.232); pooled +0.0493 (CI -0.067
+  to +0.167), ratio 1.051x (CI 0.935x to
+  1.182x), pairs won 0.515. Control: +0.0124
+  (CI -0.201 to +0.218), pairs won 0.463, a
+  null as required. Session median rates:
+  production MB 5.73M, 4.91M, 5.36M H/s;
+  variant 6.68M, 5.55M, 5.99M H/s. Node RPC
+  reads at the session starts timed out under
+  load and are recorded as unavailable in the
+  session files (load average 11.44 / 7.74 /
+  7.48 at the first session start); the miner
+  and node were not touched. Raw data:
+  benchmarks/exp020/session_*.json (4 files,
+  append-only); analysis:
+  benchmarks/exp020/analysis_20261114T165200Z
+  .json.
+- **Statistical assessment.** The point
+  estimate is positive in all three sessions,
+  but every interval contains 0, so under the
+  adopted EXP-017 decision rule the variant is
+  not significantly faster in any session or
+  pooled. Within-session variance of the
+  paired log-ratio 1.743, between-session
+  0.000; the variance decomposition estimates
+  about 17 sessions at 160 pairs for a 0.05
+  log-unit halfwidth on this comparison, and
+  the census-expected effect (1 op of 29,
+  about 3.4 percent of arithmetic census,
+  before dilution by the round's data
+  movement) sits below what three sessions
+  can resolve. As in EXP-018, no sessions
+  were added after seeing the intervals: the
+  three-session design is predeclared.
+- **Sub-verdicts.** Y-014 (saturation engine):
+  SUPPORTED as an instrument, NEGATIVE as a
+  discovery: the saturation reached the
+  vocabulary optimum from the classic
+  reference and a second campaign found no
+  new winner, so the round cone is
+  characterised in the stated space: no
+  cheaper equivalent full-round graph exists
+  there. Y-015 (SMT-guided engine):
+  SUPPORTED as an instrument, NEGATIVE as a
+  discovery on this cone: its yields (Boolean
+  minima re-derived, addition-network bounds,
+  materialisation counterexamples, the
+  superoptimiser's null) agree with Search A
+  everywhere they overlap, and it produced no
+  proven candidate the saturation missed,
+  which was its comparative success criterion;
+  its price is the pair BFS's incomplete
+  depth (levels 0 to 3 of 7), recorded here
+  rather than rounded up. P6C-007 (the Maj
+  codegen gap): proven, priced, gated and
+  benchmarked; NOT a verified improvement
+  under the adopted rule.
+- **Decision.** The full-round computation
+  graph is closed at the vocabulary optimum:
+  the remaining gap between the graph and the
+  emitted code was one instruction, it is now
+  measured, and it does not separate from
+  noise under the decision statistic. No
+  integration; production byte-identical.
+  Tier: ESTABLISHED for the characterisation,
+  the lower bound, and the benchmark null.
+- **Follow-up.** Workstream A's round cone is
+  characterised; the design's next cone is
+  the two-round cone (cross-round sharing),
+  which this experiment did not search and
+  whose premise the sharing analysis weakens
+  (nothing nontrivial is shared even within
+  one round). The variant kernel is retained
+  in the tree as a gated, benchmarked artifact.
+  If a future compiler emits Maj as one
+  ternlog for the classic form, P6C-007's
+  delta disappears and this record is the
+  evidence it existed.
