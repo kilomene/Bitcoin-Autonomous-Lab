@@ -1060,10 +1060,69 @@ by reference, without altering the originals.
   regimes are left as a data point for
   Y-003. Production byte-identical.
 
+### EXP-020: Automated full-round rewriting (Phase 6, Y-014, Y-015)
+
+- Hypothesis: an e-graph over the full round
+  (Search A, saturation) or solver-guided
+  rewriting and bounded superoptimisation
+  (Search B) find an equivalent formulation
+  cheaper than the production round, in ops
+  or depth, somewhere the cone-by-cone proofs
+  of EXP-012 could not see: shared subterms,
+  addition-tree shapes, cross-term reuse.
+- Implementation: expression DAGs for the
+  round and the schedule cone, verified
+  against an independent scalar round (2,000
+  states) and the scalar schedule recurrence
+  (2,000 templates) before any search.
+  Saturation: 388 expressions in campaign 1,
+  490 in campaign 2, fixpoint both.
+  Superoptimisation: Boolean BFS over all
+  256 three-input functions; addition-network
+  BFS (T1 and the schedule sum exhaustive,
+  the (a', e') pair to level 3 in 600 s);
+  stochastic mutation seeded at the
+  extraction, 20,000 proposals.
+- Correctness evidence: z3 UNSAT on (a', e',
+  W[t]) jointly for both extracted forms,
+  behind 1,000,000-sample differentials with
+  0 mismatches. The promoted variant passes
+  the full gate set (108,000 differentials,
+  genesis, boundaries, target equality and
+  minus-one, regtest-easy set, exact
+  accounting) in tests/test_exp020.py.
+- Measured result: extraction reaches 28
+  vector ops per steady-state round in the
+  AVX-512 vocabulary, and Search B assembles
+  a matching lower bound (12 offset ops +
+  6 combines + 10 adds), so the incumbent's
+  graph is optimal in that vocabulary. The
+  one op below the emitted code (29) is
+  codegen, not graph: gcc emits Maj as two
+  chained VPTERNLOGD where the proven form
+  is one (0xE8). The variant kernel with
+  single-ternlog Ch and Maj (28 emitted,
+  mechanically audited) benchmarked under
+  the EXP-017 protocol: pooled adjusted
+  log-ratio +0.0493 (CI -0.067 to +0.167),
+  positive in all three sessions, not
+  significant in any session or pooled;
+  control session null as required.
+- Decision: closure for the round cone
+  within the stated vocabulary, rewrite set
+  and bounds; P6C-007 is not a verified
+  improvement under the adopted rule, no
+  integration, production byte-identical.
+  Tier: established (characterisation, lower
+  bound, benchmark null). Full record and
+  artifacts: ../phase6/EXPERIMENT_RESULTS.md,
+  EXP-020; candidates P6C-005 to P6C-009 in
+  ../phase6/proofs/exp020_candidates.json.
+
 ## Registry state
 
-Twenty experiments recorded (EXP-000 to
-EXP-019), plus Part B (HYPOTHESIS_REGISTRY_Y.md,
+Twenty-one experiments recorded (EXP-000 to
+EXP-020), plus Part B (HYPOTHESIS_REGISTRY_Y.md,
 Y-001 to Y-108) and Part C
 (PERFORMANCE_CEILING.md) of the Next Research
 Phase. EXP-011 to EXP-015 ran as one batch on
@@ -1097,7 +1156,12 @@ a verified improvement. EXP-019 (carry-save
 schedule pricing) has also run and is recorded
 above: the price list closes Y-002 and Y-001
 as established negatives, and no kernel was
-built. Phase 6 reserves EXP-020 for its
-remaining designed experiment. Phase 6 records live in
-../phase6/ (plan, results, final report). Next
-unreserved ID: EXP-021.
+built. EXP-020 (full-round rewriting) has also
+run and is recorded above: the round cone is
+characterised at its vocabulary optimum (28
+ops, matching lower bound), the single
+codegen-gap candidate promoted, gated and
+benchmarked to a non-significant result, and
+production remains byte-identical. Phase 6
+records live in ../phase6/ (plan, results,
+final report). Next unreserved ID: EXP-021.
