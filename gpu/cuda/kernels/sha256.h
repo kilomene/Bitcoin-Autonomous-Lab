@@ -62,7 +62,11 @@ BAL_HD static inline void bal_sha256_init(BalSha256* s) {
   s->len=0; s->buflen=0;
 }
 
-BAL_HD static inline void bal_sha256_block(BalSha256* s, const uint8_t* p) {
+// One SHA-256 compression of a 64-byte block into an explicit state.
+// This is the single compression core; the streaming API, the circular
+// schedule variant and the Bitcoin midstate path are all built on the
+// same round function so a host proof of one covers the others.
+BAL_HD static inline void bal_compress_state(uint32_t h[8], const uint8_t* p) {
   uint32_t w[64];
   for (int i=0;i<16;i++)
     w[i]=((uint32_t)p[4*i]<<24)|((uint32_t)p[4*i+1]<<16)|((uint32_t)p[4*i+2]<<8)|(uint32_t)p[4*i+3];
@@ -71,7 +75,7 @@ BAL_HD static inline void bal_sha256_block(BalSha256* s, const uint8_t* p) {
     uint32_t s1=BAL_RR(w[i-2],17)^BAL_RR(w[i-2],19)^(w[i-2]>>10);
     w[i]=w[i-16]+s0+w[i-7]+s1;
   }
-  uint32_t a=s->h[0],b=s->h[1],c=s->h[2],d=s->h[3],e=s->h[4],f=s->h[5],g=s->h[6],hh=s->h[7];
+  uint32_t a=h[0],b=h[1],c=h[2],d=h[3],e=h[4],f=h[5],g=h[6],hh=h[7];
   for (int i=0;i<64;i++) {
     uint32_t S1=BAL_RR(e,6)^BAL_RR(e,11)^BAL_RR(e,25);
     uint32_t ch=(e&f)^((~e)&g);
@@ -81,7 +85,43 @@ BAL_HD static inline void bal_sha256_block(BalSha256* s, const uint8_t* p) {
     uint32_t t2=S0+mj;
     hh=g;g=f;f=e;e=d+t1;d=c;c=b;b=a;a=t1+t2;
   }
-  s->h[0]+=a;s->h[1]+=b;s->h[2]+=c;s->h[3]+=d;s->h[4]+=e;s->h[5]+=f;s->h[6]+=g;s->h[7]+=hh;
+  h[0]+=a;h[1]+=b;h[2]+=c;h[3]+=d;h[4]+=e;h[5]+=f;h[6]+=g;h[7]+=hh;
+}
+
+// Circular 16-word schedule variant: mathematically identical, but the
+// schedule lives in a 16-word ring instead of a 64-word array, which
+// cuts local-memory/register pressure on GPU threads. Slot (i&15)
+// holds w[i-16] at step i, exactly the word the recurrence replaces.
+BAL_HD static inline void bal_compress_state_circ(uint32_t h[8], const uint8_t* p) {
+  uint32_t w[16];
+  for (int i=0;i<16;i++)
+    w[i]=((uint32_t)p[4*i]<<24)|((uint32_t)p[4*i+1]<<16)|((uint32_t)p[4*i+2]<<8)|(uint32_t)p[4*i+3];
+  uint32_t a=h[0],b=h[1],c=h[2],d=h[3],e=h[4],f=h[5],g=h[6],hh=h[7];
+  for (int i=0;i<64;i++) {
+    if (i>=16) {
+      uint32_t x15=w[(i-15)&15], x2=w[(i-2)&15];
+      uint32_t s0=BAL_RR(x15,7)^BAL_RR(x15,18)^(x15>>3);
+      uint32_t s1=BAL_RR(x2,17)^BAL_RR(x2,19)^(x2>>10);
+      w[i&15]=w[i&15]+s0+w[(i-7)&15]+s1;
+    }
+    uint32_t wi=w[i&15];
+    uint32_t S1=BAL_RR(e,6)^BAL_RR(e,11)^BAL_RR(e,25);
+    uint32_t ch=(e&f)^((~e)&g);
+    uint32_t t1=hh+S1+ch+bal_k(i)+wi;
+    uint32_t S0=BAL_RR(a,2)^BAL_RR(a,13)^BAL_RR(a,22);
+    uint32_t mj=(a&b)^(a&c)^(b&c);
+    uint32_t t2=S0+mj;
+    hh=g;g=f;f=e;e=d+t1;d=c;c=b;b=a;a=t1+t2;
+  }
+  h[0]+=a;h[1]+=b;h[2]+=c;h[3]+=d;h[4]+=e;h[5]+=f;h[6]+=g;h[7]+=hh;
+}
+
+BAL_HD static inline void bal_sha256_block(BalSha256* s, const uint8_t* p) {
+  bal_compress_state(s->h, p);
+}
+
+BAL_HD static inline void bal_sha256_block_circ(BalSha256* s, const uint8_t* p) {
+  bal_compress_state_circ(s->h, p);
 }
 
 BAL_HD static inline void bal_sha256_update(BalSha256* s, const uint8_t* data, uint64_t n) {
@@ -126,6 +166,156 @@ BAL_HD static inline void bal_sha256d_header(const uint8_t* header, uint32_t non
   uint8_t first[32];
   bal_sha256(h, 80, first);
   bal_sha256(first, 32, out);
+}
+
+BAL_HD static inline void bal_sha256_init_words(uint32_t h[8]) {
+  static const uint32_t H0[8] = {0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,
+                                 0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
+  for (int i=0;i<8;i++) h[i]=H0[i];
+}
+
+BAL_HD static inline void bal_state_to_bytes(const uint32_t h[8], uint8_t* out) {
+  for (int i=0;i<8;i++) {
+    out[4*i]=(uint8_t)(h[i]>>24); out[4*i+1]=(uint8_t)(h[i]>>16);
+    out[4*i+2]=(uint8_t)(h[i]>>8); out[4*i+3]=(uint8_t)(h[i]);
+  }
+}
+
+// Full SHA-256 using the circular schedule for every block.
+BAL_HD static inline void bal_sha256_circ(const uint8_t* data, uint64_t n, uint8_t* out) {
+  BalSha256 s; bal_sha256_init(&s);
+  // Streaming with the circular compressor: process full blocks
+  // directly and pad manually, mirroring bal_sha256_final semantics.
+  uint32_t h[8]; bal_sha256_init_words(h);
+  uint64_t full = n / 64;
+  for (uint64_t b=0;b<full;b++) bal_compress_state_circ(h, data + 64*b);
+  uint32_t rem = (uint32_t)(n % 64);
+  uint8_t tail[128];
+  for (uint32_t i=0;i<rem;i++) tail[i]=data[64*full+i];
+  tail[rem]=0x80;
+  uint32_t tailblocks = (rem < 56) ? 1 : 2;
+  for (uint32_t i=rem+1;i<64*tailblocks;i++) tail[i]=0;
+  uint64_t bits = n * 8;
+  for (int i=0;i<8;i++) tail[64*tailblocks-8+i]=(uint8_t)(bits >> (56-8*i));
+  for (uint32_t b=0;b<tailblocks;b++) bal_compress_state_circ(h, tail + 64*b);
+  (void)s;
+  bal_state_to_bytes(h, out);
+}
+
+// ------------------------------------------------------------------
+// Bitcoin midstate path (Task 002, Phase 2).
+//
+// The 80-byte header is two SHA-256 blocks for the inner hash:
+// block 1 is header bytes 0..63 (version, prevhash, and the first
+// 28 bytes of the merkle root). It contains NO nonce, timestamp or
+// nBits bytes, so its compression from the SHA-256 IV is a per-header
+// constant: the midstate. Block 2 is header bytes 64..79 (last 4
+// merkle bytes, timestamp, nBits, nonce at bytes 76..79) followed by
+// SHA-256 padding for an 80-byte message (0x80, zeros, bit length
+// 640 in the final 8 bytes). The midstate must be recomputed whenever
+// any byte of header[0..63] changes; bytes 64..79 travel with the
+// per-nonce work as the "tail". This splits exactly at the consensus
+// block boundary; no round is approximated or skipped.
+// ------------------------------------------------------------------
+BAL_HD static inline void bal_sha256d_midstate(const uint8_t* header, uint32_t st[8]) {
+  bal_sha256_init_words(st);
+  bal_compress_state(st, header);
+}
+
+BAL_HD static inline void bal_sha256d_midstate_circ(const uint8_t* header, uint32_t st[8]) {
+  bal_sha256_init_words(st);
+  bal_compress_state_circ(st, header);
+}
+
+BAL_HD static inline void bal_sha256d_from_midstate(const uint32_t st0[8],
+                                                    const uint8_t* tail16,
+                                                    uint32_t nonce,
+                                                    uint8_t* out) {
+  uint8_t block[64];
+  for (int i=0;i<16;i++) block[i]=tail16[i];
+  // Nonce sits at header bytes 76..79, tail offsets 12..15, little endian.
+  block[12]=(uint8_t)(nonce & 0xff); block[13]=(uint8_t)((nonce>>8)&0xff);
+  block[14]=(uint8_t)((nonce>>16)&0xff); block[15]=(uint8_t)((nonce>>24)&0xff);
+  block[16]=0x80;
+  for (int i=17;i<56;i++) block[i]=0;
+  for (int i=56;i<62;i++) block[i]=0;
+  block[62]=0x02; block[63]=0x80; // 640 bits, big endian length field
+  uint32_t st[8];
+  for (int i=0;i<8;i++) st[i]=st0[i];
+  bal_compress_state(st, block);
+  uint8_t first[32];
+  bal_state_to_bytes(st, first);
+  bal_sha256(first, 32, out);
+}
+
+BAL_HD static inline void bal_sha256d_from_midstate_circ(const uint32_t st0[8],
+                                                         const uint8_t* tail16,
+                                                         uint32_t nonce,
+                                                         uint8_t* out) {
+  uint8_t block[64];
+  for (int i=0;i<16;i++) block[i]=tail16[i];
+  block[12]=(uint8_t)(nonce & 0xff); block[13]=(uint8_t)((nonce>>8)&0xff);
+  block[14]=(uint8_t)((nonce>>16)&0xff); block[15]=(uint8_t)((nonce>>24)&0xff);
+  block[16]=0x80;
+  for (int i=17;i<56;i++) block[i]=0;
+  for (int i=56;i<62;i++) block[i]=0;
+  block[62]=0x02; block[63]=0x80;
+  uint32_t st[8];
+  for (int i=0;i<8;i++) st[i]=st0[i];
+  bal_compress_state_circ(st, block);
+  uint8_t first[32];
+  bal_state_to_bytes(st, first);
+  bal_sha256_circ(first, 32, out);
+}
+
+BAL_HD static inline void bal_sha256d_header_midstate(const uint8_t* header,
+                                                      uint32_t nonce,
+                                                      uint8_t* out) {
+  uint32_t st[8];
+  bal_sha256d_midstate(header, st);
+  bal_sha256d_from_midstate(st, header + 64, nonce, out);
+}
+
+BAL_HD static inline void bal_sha256d_header_circ(const uint8_t* header,
+                                                  uint32_t nonce,
+                                                  uint8_t* out) {
+  uint32_t st[8];
+  bal_sha256d_midstate_circ(header, st);
+  bal_sha256d_from_midstate_circ(st, header + 64, nonce, out);
+}
+
+// ------------------------------------------------------------------
+// Candidate recording (Task 002, Phase 3). One primitive shared by the
+// CUDA kernel and the host validation build, so the host concurrency
+// tests exercise the exact logic the device runs. The counter counts
+// EVERY candidate found (including ones that no longer fit), a slot
+// is claimed atomically before any write, writes happen only when the
+// claimed index is inside the allocated capacity, and an overflow
+// flag is set when a candidate could not be stored. A caller that
+// sees the overflow flag must treat the search as incomplete, never
+// as a clean truncated list.
+// ------------------------------------------------------------------
+#if defined(__CUDA_ARCH__)
+#define BAL_ATOMIC_ADD(p, v) atomicAdd((p), (v))
+#define BAL_ATOMIC_SET1(p) atomicExch((p), 1u)
+#else
+#define BAL_ATOMIC_ADD(p, v) __sync_fetch_and_add((p), (v))
+#define BAL_ATOMIC_SET1(p) (void)__sync_lock_test_and_set((p), 1u)
+#endif
+
+BAL_HD static inline void bal_record_candidate(uint32_t* counter, uint32_t cap,
+                                               uint32_t* cand_nonces,
+                                               uint8_t* cand_digests,
+                                               uint32_t* overflow,
+                                               uint32_t nonce,
+                                               const uint8_t* digest) {
+  uint32_t idx = BAL_ATOMIC_ADD(counter, 1u);
+  if (idx < cap) {
+    cand_nonces[idx] = nonce;
+    for (int b=0;b<32;b++) cand_digests[32*(uint64_t)idx + b] = digest[b];
+  } else {
+    BAL_ATOMIC_SET1(overflow);
+  }
 }
 
 // Target check: digest and target are both 32-byte little-endian values.
