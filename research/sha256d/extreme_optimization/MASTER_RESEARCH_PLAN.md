@@ -144,11 +144,17 @@ activities and artifacts in this repo.
 
 - Maintain MEMORY_AND_CACHE_RESEARCH.md. The standing
   finding is that mining on this machine is compute and
-  latency bound, not memory bound; the workstream's job is
-  to keep that finding honest as kernels change (spill
-  traffic at high stream counts, digest store traffic,
-  I-cache pressure of unrolled stream bodies: X-053 to
-  X-058, X-109).
+  latency bound and that DRAM bandwidth does not bind;
+  the workstream's job is to keep that finding honest as
+  kernels change (spill traffic at high stream counts,
+  digest store traffic, I-cache pressure of unrolled
+  stream bodies: X-053 to X-058, X-109). CORRECTED by
+  Phase 6 (2026-11-14): the original "not memory bound"
+  phrasing is narrowed to DRAM bandwidth everywhere it
+  appears; register, spill, stack and L1 state traffic
+  are measured first-order costs (EXP-005, EXP-006,
+  EXP-011) and belong to this workstream's research, not
+  only its audit.
 
 ### Workstream D: Compiler, assembly, and automated code generation
 
