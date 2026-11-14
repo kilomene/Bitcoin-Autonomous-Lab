@@ -10,10 +10,11 @@
 //   bal-miner search <header_hex> <target_be_hex> <start_nonce> <count> <threads>
 //
 // search prints exactly one of:
-//   FOUND nonce=<n> hash=<display hex>
+//   FOUND nonce=<n> hash=<display hex> ... winner_semantics=first-found
 //   NONE hashes=<n> seconds=<s> hashrate_hs=<n>
 // bench prints:
 //   BENCH hashes=<n> seconds=<s> hashrate_hs=<n> threads=<n>
+//         unique_nonce_space=<n> slice_wraps=<n> repeated=own-slice-only
 //
 // Task 001 corrections:
 // - The shared stop flag is a C11 _Atomic int, not volatile.
@@ -30,8 +31,25 @@
 //   32-bit nonce space; wrapping ranges are rejected, never
 //   silently wrapped. The final nonce 0xFFFFFFFF is reachable when
 //   the interval ends exactly at 2^32.
-// - When several workers find candidates, the reported winner is
-//   deterministically the smallest found nonce.
+// - Winner semantics (corrected in Task 003.3): the search stops
+//   at the FIRST candidate found by any worker (first-found
+//   semantics). The reported nonce is the smallest among the
+//   candidates that were actually found before the stop flag
+//   propagated. That is NOT a proof that it is the lowest valid
+//   nonce in the range: a worker may be stopped before reaching a
+//   lower qualifying nonce in its own span. No output of this
+//   program claims the globally lowest nonce.
+// - Bench mode (corrected in Task 003.3): every worker owns a
+//   disjoint contiguous slice of the 32-bit nonce space and wraps
+//   inside its own slice only. The earlier scheme started workers
+//   1,000,000 nonces apart but let each run unboundedly, so a
+//   worker hashed straight into its neighbour's starting region
+//   and nonces were computed twice (measured: about 300,000
+//   duplicated nonces in a 10 second 2-thread bench). Wrap-arounds
+//   inside a worker's own slice are repeated computations of
+//   nonces that worker already covered; they count in hashes=
+//   (actual attempts) but the output states the unique nonce
+//   space covered separately so the two are never confused.
 
 #include <openssl/sha.h>
 #include <errno.h>
@@ -100,6 +118,7 @@ typedef struct {
     int seconds;         // bench mode: run duration, count ignored
     _Atomic int *stop;
     uint64_t hashes;     // actual hashes completed by this worker
+    uint64_t wraps;      // bench only: wraps inside the own slice
     int found;
     uint32_t found_nonce;
     uint8_t found_hash[32];
@@ -156,9 +175,17 @@ static void *bench_worker(void *arg) {
     clock_gettime(CLOCK_MONOTONIC, &ts);
     double start = ts.tv_sec + ts.tv_nsec / 1e9;
     uint64_t done = 0;
-    uint64_t nonce = (uint64_t)w->nonce_base + w->start;
+    // This worker owns exactly [begin, end) of the nonce space and
+    // never leaves it: at the end it wraps to its own begin and
+    // counts the wrap. Wraps are repeated computations, reported
+    // separately from the unique space the worker covers.
+    uint64_t begin = w->start;
+    uint64_t end = w->start + w->count; // <= 2^32 by construction
+    uint64_t nonce = begin;
+    uint64_t wraps = 0;
     for (;;) {
         for (int burst = 0; burst < 100000; burst++) {
+            if (nonce >= end) { nonce = begin; wraps++; }
             uint32_t n32 = (uint32_t)nonce;
             header[76] = (uint8_t)(n32 & 0xff);
             header[77] = (uint8_t)((n32 >> 8) & 0xff);
@@ -175,6 +202,7 @@ static void *bench_worker(void *arg) {
         if (now - start >= w->seconds) break;
     }
     w->hashes = done;
+    w->wraps = wraps;
     return NULL;
 }
 
@@ -205,7 +233,41 @@ static uint64_t run_workers(work_t *works, pthread_t *tids, int *created,
     return total;
 }
 
+// Bench slice for worker i of `threads`: disjoint contiguous
+// partition of the 32-bit nonce space (Task 003.3).
+static void bench_slice(uint64_t threads, uint64_t i,
+                        uint64_t *begin, uint64_t *count) {
+    uint64_t slice = 0x100000000ULL / threads;
+    *begin = i * slice;
+    *count = (i == threads - 1) ? (0x100000000ULL - i * slice) : slice;
+}
+
 int main(int argc, char **argv) {
+    if (argc >= 2 && strcmp(argv[1], "ranges") == 0) {
+        // Diagnostic: print the bench nonce slices for a thread
+        // count so tests can prove they are disjoint and complete.
+        if (argc != 3) { fprintf(stderr, "usage: ranges <threads>\n"); return 2; }
+        uint64_t threads;
+        if (parse_u64(argv[2], &threads) != 0 || threads == 0 || threads > 64) {
+            fprintf(stderr, "invalid threads\n");
+            return 2;
+        }
+        uint64_t expect = 0;
+        int disjoint = 1;
+        for (uint64_t i = 0; i < threads; i++) {
+            uint64_t begin, count;
+            bench_slice(threads, i, &begin, &count);
+            if (begin != expect) disjoint = 0;
+            expect = begin + count;
+            printf("RANGE worker=%llu begin=%llu end=%llu\n",
+                   (unsigned long long)i, (unsigned long long)begin,
+                   (unsigned long long)(begin + count));
+        }
+        printf("RANGES disjoint=%d covers=%llu\n", disjoint,
+               (unsigned long long)expect);
+        return (disjoint && expect == 0x100000000ULL) ? 0 : 1;
+    }
+
     if (argc >= 2 && strcmp(argv[1], "bench") == 0) {
         if (argc != 4) { fprintf(stderr, "usage: bench <seconds> <threads>\n"); return 2; }
         uint64_t seconds, threads;
@@ -228,18 +290,27 @@ int main(int argc, char **argv) {
         }
         _Atomic int stop = 0;
         double t0 = now_sec();
+        // Disjoint contiguous slices partition the whole 32-bit
+        // nonce space (bench_slice; the ranges mode prints them).
+        uint64_t unique_space = 0;
         for (uint64_t i = 0; i < threads; i++) {
             hex_decode(genesis, works[i].header, 80);
             works[i].seconds = (int)seconds;
-            works[i].nonce_base = (uint32_t)(i * 1000000u);
-            works[i].start = 0;
+            works[i].nonce_base = 0;
+            bench_slice(threads, i, &works[i].start, &works[i].count);
+            unique_space += works[i].count;
             works[i].stop = &stop;
         }
         uint64_t total = run_workers(works, tids, created, (int)threads, bench_worker);
         double dt = now_sec() - t0;
-        printf("BENCH hashes=%llu seconds=%.3f hashrate_hs=%.0f threads=%llu\n",
+        uint64_t total_wraps = 0;
+        for (uint64_t i = 0; i < threads; i++) total_wraps += works[i].wraps;
+        printf("BENCH hashes=%llu seconds=%.3f hashrate_hs=%.0f threads=%llu "
+               "unique_nonce_space=%llu slice_wraps=%llu repeated=own-slice-only\n",
                (unsigned long long)total, dt, total / dt,
-               (unsigned long long)threads);
+               (unsigned long long)threads,
+               (unsigned long long)unique_space,
+               (unsigned long long)total_wraps);
         free(works); free(tids); free(created);
         return 0;
     }
@@ -287,7 +358,10 @@ int main(int argc, char **argv) {
         }
         uint64_t total = run_workers(works, tids, created, (int)threads, search_worker);
         double dt = now_sec() - t0;
-        // Deterministic winner: smallest found nonce across workers.
+        // Winner: smallest nonce among the candidates actually
+        // found before the stop flag propagated (first-found
+        // semantics, Task 003.3). Not claimed to be the lowest
+        // valid nonce in the range.
         int found_idx = -1;
         for (uint64_t i = 0; i < threads; i++) {
             if (works[i].found &&
@@ -306,7 +380,7 @@ int main(int argc, char **argv) {
         if (found_idx >= 0) {
             char hash_hex[65];
             for (int i = 0; i < 32; i++) sprintf(hash_hex + i * 2, "%02x", works[found_idx].found_hash[31 - i]);
-            printf("FOUND nonce=%u hash=%s hashes=%llu seconds=%.3f best_hash=%s best_nonce=%u\n",
+            printf("FOUND nonce=%u hash=%s hashes=%llu seconds=%.3f best_hash=%s best_nonce=%u winner_semantics=first-found\n",
                    works[found_idx].found_nonce, hash_hex, (unsigned long long)total, dt,
                    best_hex, works[best_idx].best_nonce);
             free(works); free(tids); free(created);
