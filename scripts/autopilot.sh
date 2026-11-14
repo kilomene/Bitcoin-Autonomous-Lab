@@ -6,6 +6,12 @@
 #   install-node-service   install + enable the mainnet node
 #                          systemd unit (needs the .local/mainnet
 #                          datadir; see docs/AUTOPILOT.md)
+#   install-solo-service   install + enable the solo Stratum
+#                          server systemd unit (needs
+#                          .local/mainnet/node-config.json; see
+#                          docs/SOLO_CUTOVER.md). The cutover
+#                          watcher runs this at fire time; it is
+#                          not part of initial staging.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
@@ -75,8 +81,17 @@ case "${1:-status}" in
     install_unit bal-bitcoind.service bal-bitcoind.service
     echo "start it with: systemctl start bal-bitcoind"
     ;;
+  install-solo-service)
+    if [ ! -f .local/mainnet/node-config.json ]; then
+      echo ".local/mainnet/node-config.json not found; create" >&2
+      echo "the mainnet datadir first (see docs/SOLO_CUTOVER.md)." >&2
+      exit 1
+    fi
+    install_unit bal-solo.service bal-solo.service
+    echo "start it with: systemctl start bal-solo"
+    ;;
   *)
-    echo "usage: $0 start|stop|status|log [lines]|install-service|install-node-service" >&2
+    echo "usage: $0 start|stop|status|log [lines]|install-service|install-node-service|install-solo-service" >&2
     exit 2
     ;;
 esac
