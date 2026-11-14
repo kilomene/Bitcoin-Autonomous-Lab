@@ -72,6 +72,14 @@ def main():
     print(f"authorized as {user}", flush=True)
 
     engine = ComputeEngine()
+    desc = engine.describe()
+    backend_line = (f"compute backend: {desc['backend']} "
+                    f"(native impl: {desc['native_impl']}; "
+                    f"AVX-512 MB: {desc['v512_reason']})")
+    print(backend_line, flush=True)
+    ev.log("backend_selected", backend=desc["backend"],
+           native_impl=desc["native_impl"],
+           v512_reason=desc["v512_reason"])
     # Scan chunks sized to about one second of this machine's
     # measured rate, so a fresher template preempts the search
     # within about a second instead of after a long fixed chunk.
@@ -162,7 +170,8 @@ def main():
             print(line, flush=True)
             with open(STATUS, "w") as f:
                 f.write(f"MAINNET LIVE MINING\n{line}\n"
-                        f"worker={user}\npool=public-pool.io:21496\n")
+                        f"worker={user}\npool=public-pool.io:21496\n"
+                        f"{backend_line}\n")
             ev.log("status", hashes=total_hashes, rate=rate, best=best,
                    submitted=submitted)
     print("duration complete", flush=True)
