@@ -856,3 +856,49 @@ EXP-022; raw data in
 phase6/benchmarks/exp022/. Twenty-three
 experiments now recorded (EXP-000 to
 EXP-022); next unreserved ID is EXP-023.
+
+## EXP-023: Midstate amortisation family (2026-11-14)
+
+Y-076, Y-077 and Y-079, tested as written.
+The audit found the family's real target in
+the GBT path: build_candidate recomputes
+the whole transaction pass, the full merkle
+tree and two RPC round trips on every
+extranonce call (17.81 ms median per call
+at 500 transactions on this host; about
+99.6 percent of the repeated work is
+extranonce independent), while no serving
+path rebuilds a midstate per extranonce
+step at all. Gates: 1,320 randomised
+byte-identity cases for the two-level
+prototype (family constants, per-template
+pass and tree, coinbase spine per step),
+the snapshot stepper verified against
+PureSHA256 and hashlib, and the Y-079 table
+verified for all 32 field subsets plus two
+boundary rows. Verdicts: Y-076 REJECTED as
+specified (established negative: its cache
+target changes with every extranonce step
+past block-1 round 8, and the named cost
+does not exist in the code). Y-077 VERIFIED
+IMPROVEMENT at the data level under the
+EXP-017 paired protocol (extranonce steps
+at 500 transactions pooled 18.49x, job
+families 22.06x, every session significant;
+churn boundary 0.97x, not significant), its
+compression-prefix mechanism separately
+rejected as immaterial. Y-079 VERIFIED
+TABLE (deepest depths: none, R0, R8, B2R0,
+B2R1, SCH17 by shallowest varying field;
+the named block-1 half is deepest for no
+subset; a tail-word-only change leaves the
+midstate valid). Integration of the
+prototype into mining/engine.py is a
+recommendation for the owner's decision;
+production byte-identical. All measurement
+ran on the Intel Xeon Platinum 8321HC host.
+Full record: phase6/EXPERIMENT_RESULTS.md,
+EXP-023; raw data in
+phase6/benchmarks/exp023/. Twenty-four
+experiments now recorded (EXP-000 to
+EXP-023); next unreserved ID is EXP-024.
