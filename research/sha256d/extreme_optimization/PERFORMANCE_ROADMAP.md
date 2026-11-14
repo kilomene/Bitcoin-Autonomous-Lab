@@ -29,6 +29,33 @@ effective CPUs, not by the kernels. Per-worker and
 whole-VM figures are different claims and are never
 interchanged in this programme.
 
+Update 2026-11-14 (EXP-004 to EXP-009 batch; full
+records in EXPERIMENT_REGISTRY.md and
+EXP004_009_REPORT.md):
+
+| Configuration | Median H/s | Record |
+|---|---|---|
+| H-01 streams=4, decision re-run, 2 threads | 4,212,571 | EXP-004 |
+| H-01 streams=4 strided, 2 threads | 3,473,271 | EXP-005 |
+| H-01 streams=6 blocked, 2 threads | 2,593,711 | EXP-005 |
+| Phase pipeline, 2 threads | 2,104,688 | EXP-008 |
+| AVX-512 mb16, 2 threads (combined session) | 6,526,467 | EXP-007 |
+| AVX-512 mb16, 2 threads (confirmation) | 3,195,024 | EXP-007 |
+
+The AVX-512 multi-buffer is now the fastest measured
+implementation on this VM on a median basis at 2
+threads, reproduced in two interleaved sessions; its
+spread (106.5 percent in the combined session) is the
+widest measured and it holds no separation claim.
+EXP-004's decision re-run failed the beyond-spread
+criterion a second time, so nothing from this batch is
+integrated and production remains the EXP-000 row set.
+None of these numbers moves the target arithmetic of
+section 3: the best batch median, 6.53 MH/s at 2 threads
+on a capped guest, is still about 77,000x below 500
+GH/s, and the ceiling argument of section 2 is
+unchanged.
+
 ## 2. The per-core ceiling (estimate, arithmetic shown)
 
 Per-nonce work after all proven precomputation: 125
