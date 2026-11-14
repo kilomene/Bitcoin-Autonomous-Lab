@@ -16,6 +16,14 @@ slot (extranonce1 = per-connection, extranonce2 = per-share).
 The server keeps the full template, so on a block candidate it
 rebuilds the exact block (coinbase with the submitted extranonce,
 the template's transactions verbatim) and submits it.
+
+Mainnet hardening (2026-11-14, see docs/SOLO_CUTOVER.md): the
+server refuses to serve work when the node is on the wrong
+chain or still in initial block download (SoloNotReady), tracks
+shares per worker, survives submitblock RPC failures without
+losing the candidate record, and a JobRefresher thread keeps
+the current job on the node's tip so workers never mine a
+stale prevhash after a new block arrives.
 """
 
 import json
@@ -27,6 +35,31 @@ import time
 
 from mining.pow import dsha256 as double_sha256
 from mining.pow import merkle_root, target_from_nbits
+
+
+class SoloNotReady(Exception):
+    """The node cannot supply trustworthy work right now (wrong
+    chain, initial block download, or state unavailable). The
+    server refuses to serve rather than hand out stale jobs."""
+
+
+class ChainMismatch(SoloNotReady):
+    """The node is on a different chain than the server was
+    configured for. Refusing is deliberate: a mainnet server
+    fed by a regtest node (or the reverse) would build blocks
+    for the wrong network while looking perfectly healthy."""
+
+
+def attach_witness(stripped_coinbase):
+    """Re-attach the coinbase witness to a stripped coinbase:
+    marker and flag after the version, and one witness stack
+    item holding the 32-byte reserved value (all zero, exactly
+    as mining.engine.build_coinbase emits it) before the
+    locktime. Inverse of mining.engine.strip_witness for the
+    coinbases this server builds."""
+    return (stripped_coinbase[:4] + b"\x00\x01"
+            + stripped_coinbase[4:-4]
+            + b"\x01\x20" + bytes(32) + stripped_coinbase[-4:])
 
 
 def _varint(n):
@@ -58,9 +91,13 @@ def merkle_branch(txids):
 
 class SoloServer:
     def __init__(self, rpc, payout_address, share_difficulty=0.01,
-                 tag=b"/BAL-solo/"):
+                 tag=b"/BAL-solo/", expected_chain=None,
+                 allow_ibd=False):
         self.rpc = rpc
         self.payout = payout_address
+        self.share_difficulty = share_difficulty
+        self.expected_chain = expected_chain
+        self.allow_ibd = allow_ibd
         # Stratum difficulty 1 target: 0x00000000FFFF followed by
         # 26 zero bytes; share target = DIFF1 / difficulty.
         diff1 = int("00000000ffff" + "00" * 26, 16)
@@ -73,11 +110,85 @@ class SoloServer:
         self.blocks_found = []
         self.shares_accepted = 0
         self.shares_rejected = 0
+        self.workers = {}
         self.current = None
         self._stop = False
 
+    # -- node gating --------------------------------------------------------
+    def node_info(self):
+        """getblockchaininfo, or None when the node cannot be
+        reached or does not answer coherently."""
+        try:
+            info = self.rpc.call("getblockchaininfo")
+        except Exception:
+            return None
+        return info if isinstance(info, dict) else None
+
+    def check_node(self):
+        """Return getblockchaininfo when the node may supply
+        work; raise SoloNotReady (or ChainMismatch) otherwise.
+        Serving a template from a syncing node means miners
+        grind a prevhash the network has long moved past, and a
+        winning hash would be stillborn, so the refusal is the
+        feature, not an error path."""
+        info = self.node_info()
+        if info is None:
+            raise SoloNotReady(
+                "node state unavailable: getblockchaininfo failed; "
+                "refusing to serve work")
+        chain = info.get("chain")
+        if self.expected_chain and chain != self.expected_chain:
+            raise ChainMismatch(
+                f"node is on chain {chain!r} but this server is "
+                f"configured for {self.expected_chain!r}; refusing "
+                f"to serve work")
+        if info.get("initialblockdownload") and not self.allow_ibd:
+            raise SoloNotReady(
+                f"node in initial block download (blocks "
+                f"{info.get('blocks')} of headers "
+                f"{info.get('headers')}); refusing to serve work")
+        return info
+
+    # -- worker accounting ----------------------------------------------------
+    def _worker_rec(self, worker):
+        """Per-worker counters, created on first sight. Caller
+        holds self.lock."""
+        rec = self.workers.get(worker)
+        if rec is None:
+            rec = {"accepted": 0, "rejected": 0, "blocks": 0,
+                   "block_candidates": 0, "connected_at": time.time(),
+                   "last_share_at": None, "last_submit_at": None}
+            self.workers[worker] = rec
+        return rec
+
+    def note_authorize(self, worker):
+        with self.lock:
+            self._worker_rec(worker or "unknown")
+
+    def stats(self):
+        """Snapshot for status reporting (the mainnet runner
+        writes this to .local/solo-status.json)."""
+        with self.lock:
+            cur = self.current
+            return {
+                "share_difficulty": self.share_difficulty,
+                "payout": self.payout,
+                "shares_accepted": self.shares_accepted,
+                "shares_rejected": self.shares_rejected,
+                "blocks_found": len(self.blocks_found),
+                "blocks": list(self.blocks_found),
+                "workers": {k: dict(v)
+                            for k, v in self.workers.items()},
+                "current_job": None if cur is None else {
+                    "job_id": cur["job_id"],
+                    "height": cur["template"]["height"],
+                    "prevhash": cur["template"]["previousblockhash"],
+                },
+            }
+
     # -- job construction -------------------------------------------------
     def refresh_job(self):
+        self.check_node()
         from mining.engine import (address_script_pubkey, build_coinbase)
         t = self.rpc.call("getblocktemplate", {"rules": ["segwit"]})
         # Build the coinbase with the lab engine's own builder, with
@@ -88,8 +199,18 @@ class SoloServer:
         script = address_script_pubkey(self.rpc, self.payout)
         commitment = None
         if t.get("default_witness_commitment"):
-            commitment = bytes.fromhex(
-                t["default_witness_commitment"])[6:]
+            # Core returns the full commitment scriptPubKey:
+            # OP_RETURN, push 36, the aa21a9ed header, then the
+            # 32-byte commitment hash. Anything else is not the
+            # field this code was written against; fail loudly
+            # instead of slicing blind.
+            raw_commit = bytes.fromhex(t["default_witness_commitment"])
+            if (len(raw_commit) != 38
+                    or raw_commit[:6] != b"\x6a\x24\xaa\x21\xa9\xed"):
+                raise ValueError(
+                    "unexpected default_witness_commitment format: "
+                    f"{len(raw_commit)} bytes")
+            commitment = raw_commit[6:]
         coinbase, _ = build_coinbase(
             t["height"], t["coinbasevalue"], script, placeholder,
             witness_commitment=commitment)
@@ -139,6 +260,17 @@ class SoloServer:
         en2 = bytes.fromhex(extranonce2_hex)
         if len(en2) != 4:
             return None, "bad extranonce2 size"
+        # A share whose ntime the network would reject must not
+        # be counted, and must never reach block assembly.
+        try:
+            ntime = int(ntime_hex, 16)
+        except ValueError:
+            return None, "bad ntime"
+        mintime = job["template"].get("mintime")
+        if mintime and ntime < mintime:
+            return None, "ntime before template mintime"
+        if ntime > int(time.time()) + 7200:
+            return None, "ntime too far in the future"
         coinbase = job["coinb1"] + extranonce1 + en2 + job["coinb2"]
         cb_txid = double_sha256(coinbase)  # served stripped: this is the txid
         # Full root via stored txids (server has the whole template).
@@ -156,15 +288,32 @@ class SoloServer:
         return ({"header": header, "digest": digest, "value": value,
                  "coinbase": coinbase}, None)
 
-    def submit_share(self, job_id, extranonce1, en2, ntime, nonce):
+    def _count(self, worker, accepted, block=False, candidate=False):
+        with self.lock:
+            rec = self._worker_rec(worker or "unknown")
+            rec["last_submit_at"] = time.time()
+            if accepted:
+                self.shares_accepted += 1
+                rec["accepted"] += 1
+                rec["last_share_at"] = time.time()
+            else:
+                self.shares_rejected += 1
+                rec["rejected"] += 1
+            if candidate:
+                rec["block_candidates"] += 1
+            if block:
+                rec["blocks"] += 1
+
+    def submit_share(self, job_id, extranonce1, en2, ntime, nonce,
+                     worker=None):
         with self.lock:
             job = self.jobs.get(job_id)
         if not job:
-            self.shares_rejected += 1
+            self._count(worker, False)
             return {"accepted": False, "reason": "unknown job"}
         res, err = self.validate_share(job, extranonce1, en2, ntime, nonce)
         if err:
-            self.shares_rejected += 1
+            self._count(worker, False)
             return {"accepted": False, "reason": err}
         is_block = res["value"] <= job["target"]
         is_share = res["value"] <= self.share_target
@@ -174,25 +323,100 @@ class SoloServer:
                            for tx in t["transactions"])
             coinbase = res["coinbase"]
             if job.get("has_witness"):
-                # Re-attach the coinbase witness: marker and flag
-                # after the version, one stack item holding the
-                # 32-byte reserved value before the locktime.
-                coinbase = (coinbase[:4] + b"\x00\x01" + coinbase[4:-4]
-                            + b"\x01\x20" + bytes(32) + coinbase[-4:])
+                coinbase = attach_witness(coinbase)
             block = (res["header"] + _varint(1 + len(t["transactions"]))
                      + coinbase + txs)
-            r = self.rpc.call("submitblock", block.hex())
-            ok = r is None
+            # submitblock returns None on acceptance and a reason
+            # string on rejection; a transport or RPC failure must
+            # not kill the connection handler or lose the record
+            # of a network-target candidate, so it is captured
+            # here and reported as a failed submission.
+            try:
+                r = self.rpc.call("submitblock", block.hex())
+                ok = r is None
+            except Exception as exc:
+                r = f"submitblock RPC failed: {exc}"
+                ok = False
+                print(f"solo-server: BLOCK SUBMISSION FAILED at "
+                      f"height {t['height']}: {r}", flush=True)
             rec = {"height": t["height"], "hash": res["digest"][::-1].hex(),
                    "submit_result": r, "accepted": ok}
-            self.blocks_found.append(rec)
-            self.shares_accepted += 1
+            with self.lock:
+                self.blocks_found.append(rec)
+            self._count(worker, True, block=ok, candidate=True)
             return {"accepted": True, "block": rec}
         if is_share:
-            self.shares_accepted += 1
+            self._count(worker, True)
             return {"accepted": True, "block": None}
-        self.shares_rejected += 1
+        self._count(worker, False)
         return {"accepted": False, "reason": "low difficulty share"}
+
+
+class JobRefresher(threading.Thread):
+    """Keeps the served job on the node's tip.
+
+    Without this, the job built at subscribe time is served
+    until a block is found through it: on mainnet the tip moves
+    every ten minutes on average and every share on the old
+    prevhash is wasted. The refresher polls the node, and when
+    the tip has moved (or the job has aged past max_age_s, so
+    mempool changes and curtime advance reach workers), it
+    builds a fresh job and hands it to the broadcast callback.
+    While the node cannot supply work (initial block download,
+    wrong chain, unreachable) it logs the state change once and
+    waits; refresh_job re-checks the gate itself, so no path
+    can serve a template the gate would refuse."""
+
+    def __init__(self, solo, broadcast, poll_s=2.0, max_age_s=120.0,
+                 log=print):
+        super().__init__(daemon=True, name="solo-job-refresher")
+        self.solo = solo
+        self.broadcast = broadcast
+        self.poll_s = poll_s
+        self.max_age_s = max_age_s
+        self.log = log
+        self._stop_evt = threading.Event()
+        self._job_born = 0.0
+        self._ready = None
+        self._reason = None
+
+    def stop(self):
+        self._stop_evt.set()
+
+    def _note_state(self, ready, reason=None):
+        if ready != self._ready or reason != self._reason:
+            self._ready, self._reason = ready, reason
+            if ready:
+                self.log("solo-server: node ready; serving work")
+            else:
+                self.log(f"solo-server: refusing to serve work: "
+                         f"{reason}")
+
+    def run(self):
+        while not self._stop_evt.is_set():
+            try:
+                info = self.solo.check_node()
+            except SoloNotReady as exc:
+                self._note_state(False, str(exc))
+                self._stop_evt.wait(self.poll_s)
+                continue
+            self._note_state(True)
+            cur = self.solo.current
+            tip = info.get("bestblockhash")
+            stale = (
+                cur is None
+                or cur["template"].get("previousblockhash") != tip
+                or time.time() - self._job_born > self.max_age_s)
+            if stale:
+                try:
+                    job = self.solo.refresh_job()
+                except Exception as exc:
+                    self.log(f"solo-server: job refresh failed: "
+                             f"{exc}")
+                else:
+                    self._job_born = time.time()
+                    self.broadcast(job)
+            self._stop_evt.wait(self.poll_s)
 
 
 class _Handler(socketserver.StreamRequestHandler):
@@ -216,8 +440,7 @@ class _Handler(socketserver.StreamRequestHandler):
                 self.server.clients.discard(self)
 
     def _run(self, srv, extranonce1):
-        authorized = False
-        subscribed = False
+        worker_name = "unknown"
         for raw in self.rfile:
             try:
                 msg = json.loads(raw.decode())
@@ -226,30 +449,49 @@ class _Handler(socketserver.StreamRequestHandler):
             method = msg.get("method")
             mid = msg.get("id")
             if method == "mining.subscribe":
-                subscribed = True
                 self._send({"id": mid, "result": [
                     [["mining.set_difficulty", "bal1"],
                      ["mining.notify", "bal2"]],
                     extranonce1.hex(), 4], "error": None})
-                diff = 0.01
                 self._send({"id": None, "method": "mining.set_difficulty",
-                            "params": [self.server.share_difficulty]})
-                job = srv.current or srv.refresh_job()
+                            "params": [srv.share_difficulty]})
+                try:
+                    job = srv.current or srv.refresh_job()
+                except SoloNotReady as exc:
+                    # Refuse the session, loudly, rather than
+                    # serve a template the node cannot back. The
+                    # lab client reconnects on a dropped session,
+                    # so it returns on its own once work is real.
+                    print(f"solo-server: subscribe refused: {exc}",
+                          flush=True)
+                    return
                 self._send({"id": None, "method": "mining.notify",
                             "params": srv.notify_params(job)})
             elif method == "mining.authorize":
-                authorized = True
+                if msg.get("params"):
+                    worker_name = str(msg["params"][0])
+                srv.note_authorize(worker_name)
+                self._send({"id": mid, "result": True, "error": None})
+            elif method == "mining.suggest_difficulty":
+                # Our own client sends this. The server sets the
+                # difficulty; the suggestion is acknowledged and
+                # otherwise ignored.
                 self._send({"id": mid, "result": True, "error": None})
             elif method == "mining.submit":
                 worker, job_id, en2, ntime, nonce = msg["params"]
                 out = srv.submit_share(job_id, extranonce1, en2, ntime,
-                                       nonce)
+                                       nonce, worker=str(worker))
                 self._send({"id": mid, "result": out["accepted"],
                             "error": None if out["accepted"]
                             else [20, out["reason"], None]})
                 if out.get("block"):
-                    job = srv.refresh_job()
-                    self._broadcast(job)
+                    try:
+                        job = srv.refresh_job()
+                    except SoloNotReady as exc:
+                        print(f"solo-server: post-block refresh "
+                              f"refused: {exc}", flush=True)
+                    else:
+                        self._broadcast(job)
             else:
                 self._send({"id": mid, "result": None,
                             "error": [501, "unknown method", None]})
@@ -259,24 +501,21 @@ class _Handler(socketserver.StreamRequestHandler):
         self.wfile.flush()
 
     def _broadcast(self, job):
-        srv: SoloServer = self.server.solo
-        with self.server.clients_lock:
-            clients = list(self.server.clients)
-        for h in clients:
-            try:
-                h._send({"id": None, "method": "mining.notify",
-                         "params": srv.notify_params(job)})
-            except Exception:
-                pass
+        self.server.broadcast(job)
 
 
 class SoloTCPServer(socketserver.ThreadingTCPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, addr, solo: SoloServer, share_difficulty=0.01):
+    def __init__(self, addr, solo: SoloServer, share_difficulty=None):
         self.solo = solo
-        self.share_difficulty = share_difficulty
+        # Kept for call compatibility; the SoloServer's own
+        # share_difficulty is the single source of truth that
+        # handlers serve and validate against.
+        self.share_difficulty = (solo.share_difficulty
+                                 if share_difficulty is None
+                                 else share_difficulty)
         self._en1 = 0
         self._en1_lock = threading.Lock()
         self.clients = set()
@@ -287,3 +526,14 @@ class SoloTCPServer(socketserver.ThreadingTCPServer):
         with self._en1_lock:
             self._en1 += 1
             return self._en1.to_bytes(4, "little")
+
+    def broadcast(self, job):
+        """Send a fresh job to every connected worker."""
+        with self.clients_lock:
+            clients = list(self.clients)
+        for h in clients:
+            try:
+                h._send({"id": None, "method": "mining.notify",
+                         "params": self.solo.notify_params(job)})
+            except Exception:
+                pass
