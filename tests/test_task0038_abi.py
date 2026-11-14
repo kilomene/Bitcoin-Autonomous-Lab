@@ -528,7 +528,7 @@ def test_batch_verification_fail_closed():
 
     # An out-of-range pair from the C batch is also a failure and
     # also recovered in full.
-    eng = ComputeEngine()
+    eng = ComputeEngine(requested="c")
     outside = start + count
     eng._c_batch_flagged = lambda *a, **k: [
         (outside, cpu_digest(header, outside))]
