@@ -555,3 +555,20 @@ vs steal correlation +0.221 against production's
 -0.521 control); the excess variance is
 implementation behaviour under a saturated
 runnable queue.
+
+## Pointer: Phase 6, first assignment (2026-11-14)
+
+Phase 6 (Breakthrough Computation Research) opened
+with an audit of this programme, in-place
+corrections to the 125-round, ceiling, and memory
+conclusions, a published ranking of all 108
+Y hypotheses, the design and seed build of the
+automated discovery system, and one executed
+experiment: EXP-016, the nonce dependency
+derivation, which refuted Y-065 and Y-075 as work
+reductions with proof-grade evidence (full record
+in extreme_optimization/EXPERIMENT_REGISTRY.md;
+mathematics in phase6/MATHEMATICAL_DISCOVERIES.md
+MD-1). All Phase 6 records live in phase6/,
+starting with phase6/PHASE6_FINAL_REPORT.md. Next
+unreserved experiment ID: EXP-017.
