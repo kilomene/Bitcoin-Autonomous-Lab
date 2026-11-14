@@ -149,6 +149,35 @@ def main():
               f"{found_block['height']}: {found_block['hash']}")
         print(f"shares accepted {solo.shares_accepted}, "
               f"rejected {solo.shares_rejected}")
+
+        # Per-worker accounting: the winning worker is tracked
+        # by the name it authorized and submitted under, and a
+        # second worker's malformed share is rejected under its
+        # own name, not smeared into the global count only.
+        st = solo.stats()
+        wrec = st["workers"].get(payout)
+        assert wrec and wrec["accepted"] >= 1, st["workers"]
+        assert wrec["blocks"] == 1 and wrec["block_candidates"] >= 1, \
+            wrec
+        assert wrec["last_share_at"] is not None
+        bad = Worker(payout)
+        r = bad.rpc("mining.subscribe", ["bal-worker/1.0"])
+        bad.en1 = r["result"][1]
+        r = bad.rpc("mining.authorize", ["bad-worker", "x"])
+        assert r["result"] is True
+        bad.read_until_job()
+        resp = bad.rpc("mining.submit",
+                       ["bad-worker", bad.job["job_id"], "aabbcc",
+                        bad.job["ntime"], "00000000"])
+        assert resp["result"] is False, resp
+        st = solo.stats()
+        brec = st["workers"].get("bad-worker")
+        assert brec and brec["rejected"] == 1, st["workers"]
+        assert st["shares_rejected"] >= 1
+        bad.sock.close()
+        print("ok: per-worker accounting (winner tracked with "
+              "its block; malformed share rejected under the "
+              "second worker's own name)")
         print("ALL SOLO SERVER TESTS PASSED")
         return 0
     finally:
