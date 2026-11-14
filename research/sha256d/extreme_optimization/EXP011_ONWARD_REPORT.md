@@ -327,3 +327,31 @@ section 2; the two registered ideas that even
 aim there (Y-065 nonce-affine schedule
 decomposition, Y-075 round-3 delta decomposition)
 remain derivations that do not yet exist.
+
+## Correction note (Phase 6, 2026-11-14)
+
+Two statements in this report are corrected by the
+Phase 6 audit; the original text above is preserved
+as the historical record.
+
+1. Section 5 of this report states that "a ceiling
+is not a law" for this programme's op counts and
+then, two sentences later, that a graph needing
+fewer than 192 rounds of work per hash does not
+compute SHA-256d. The second claim is withdrawn:
+it conflates the function's definition with one
+evaluation of it. The precise statement is in
+PERFORMANCE_CEILING.md's correction note: an
+implementation must compute the exact function;
+whether an equivalent graph can do so with less
+work is open. This report's own first instinct was
+the correct one.
+2. The closing paragraph says the derivations for
+Y-065 and Y-075 "do not yet exist". They now exist:
+EXP-016 (Phase 6) derived both and refuted both as
+work reductions. The affine separation holds
+exactly for schedule words W18 and W19 and fails
+at W20 (z3 counterexample, numerically verified);
+the state delta form is exact after round 3 only.
+Both hypotheses are closed as work reductions and
+recorded in ../phase6/REJECTED_APPROACHES.md.
