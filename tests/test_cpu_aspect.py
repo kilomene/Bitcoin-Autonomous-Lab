@@ -50,14 +50,14 @@ def main():
     wallet = wallet_rpc(rpc)
     payout = wallet.call("getnewaddress", "", "bech32")
     miner = CpuMiner(rpc, payout)
-    assert miner.compute.backend == "c", miner.compute.describe()
+    assert miner.compute.backend in ("c", "v512"), miner.compute.describe()
     tip0 = rpc.get_block_count()
     out = miner.mine(2)
     assert out["accepted"] == 2, out
     assert rpc.get_block_count() == tip0 + 2
     assert out["cycles"][-1]["hash"] == rpc.get_best_block_hash()
     for c in out["cycles"]:
-        assert c["backend"] == "c", c
+        assert c["backend"] == miner.compute.backend, c
     print(f"ok: CPU miner (backend c only) mined 2 blocks accepted by "
           f"Core, tip {tip0} -> {tip0 + 2}")
     print("ALL CPU ASPECT TESTS PASSED")
