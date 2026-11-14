@@ -738,10 +738,63 @@ by reference, without altering the originals.
   registered as Y-004; the full form is closed
   on this core.
 
+### EXP-016: Nonce dependency derivation for block 2 (Phase 6)
+
+- Hypothesis: the dependence of block 2's schedule
+  and state on the nonce word W3 either supports a
+  nonce-separation work reduction (the premise of
+  Y-065 and Y-075) or refutes it; the 67-round
+  precomputation ceiling implies the boundary but
+  had never been derived word by word.
+- Mathematical basis: the schedule recurrence and
+  round function, analysed by sound per-bit
+  influence masks with a carry bound for modular
+  addition, sampled functional classification
+  (IND, AFF, LIN, NONLIN) with delta linearity
+  tests, and z3 bit-vector proofs at the boundary.
+  Full derivation: ../phase6/MATHEMATICAL_
+  DISCOVERIES.md, MD-1.
+- Implementation: ../phase6/src/nonce_dependency.py
+  (pure-Python reference SHA-256, masks,
+  classification, z3 through the repo-local solver
+  environment). Runtime about 16 s of CPU.
+- Correctness evidence: the reference
+  implementation matches hashlib bit-exactly on
+  random messages and on the production miner's
+  header, inner and outer shapes; the z3 W20
+  counterexample was re-verified numerically in
+  the reference implementation.
+- Benchmark evidence: not applicable (derivation,
+  not a kernel). Raw results:
+  ../phase6/analysis/exp016_dependency_results.json;
+  proofs: ../phase6/proofs/exp016_z3_results.json.
+- Statistical analysis: closures rest on the z3
+  results (UNSAT for the W18 and W19 delta forms
+  and for round-3 a and e affinity; a numerically
+  verified counterexample for W20). Sampling agrees
+  exactly (delta violation rates 0.0 for W16 to
+  W19, 1.0 for W20 to W25, three templates in full
+  agreement); the sound masks are used only for
+  completeness rounds.
+- Result: separation exists exactly at W18
+  (delta sigma0 of the nonce) and W19 (delta the
+  nonce), saving nothing at either; the state is
+  affine in the nonce only at S_4 (a, e), all
+  words nonlinear from S_8, sound masks complete
+  at S_9.
+- Decision: Y-065 and Y-075 REFUTED as work
+  reductions (proof grade). The derivation is
+  adopted as the programme reference for nonce
+  dependency.
+- Follow-up: Workstream A proceeds to EXP-019
+  (representation) and EXP-020 (whole-cone
+  rewriting), which EXP-016 does not address;
+  Y-066 and Y-090 lose their premise.
+
 ## Registry state
 
-Sixteen experiments recorded (EXP-000 to
-EXP-015), plus Part B (HYPOTHESIS_REGISTRY_Y.md,
+Seventeen experiments recorded (EXP-000 to
+EXP-016), plus Part B (HYPOTHESIS_REGISTRY_Y.md,
 Y-001 to Y-108) and Part C
 (PERFORMANCE_CEILING.md) of the Next Research
 Phase. EXP-011 to EXP-015 ran as one batch on
@@ -759,5 +812,13 @@ both challengers failed the predeclared
 beyond-spread criterion a third time, no
 integration was performed, production remains
 byte-identical, and the decision is closed for
-this machine (EXP010_PART_A_REPORT.md). Next
-unreserved ID: EXP-016.
+this machine (EXP010_PART_A_REPORT.md). Phase 6
+opened 2026-11-14: its first assignment audited
+the programme, corrected the 125-round, ceiling
+and memory conclusions in place, ranked all 108
+Y hypotheses, built the discovery system's first
+component, and executed EXP-016, which refuted
+Y-065 and Y-075 as work reductions with proof
+grade evidence. Phase 6 records live in
+../phase6/ (plan, results, final report). Next
+unreserved ID: EXP-017.
