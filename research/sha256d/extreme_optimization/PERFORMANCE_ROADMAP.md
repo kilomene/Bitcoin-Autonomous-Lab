@@ -100,7 +100,16 @@ target arithmetic of section 3 is unchanged.
 ## 2. The per-core ceiling (estimate, arithmetic shown)
 
 Per-nonce work after all proven precomputation: 125
-rounds (61 of block 2 plus 64 outer). In the H-02 kernel
+conventional round evaluations (61 of block 2 plus
+64 outer). PRECISION NOTE (Phase 6, 2026-11-14):
+125 is the conventional implementation's remaining
+round count after the 67 reusable rounds; it is
+not a proven universal lower bound on every
+equivalent implementation, and the estimates in
+this section price the implementation families
+they name, not all possible computation graphs.
+See PERFORMANCE_CEILING.md's correction note and
+../phase6/MATHEMATICAL_DISCOVERIES.md. In the H-02 kernel
 this is 63 SHA256RNDS2 plus 48 schedule instructions,
 inside a measured hot function of 494 instructions per
 nonce (EXP-002 assembly record; the static instruction
