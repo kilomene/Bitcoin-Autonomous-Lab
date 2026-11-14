@@ -24,6 +24,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from gpu import engine as gpu_engine
 from gpu.engine import ComputeEngine
 from mining.stratum_client import (StratumClient, Evidence,
                                    build_header, target_from_nbits)
@@ -31,16 +32,19 @@ from mining.stratum_client import (StratumClient, Evidence,
 DEFAULT_ADDRESS = "bc1q528egeqsvv8aa382j43edxskqw6x7zxc2xpcf3"
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 STATUS = os.path.join(ROOT, ".local", "mainnet-status.txt")
+DIFF1_TARGET = 0xFFFF * (1 << 208)
 
 
 def difficulty_of(digest):
+    """Exact difficulty of a digest: DIFF1_TARGET / value."""
     v = int.from_bytes(digest, "little")
-    return (1 << 256) / (v + 1) * (0xFFFF / (1 << 48)) if v else float("inf")
+    if v == 0:
+        return float("inf")
+    return DIFF1_TARGET / v
 
 
 def target_for_difficulty(diff):
-    base = 0xFFFF * (1 << 208)
-    return int(base / diff)
+    return int(DIFF1_TARGET / diff)
 
 
 def main():
@@ -68,6 +72,17 @@ def main():
     print(f"authorized as {user}", flush=True)
 
     engine = ComputeEngine()
+    # Scan chunks sized to about one second of this machine's
+    # measured rate, so a fresher template preempts the search
+    # within about a second instead of after a long fixed chunk.
+    import math
+    probe_rate = gpu_engine.LAST_PROBE_RATE
+    if probe_rate > 0:
+        span_size = 1 << max(20, min(24, int(math.log2(probe_rate))))
+    else:
+        span_size = 1 << 22
+    print(f"scan chunk: {span_size:,} nonces "
+          f"(probe rate {probe_rate:,.0f} H/s)", flush=True)
     deadline = time.time() + args.duration
     total_hashes = 0
     t_start = time.time()
@@ -78,19 +93,19 @@ def main():
     while time.time() < deadline and not client.stop_flag:
         with client.lock:
             job, gen, diff = client.current_job, client.job_generation, client.difficulty
-        if job is None or diff is None:
+        if job is None or diff is None or not client.authorized.is_set():
             time.sleep(0.3); continue
         en2_counter += 1
         en2 = "%0*x" % (client.extranonce2_size * 2, en2_counter)
         header, _merkle, _cb = build_header(job, client.extranonce1, en2, 0, "wordswap")
         target = target_for_difficulty(float(diff))
-        # scan in 2^24 chunks so a new job preempts quickly
+        # scan in ~1 second chunks so a new job preempts quickly
         nonce = 0
         while nonce < (1 << 32):
             with client.lock:
                 if client.job_generation != gen:
                     break
-            span = min(1 << 24, (1 << 32) - nonce)
+            span = min(span_size, (1 << 32) - nonce)
             hit = engine.search_first(header, target, nonce, span)
             total_hashes += span
             nonce += span
