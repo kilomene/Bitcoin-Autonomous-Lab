@@ -584,14 +584,235 @@ PROMISING HYPOTHESIS with measured support.
 
 ## EXP-019: Carry-save schedule pricing, then engine (Y-002, Y-001)
 
-Status: NOT RUN. Designed in HYPOTHESIS_RANKING
-.md (Y-001, Y-002 entries). Deliverable of the
-first half is a per-distance price list for one
-carry-save level, with resolution costs separated;
-the list feeds the discovery system's cost model
-(COMPUTATION_GRAPH_RESEARCH.md section 4).
-Artifacts, when run: analysis/exp019_price_list
-.json and benchmarks/exp019/.
+Status: COMPLETE (2026-11-14). The price list
+was built and measured first, as designed; no
+carry-save form passed the predeclared gate
+(measured micro-cost win AND dependency-chain
+win), so no kernel was built and Y-001's engine
+was not attempted. Raw artifacts:
+analysis/exp019_price_list.json, benchmarks/
+exp019/ (three append-only sessions plus the
+L1-resident supplement). Designed in
+HYPOTHESIS_RANKING.md (Y-001, Y-002 entries).
+The list feeds the discovery system's cost
+model (COMPUTATION_GRAPH_RESEARCH.md
+section 4), including one correction to that
+model's inherited costing, recorded below.
+
+### The question
+
+For one expanded schedule word, the recurrence
+W[t] = sigma1(W[t-2]) + W[t-7] + sigma0(W[t-15])
++ W[t-16] is a four-operand modular addition.
+Operand roles: a = W[t-16], b = sigma0(W[t-15]),
+c = W[t-7], d = sigma1(W[t-2]). Y-002 asks
+whether one carry-save level prices below the
+add tree the production compiler emits, per
+consumption distance. Y-001 asks the same at
+the whole-schedule level, with resolution
+forced where a round or a sigma consumes the
+word.
+
+### Static price list (instruction counts and chains)
+
+Counts are vector instructions per expanded
+word for the addition network only (sigma
+generation is common to all forms). A chain is
+the longest dependency path in unit-latency
+instruction stages. A software 3:2 compressor
+on this instruction set costs THREE
+instructions, not two: VPTERNLOGD for the
+parity output, VPTERNLOGD for the majority
+output, and VPSLLD to align the carry vector
+to the bit positions it carries into. The
+registry's Y-002 costing ("one carry-save
+level, two ternlog ops") undercounts by the
+shift; the emitted loops below confirm the
+shift is present. Production and resolution
+costs are separated, per the design.
+
+| Form | Production ops | Resolution ops | Total ops | Production chain | Resolution chain | Total chain |
+|---|---|---|---|---|---|---|
+| current_serial (incumbent, as emitted) | 3 VPADDD | 0 | 3 | 3 | 0 | 3 |
+| balanced_tree (control, Y-003 territory) | 3 VPADDD | 0 | 3 | 2 | 0 | 2 |
+| cs1_resolved | 3 (2 VPTERNLOGD + 1 VPSLLD) | 2 VPADDD | 5 | 2 | 2 | 4 |
+| csfull_resolved | 6 (4 VPTERNLOGD + 2 VPSLLD) | 1 VPADDD | 7 | 4 | 1 | 5 |
+| sigma_led_cs1 | 3 (2 VPTERNLOGD + 1 VPSLLD) | 2 VPADDD | 5 | 2 | 2 | 4 |
+| cs1 deferred (three-vector output) | 3 | 2 VPADDD | 5 | 2 | 2 | 4 |
+| csfull deferred (pair output) | 6 | 1 VPADDD | 7 | 4 | 1 | 5 |
+
+Assembly audit of the microbenchmark runner
+loops (objdump, per iteration): current_serial
+3 VPADDD; balanced_tree 3 VPADDD; cs1_resolved
+2 VPTERNLOGD + 1 VPSLLD + 2 VPADDD;
+csfull_resolved 4 VPTERNLOGD + 2 VPSLLD +
+1 VPADDD; sigma_led_cs1 as cs1. The intended
+forms survived compilation exactly. The
+production kernel's own hot loop was also
+re-audited: its schedule sum is emitted as
+three serially dependent VPADDD (the source
+expression is balanced, the emitted chain is
+serial), so current_serial is the honest
+incumbent, not a strawman.
+
+Deferral changes nothing in the totals: the
+deferred rows are the resolved rows with the
+resolution adds moved later. And deferral has
+a hard bound in this recurrence. In the fused
+kernel, T1 consumes W[t] in the round that
+generates it (separation 0). In any
+schedule-ahead variant, sigma1 consumes W[t]
+as an input to W[t+2] (separation 1), and a
+sigma cannot consume a redundant pair: the
+sigmas are bitwise operations on the true
+word, and the bits of a sum are not a bitwise
+function of a redundant pair's bits. Every
+expanded word is therefore resolved at
+separation 0 or 1, exactly where the measured
+price of carry-save is worst.
+
+### Measured price list
+
+Method: src/exp019_price_micro.c (paired
+microbenchmark; each repeat runs all five
+forms once in randomized order over identical
+data and identical chain state, forms verified
+against scalar addition on 1,600,000 random
+lanes, zero mismatches, and cross-checked by
+per-block checksum agreement). A separation s
+means s independent vector sums issue between
+a word's production and its next dependent
+use; the recurrence's actual separations are
+0 (T1), 1 (sigma1 at t+2), 6 (direct at t+7),
+14 (sigma0 at t+15) and 15 (direct at t+16).
+Three sessions, 21 repeats per separation,
+8,192 vector sums per block, 63 paired repeats
+per point. Operand streams b, c, d are
+L2-resident in the main list. Ratios are
+candidate / current_serial ns per vector op
+(mean log ratio, 95 percent bootstrap CI);
+below 1 is faster than the incumbent.
+
+Medians (ns per vector op), main list:
+
+| Sep | Use | current | balanced | cs1 | csfull | sigma-led |
+|---|---|---|---|---|---|---|
+| 0 | T1 | 7.825 | 7.778 | 9.907 | 11.020 | 10.364 |
+| 1 | sigma1 t+2 | 3.919 | 3.917 | 4.938 | 5.475 | 5.156 |
+| 2 | | 2.620 | 2.619 | 3.328 | 3.748 | 3.503 |
+| 3 | | 1.971 | 1.970 | 2.659 | 2.851 | 2.677 |
+| 4 | | 2.039 | 1.963 | 2.392 | 2.545 | 2.454 |
+| 5 | | 2.038 | 2.017 | 2.166 | 2.279 | 2.203 |
+| 6 | direct t+7 | 2.029 | 2.028 | 2.060 | 2.133 | 2.077 |
+| 7 | | 2.014 | 1.946 | 1.972 | 2.037 | 1.985 |
+| 8 | | 2.029 | 2.011 | 1.922 | 1.969 | 1.932 |
+| 9 | | 2.027 | 2.015 | 1.866 | 1.915 | 1.862 |
+| 10 | | 2.027 | 2.021 | 1.760 | 1.868 | 1.730 |
+| 11 | | 2.038 | 2.036 | 1.737 | 1.819 | 1.710 |
+| 12 | | 2.041 | 2.038 | 1.727 | 1.788 | 1.708 |
+| 13 | | 2.051 | 2.047 | 1.763 | 1.795 | 1.718 |
+| 14 | sigma0 t+15 | 2.059 | 2.055 | 1.765 | 1.790 | 1.714 |
+| 15 | direct t+16 | 2.071 | 2.044 | 1.752 | 1.784 | 1.718 |
+
+Ratios at the recurrence's actual separations,
+main list: separation 0: cs1 1.270 (CI 1.101
+to 1.516), csfull 1.465 (1.242 to 1.787),
+sigma-led 1.526 (1.228 to 1.980). Separation
+1: cs1 1.168 (1.019 to 1.305), csfull 1.261
+(1.106 to 1.390), sigma-led 1.233 (1.066 to
+1.448). Separation 6: cs1 1.079 (1.013 to
+1.153), csfull 1.145 (1.000 to 1.328),
+sigma-led 1.022 (0.900 to 1.146). At
+separations 8 to 15 the main list shows the
+carry-save forms at 0.80 to 0.97; that effect
+is addressed by the supplement below and does
+not survive it.
+
+L1-resident supplement (same protocol,
+operand streams reduced to 24 KB so they sit
+in L1, matching the kernel's stack-ring
+operand residency; separations 0, 1, 6, 10,
+13, 15): at separation 1, cs1 1.308 (CI 1.199
+to 1.446), csfull 1.493 (1.308 to 1.830),
+sigma-led 1.433 (1.220 to 1.857). At
+separation 6: 1.307 (1.217 to 1.394), 1.443
+(1.299 to 1.621), 1.307 (1.211 to 1.419). At
+separation 10: 1.145 (1.084 to 1.205), 1.253
+(1.187 to 1.317), 1.222 (1.092 to 1.450). At
+separation 13: 1.119 (1.076 to 1.163), 1.287
+(1.174 to 1.479), 1.114 (1.071 to 1.163). At
+separation 15: 1.084 (1.046 to 1.137), 1.141
+(1.123 to 1.165), 1.063 (1.039 to 1.105).
+Separation 0 medians agree with the main list
+(cs1 9.882 vs incumbent 7.823); its supplement
+intervals are wide and consistent with the
+main list. The wide-separation advantage in
+the main list is therefore a property of the
+L2 streaming pattern (each serial add carries
+an L2 load on its chain, while the carry-save
+loops load all operands up front), not of the
+forms under kernel-faithful residency.
+
+Session conditions: load average 5.10 to 6.06
+at session starts; the mainnet node was
+mid-restart during the sessions (RPC
+unavailable at the session boundaries;
+debug.log read-only shows block index loading
+with block files up to height 412,014, IBD
+continuing; the autopilot and miner were
+running throughout and were not touched).
+
+### Verdict
+
+- **Decision.** No kernel built. The gate was
+  a form winning on measured micro-cost AND
+  dependency chain. Every carry-save form
+  loses on chain (4 or 5 stages vs the
+  incumbent's 3) and on total ops (5 or 7 vs
+  3), and under kernel-faithful L1 residency
+  every carry-save form also loses on measured
+  cost at every separation from 1 up, with
+  intervals excluding parity at separations
+  6, 10, 13 and 15. At separations 0 and 1,
+  the only separations at which resolution is
+  ever forced, the main list already had them
+  1.17 to 1.53 times the incumbent's cost.
+- **Y-002: REJECTED** as a cheaper
+  materialization of the four-operand sum.
+  Its own success criterion, a measured
+  per-distance winner table, is delivered
+  above: the winner at every relevant distance
+  is the incumbent. Tier: established negative.
+- **Y-001: REJECTED** as a work reduction on
+  this instruction set, at the pricing level.
+  The engine was not built because its design
+  point (Y-002) failed its gate and because
+  the recurrence bounds deferral to separation
+  1 at best, where the price is worst. Tier:
+  established negative (pricing grade; no
+  engine exists to benchmark, by the
+  experiment's own order of work).
+- **Cost-model correction.** The discovery
+  system's cost model (COMPUTATION_GRAPH_
+  RESEARCH.md section 4) should price a
+  software 3:2 compressor at 3 instructions
+  and a resolved four-operand carry-save sum
+  at 5 (one level) or 7 (two levels), not at
+  the registry's original ternlog-only count.
+- **Side observation (not an EXP-019
+  result).** The balanced_tree control read
+  0.93 to 0.99 at separations 0 to 7 in the
+  main list (intervals below 1 at separations
+  2, 5, 7) but 1.06 to 1.20 in the L1
+  supplement at separations 1 and up. The two
+  regimes disagree, so no claim is made; the
+  data point belongs to Y-003 if it is ever
+  pursued.
+- **Follow-up.** None for carry-save schedule
+  generation on AVX-512. The price list stands
+  as the cost model's resolution table.
+  Production is byte-identical; nothing was
+  integrated.
 
 ## EXP-020: Automated full-round rewriting (Y-014, Y-015; seeds Y-048, Y-049)
 
