@@ -381,3 +381,57 @@ Conclusions under the three tiers:
 Full record: EXPERIMENT_RESULTS.md, EXP-019;
 raw data in benchmarks/exp019/ and
 analysis/exp019_price_list.json.
+
+## Addendum (2026-11-14): EXP-020, automated full-round rewriting (Y-014, Y-015)
+
+Phase 6's closing designed experiment ran both
+discovery engines over the full round plus the
+schedule cone, proof-gated to the programme's
+standard. The round cone is now characterised:
+the saturation extracted 28 vector ops per
+steady-state round in the AVX-512 vocabulary,
+and the SMT-guided leg assembled an independent
+lower bound of exactly 28 (12 offset ops, 6
+Boolean combines, 10 adds), so no cheaper
+equivalent full-round graph exists in that
+vocabulary, rewrite set and campaign bound.
+Nothing nontrivial is shared between the cones
+for either engine to exploit; the only sharing
+in the joint cone is T1, already shared by the
+incumbent. The single op below the emitted
+production code is a compiler codegen gap, not
+a graph discovery: gcc emits Maj as two chained
+VPTERNLOGD where the proven form is one. That
+candidate (P6C-007) promoted to a gated variant
+kernel under the predeclared threshold and was
+benchmarked under the EXP-017 decision
+statistic: pooled adjusted log-ratio +0.0493
+(CI -0.067 to +0.167), positive in all three
+sessions but not significant in any session or
+pooled, with the control session null as
+required; so it is not a verified improvement
+and nothing is integrated. Production remains
+byte-identical.
+
+Three-tier conclusions:
+
+- VERIFIED IMPROVEMENT: unchanged (the AVX-512
+  MB integration under the owner's adoption of
+  the EXP-017 rule remains the programme's one
+  verified improvement).
+- PROMISING HYPOTHESIS: unchanged.
+- UNPROVEN BREAKTHROUGH: unchanged.
+- Established results: the full-round graph is
+  optimal within the stated vocabulary (28 ops,
+  bound matched); Y-014 and Y-015 are supported
+  as instruments and negative as discoveries on
+  this cone; the pair addition BFS's incomplete
+  depth (levels 0 to 3 of 7) is recorded rather
+  than rounded up, its bound completed by
+  counting proof.
+
+Full record: EXPERIMENT_RESULTS.md, EXP-020;
+candidates P6C-005 to P6C-009 in
+proofs/exp020_candidates.json; raw benchmark
+data in benchmarks/exp020/; assembly audit in
+analysis/exp020_asm_audit.json.
