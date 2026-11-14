@@ -425,3 +425,29 @@ weakened or removed.
 - bal_cuda_ctx_destroy and pthread join results remain
   unchecked, as recorded in Task 003; a destroy failure has
   no safe recovery action in this design.
+
+## Task 003.9 scoping note (2026-11-14, appended, history unchanged)
+
+Two statements in this report were written under the Task
+003.8 accounting definitions and are superseded by the Task
+003.9 definitions (results/TASK0039_FINAL_ACCOUNTING_CORRECTION.md):
+
+- The invariant device_hashes == unique_coverage +
+  researched_hashes is a property of the CUDA candidate
+  recovery driver only (where the wrapped backend is the CUDA
+  device). It was never a property of CPU or C statistics;
+  Task 003.9 scopes it explicitly in the driver docstring and
+  the module docstring, and tests assert device_hashes == 0 on
+  CPU and C paths.
+- backend_hashes in this report included trusted-rescan work
+  ("actual computations across backend and recovery", for
+  example "backend_hashes 4000 (2000 backend + 2000 rescan)"
+  in the batch example). Under Task 003.9, backend_hashes is
+  the selected backend's own computations only (2000 in that
+  example); the rescan and every candidate verification are
+  reported separately as verification_hashes, and the legacy
+  "hashes" total is backend_hashes + verification_hashes, each
+  computation counted in exactly one category. Two assertions
+  in tests/test_task0038_abi.py were updated to the new split
+  (with added verification_hashes assertions); no other 003.8
+  result changes.
