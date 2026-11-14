@@ -520,5 +520,38 @@ recorded in full in the tree's EXPERIMENT_REGISTRY
   analytic bound confirmed by measurement.
 
 No integration; production byte-identical. EXP-010
-is reserved for the Part A post-sync decision
-closure (separate watcher, not run here).
+was at that point reserved for the Part A decision
+closure; it has since run, see the EXP-010 pointer
+section at the end of this file.
+
+## EXP-010: Part A decision closure (2026-11-14)
+
+Executed on the owner's immediate order during
+mainnet initial block download (node at blocks
+410,518 to 410,520 of 975,803 headers, IBD true,
+1-minute load 12.39 to 12.60, session steal 1.63
+percent), pre-empting the post-sync watcher. Full
+record: extreme_optimization/EXP010_PART_A_REPORT.md
+and extreme_optimization/EXPERIMENT_REGISTRY.md;
+raw data in extreme_optimization/benchmarks/
+exp010_partA_decision.json.
+
+All three contenders passed the full gate set
+(108,000 differentials each, exact accounting).
+At 2 threads, 15 interleaved rounds of 1M:
+production C median 1,209,879 H/s (max 2,288,008);
+H-01 streams=4 strided median 3,342,449 (min
+1,440,195); AVX-512 multi-buffer median 3,551,903
+(min 2,006,621). The predeclared criterion
+(candidate minimum above production maximum)
+FAILED for both candidates, the third recorded
+failure of the same test (EXP-003 decision run,
+EXP-004, EXP-010). No integration; production
+byte-identical; the Part A decision is closed for
+this machine. AVX-512 variance attribution: steal
+and load spikes do not explain its slow rounds
+(calm and spiked medians 1.3 percent apart, rate
+vs steal correlation +0.221 against production's
+-0.521 control); the excess variance is
+implementation behaviour under a saturated
+runnable queue.
