@@ -332,3 +332,24 @@ Classification: VERIFIED IMPROVEMENT under
 the adopted rule. Full record:
 phase6/PHASE6_FINAL_REPORT.md, addendum of
 2026-11-14.
+
+## Pointer: post-integration audit of the AVX-512 MB backend (2026-11-14)
+
+An independent audit re-derived the integration's
+claims from the pushed tree, fresh builds and fresh
+runs: production commit byte-identical to the remote
+tree; kernel body byte-identical to the EXP-007
+research source; dispatch feature set (AVX-512F plus
+BW) confirmed by the auditor's own objdump census;
+131,072 fresh differentials exact; wave accounting
+matching an independent partition prediction exactly;
+fail-closed rescan verified on both the batch and
+search paths; fallback to C verified for probe
+failure, missing library, probe-less library and a
+broken MB build; a fresh auditor regtest block
+accepted at height 702. Verdict: PASS WITH NOTES.
+One latent dispatch defect (a probe-only library
+raises out of ComputeEngine instead of falling back)
+and one pre-existing accounting note on the live
+status counter are recorded with reproducers. Full
+audit: phase6/POST_INTEGRATION_AUDIT.md.
