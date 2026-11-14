@@ -47,6 +47,24 @@
  * attempts in that process then fail with EAGAIN, exercising the
  * synchronous fallback under test control. Production code never
  * sets it (it stays -1, disabled).
+ *
+ * Task 003.1 hardening: context initialization is fallible and the
+ * failure is propagated, never ignored.
+ * - bal_ctx_init() returns the pthread_mutex_init() result. On
+ *   failure the context is marked not initialized (mutex_ready 0)
+ *   and the caller MUST NOT start workers or publish into it.
+ * - bal_ctx_destroy() destroys the mutex only when initialization
+ *   actually succeeded, so an uninitialized mutex is never
+ *   destroyed.
+ * - bal_ctx_publish() checks the lock and unlock results. If
+ *   locking fails, nothing is published; the context records a
+ *   publish error (checked by the caller after joining workers)
+ *   and raises the stop flag so the search ends in an explicit
+ *   error return instead of a silently lost or corrupted winner.
+ * - bal_mutex_fail_mask is the matching failure-injection hook for
+ *   tests: bit 0 makes mutex initialization fail with EAGAIN,
+ *   bit 1 makes mutex locking fail with EAGAIN. Production code
+ *   never sets it.
  */
 #ifndef BAL_SEARCH_H
 #define BAL_SEARCH_H
@@ -60,6 +78,20 @@
 /* Defined once in each translation unit that includes this header. */
 extern _Atomic int bal_create_fail_after;
 extern _Atomic int bal_create_fail_calls;
+extern _Atomic int bal_mutex_fail_mask;
+
+static inline int bal_pthread_mutex_init(pthread_mutex_t *mutex,
+                                         const pthread_mutexattr_t *attr) {
+  if (atomic_load_explicit(&bal_mutex_fail_mask, memory_order_relaxed) & 1)
+    return EAGAIN;
+  return pthread_mutex_init(mutex, attr);
+}
+
+static inline int bal_pthread_mutex_lock(pthread_mutex_t *mutex) {
+  if (atomic_load_explicit(&bal_mutex_fail_mask, memory_order_relaxed) & 2)
+    return EAGAIN;
+  return pthread_mutex_lock(mutex);
+}
 
 static inline int bal_pthread_create(pthread_t *tid, const pthread_attr_t *attr,
                                      void *(*start_fn)(void *), void *arg) {
@@ -75,41 +107,73 @@ static inline int bal_pthread_create(pthread_t *tid, const pthread_attr_t *attr,
 
 typedef struct {
   _Atomic int stop;
+  _Atomic int publish_error;
   pthread_mutex_t winner_lock;
+  int mutex_ready; /* 1 only after a successful mutex init */
   int found_valid;
   uint32_t found_nonce;
   uint8_t found_digest[32];
 } BalSearchCtx;
 
-static inline void bal_ctx_init(BalSearchCtx *ctx) {
+/* Initialize a search context. Returns 0 on success or the
+ * pthread error code when mutex initialization fails; on failure
+ * mutex_ready stays 0, the caller must not start workers, and
+ * bal_ctx_destroy() remains safe to call. */
+static inline int bal_ctx_init(BalSearchCtx *ctx) {
   atomic_init(&ctx->stop, 0);
-  pthread_mutex_init(&ctx->winner_lock, NULL);
+  atomic_init(&ctx->publish_error, 0);
+  ctx->mutex_ready = 0;
   ctx->found_valid = 0;
   ctx->found_nonce = 0;
   memset(ctx->found_digest, 0, sizeof(ctx->found_digest));
+  int rc = bal_pthread_mutex_init(&ctx->winner_lock, NULL);
+  if (rc != 0) return rc;
+  ctx->mutex_ready = 1;
+  return 0;
 }
 
 static inline void bal_ctx_destroy(BalSearchCtx *ctx) {
-  pthread_mutex_destroy(&ctx->winner_lock);
+  if (ctx->mutex_ready) {
+    pthread_mutex_destroy(&ctx->winner_lock);
+    ctx->mutex_ready = 0;
+  }
 }
 
 static inline int bal_ctx_stopped(const BalSearchCtx *ctx) {
   return atomic_load_explicit(&ctx->stop, memory_order_acquire);
 }
 
+static inline int bal_ctx_publish_failed(const BalSearchCtx *ctx) {
+  return atomic_load_explicit(&ctx->publish_error, memory_order_acquire);
+}
+
 /* Publish a candidate winner. Only the first publisher wins; the
  * digest and nonce are copied while holding the lock, then the
- * stop flag is raised with release semantics. */
-static inline void bal_ctx_publish(BalSearchCtx *ctx, uint32_t nonce,
-                                   const uint8_t digest[32]) {
-  pthread_mutex_lock(&ctx->winner_lock);
+ * stop flag is raised with release semantics. Returns 0 when the
+ * publish machinery worked (whether or not this caller was the
+ * first winner) and -1 when locking or unlocking failed: in that
+ * case nothing is trusted, the publish error is recorded for the
+ * caller to check after joining, and the stop flag is raised so
+ * the search ends instead of silently losing the candidate. */
+static inline int bal_ctx_publish(BalSearchCtx *ctx, uint32_t nonce,
+                                  const uint8_t digest[32]) {
+  if (bal_pthread_mutex_lock(&ctx->winner_lock) != 0) {
+    atomic_store_explicit(&ctx->publish_error, 1, memory_order_release);
+    atomic_store_explicit(&ctx->stop, 1, memory_order_release);
+    return -1;
+  }
   if (!ctx->found_valid) {
     memcpy(ctx->found_digest, digest, 32);
     ctx->found_nonce = nonce;
     ctx->found_valid = 1;
   }
-  pthread_mutex_unlock(&ctx->winner_lock);
+  if (pthread_mutex_unlock(&ctx->winner_lock) != 0) {
+    atomic_store_explicit(&ctx->publish_error, 1, memory_order_release);
+    atomic_store_explicit(&ctx->stop, 1, memory_order_release);
+    return -1;
+  }
   atomic_store_explicit(&ctx->stop, 1, memory_order_release);
+  return 0;
 }
 
 /* Validate a 64-bit half-open nonce interval against the 32-bit
