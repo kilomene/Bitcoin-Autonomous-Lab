@@ -354,3 +354,57 @@ N-1 NOT CHANGED. The mainnet_live.py status counter span
 accounting is pre-existing behaviour awaiting the
 owner's word; this pass left the code exactly as the
 audit recorded it.
+
+## Resolution addendum: N-1 fixed (2026-11-14)
+
+N-1 RESOLVED, on the owner's order to complete
+everything. mining/mainnet_live.py no longer adds the
+requested span to its status counter. A new helper,
+call_attempts(engine, hit, start), returns the exact
+attempts of each search_first call from the engine's
+counted stats (last_search_stats["attempted"], the
+field Area 4 verified as exact), and the scan loop
+accumulates that value. If a call path ever leaves
+no stats, the helper counts only what the result
+itself proves: a hit proves every nonce from the span
+start through the winner was examined, and a miss
+without stats proves no countable partial work, so
+0. The requested span size is never counted. Every
+other status field is unchanged; the displayed
+session rate now derives from exact attempts instead
+of requested nonces. Historical session rates in
+earlier evidence files were computed on the inflated
+counter; they are left exactly as recorded and must
+not be read as exact attempt rates.
+
+Regression gate: tests/test_mainnet_live_accounting.py
+(make test-mainnet-live, part of test-all) drives the
+production engine on the auto and C backends. An
+early-exit search (genesis header, winner 3 nonces
+into a 100,000 nonce span) advances the counter by
+exactly the attempted count (16 under the v512 wave
+accounting, 4 under C), not the span. A full-miss
+span advances it by exactly the span size, which
+equals the attempted count. The no-stats fallback is
+asserted directly against both a hit and a miss.
+Full test-all after the fix: 21 of 22 targets pass;
+the only failure is test-rtl (iverilog absent from
+this VM, pre-existing environment, unchanged).
+Environment note: the first test-all run after the
+2026-11-14 VM reboot halted at test-regtest because
+the regtest node's bal-regtest wallet existed on
+disk but was not loaded; loading it restored the
+pre-reboot state and the suite then ran clean. No
+code was changed for that.
+
+Deployment note: the live miner and autopilot were
+NOT restarted for this fix. The running miner (pid
+3741, restored by the keeper at 16:10 UTC after the
+reboot) still executes the pre-fix runner, so its
+status line still shows requested nonces; the fix
+takes effect on the next natural miner restart
+through the autopilot and keeper cycle.
+
+With this addendum, every note in this audit is
+resolved: D-1 (dispatch guard), N-1 (status counter
+accounting), N-2 (docstring).
