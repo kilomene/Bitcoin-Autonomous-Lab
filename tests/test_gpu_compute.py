@@ -71,7 +71,7 @@ def main():
 
     diag = diagnostics.collect()
     eng = ComputeEngine()
-    if eng.backend == "c":
+    if eng.backend in ("c", "v512"):
         import gpu.engine as _ge
         assert _ge.C_THREADS_TUNED, "C threads must be resolved " \
             "(explicit BAL_C_THREADS or one auto-tune probe)"
@@ -79,7 +79,7 @@ def main():
         print(f"ok: full-workforce thread count resolved: "
               f"{_ge.C_THREADS} threads")
     if diag["nvidia_device_nodes"] == 0:
-        assert eng.backend in ("c", "cpu"), eng.describe()
+        assert eng.backend in ("c", "cpu", "v512"), eng.describe()
         assert eng.cuda_fallback_reason and "35" in eng.cuda_fallback_reason, \
             eng.cuda_fallback_reason
         print(f"ok: no GPU present; engine on {eng.backend} backend with "
