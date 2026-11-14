@@ -497,7 +497,7 @@ def test_batch_verification_fail_closed():
     first_nonce = min(want)
 
     # Native C batch enumeration with one corrupt digest.
-    eng = ComputeEngine()
+    eng = ComputeEngine(requested="c")
     assert eng.backend == "c"
     eng._c_batch_flagged = lambda *a, **k: [
         (first_nonce, b"\x00" * 32)]
@@ -605,7 +605,7 @@ def test_regtest_block():
             rpc.call("createwallet", "bal-regtest")
     wallet = BitcoinRPC(wallet="bal-regtest")
     payout = wallet.call("getnewaddress", "", "bech32")
-    compute = ComputeEngine()
+    compute = ComputeEngine(requested="c")
     assert compute.backend == "c", compute.describe()
     eng = MiningEngine(rpc, payout, compute=compute,
                        batch_size=100_000)
