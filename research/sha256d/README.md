@@ -82,7 +82,9 @@ B4. Single-call latency through the Python/ctypes boundary is
     in crossing and thread-setup overhead. Mining spans are
     sized near 1 s of work in the live miner for this reason.
 B5. Memory bandwidth is not the constraint: a STREAM-style copy
-    measures about 4.0 GB/s single-stream under contention while
+    measures 2.739 GB/s single-stream under contention (probe
+    record; corrected from an unsourced 4.0 GB/s, see
+    cpu_microarchitecture.md) while
     a mining thread consumes a 32-byte digest per hash; the
     working set per worker is registers plus a few hundred stack
     bytes. Compute and latency chains bind, not DRAM.
