@@ -212,3 +212,99 @@ is null. Conclusions under the three tiers:
 No integration; production is unchanged. Full
 record: EXPERIMENT_RESULTS.md, EXP-018; raw
 data in benchmarks/exp018/.
+
+## Addendum, 2026-11-14: owner decision, integration of the AVX-512 multi-buffer kernel
+
+The owner decided on 2026-11-14: the EXP-017
+statistic is ADOPTED as the programme's
+integration decision rule, replacing the old
+min/max separation rule, and the AVX-512
+multi-buffer kernel is the integration target.
+The adopted rule: a candidate integrates when,
+under the EXP-017 protocol (paired
+65,536-hash blocks, randomized AB/BA order,
+adjusted paired log-ratio), the adjusted 95
+percent CI lies entirely above 0 in every
+session and pooled over at least 3 independent
+sessions, all correctness gates pass, and a
+fresh regtest block is mined through the
+production path and accepted by Core. The
+EXP-017 evidence for this kernel: pooled
+log-ratio +1.2652 against production (3.55x,
+CI 3.17x to 3.97x), significant in every
+session, both equal-pair controls null.
+
+Integration as built: the kernel's production
+translation unit is mining/cpu/bal_avx512_mb.c
+(byte-identical to the EXP-007 research source
+except the header comment and the bal_search.h
+include path), built by mining/cpu/build.py
+into .local/cpu/libbal_v512.so with the
+restricted flags -mavx512f -mavx512bw, never
+-march=native, and linked with the flag-free
+CPUID probe mining/cpu/bal_avx512_probe.c.
+The required feature set, AVX-512F plus
+AVX-512BW, was determined from the kernel's
+intrinsics (vprold and vpternlogd are F;
+_mm512_shuffle_epi8 is BW) and confirmed by an
+objdump audit of the production object (zero
+VBMI, DQ or IFMA mnemonics anywhere in it).
+ComputeEngine selects the new backend "v512"
+only when the probe confirms both features
+and a 256-nonce batch reproduces hashlib
+digests exactly; any failure at any step falls
+back cleanly to the OpenSSL C backend, an
+explicit requested="c" still selects C alone,
+and machines without AVX-512 behave exactly
+as before. Accounting follows the counted
+contract with wave semantics: attempted counts
+the real nonces of completed 16-lane waves,
+backend_hashes counts actual lane computations
+including dummy lanes.
+
+Gates, all through the production path
+(tests/test_avx512_integration.py, now make
+test-avx512 and part of test-all): dispatch
+and fallback verified; 196,608 randomized
+differentials against hashlib, zero mismatch;
+candidate sets equal to independent recounts;
+genesis, boundary nonces including the final
+nonce, target equality and minus-one, and
+independent candidate verification all pass;
+fresh regtest block mined with the MB backend
+selected and accepted, height 630, hash
+20efd9330ba7d17fade70fb87e582de702573534354f
+05709fdf0356fa45181d (a second fresh block
+followed during the full-suite run: height
+700, hash 214e7788eeaac3152e65235e7a816f23f
+bd825630d81d25da92343b8bce1eef9). Full
+test-all: 20 of 21 targets pass; the only
+failure is test-rtl (iverilog absent from
+this VM, pre-existing environment, unchanged).
+An in-situ EXP-017-protocol paired smoke of
+the integrated path (one session, labelled
+smoke): 2.76x against the C backend, CI 1.86x
+to 4.05x, 32 of 40 pairs won.
+
+Deployment: code pushed and tree-verified
+first (missing_or_diff [], extra_managed []),
+then the live miner child was terminated and
+the autopilot respawned it onto the new code
+(miner pid 89317). Verification: heartbeat
+fresh, autopilot status running, the miner
+log and status file show backend v512
+(avx512-mb) selected, the hash counter
+advancing (402,653,184 hashes at t=30s of the
+new session, session rate 13.28M H/s against
+3.33M H/s in the previous C session under
+comparable contention), shares_accepted_total
+60. The mainnet node was not restarted and
+its sync was not disturbed (blocks 411,570
+and progressing at verification time).
+
+Classification: VERIFIED IMPROVEMENT under
+the adopted rule. The C backend remains the
+fallback on every machine without the
+required features, and the pre-integration
+production files are preserved under
+.local/pre-avx512-integration/ for rollback.
