@@ -44,7 +44,9 @@ BAL_AP_HEARTBEAT_S, BAL_AP_UPDATE_CHECK_S.
 import fcntl
 import json
 import os
+import re
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -56,6 +58,17 @@ LOCK_PATH = os.path.join(LOCAL, "autopilot.lock")
 STOP_PATH = os.path.join(LOCAL, "autopilot.stop")
 LOG_PATH = os.path.join(LOCAL, "autopilot.log")
 EVIDENCE = os.path.join(ROOT, "evidence", "mainnet-live.jsonl")
+
+
+def default_worker():
+    """Worker name for this machine when none is given: the
+    sanitized hostname, so a team of agents mining into one
+    payout address never collide on a single shared name like
+    bal1. Stratum worker names travel as address.worker, so the
+    name is kept to lowercase letters, digits and dashes."""
+    host = socket.gethostname() or "bal"
+    name = re.sub(r"[^a-z0-9-]+", "-", host.lower()).strip("-")
+    return (name or "bal")[:24]
 
 POLL_S = float(os.environ.get("BAL_AP_POLL_S", "2"))
 STALE_S = float(os.environ.get("BAL_AP_STALE_S", "300"))
@@ -250,7 +263,9 @@ def main():
     ap.add_argument("--duration", type=int, default=86400,
                     help="per-session miner duration in seconds")
     ap.add_argument("--address", default=None)
-    ap.add_argument("--worker", default="bal1")
+    ap.add_argument("--worker", default=None,
+                    help="pool worker name; default is this "
+                         "machine's hostname (see default_worker)")
     ap.add_argument("--auto-update", action="store_true")
     ap.add_argument("--status", action="store_true",
                     help="print heartbeat and exit")
@@ -271,11 +286,13 @@ def main():
         os.remove(STOP_PATH)
 
     override = os.environ.get("BAL_AP_MINER_CMD")
+    worker = args.worker or os.environ.get("BAL_WORKER") \
+        or default_worker()
     if override:
         miner_cmd = json.loads(override)
     else:
         miner_cmd = [sys.executable, os.path.join("mining", "mainnet_live.py"),
-                     "--duration", str(args.duration), "--worker", args.worker]
+                     "--duration", str(args.duration), "--worker", worker]
         if args.address:
             miner_cmd += ["--address", args.address]
     auto_update = args.auto_update or os.environ.get("BAL_AUTO_UPDATE") == "1"
@@ -287,7 +304,7 @@ def main():
     signal.signal(signal.SIGINT, on_signal)
 
     log(f"autopilot up pid={os.getpid()} version={ap_obj.version} "
-        f"auto_update={args.auto_update}")
+        f"auto_update={auto_update} worker={worker}")
     ap_obj.run()
     return 0
 
