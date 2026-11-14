@@ -1,0 +1,229 @@
+{
+  "experiment": "EXP-001 compiler sweep",
+  "source": "mining/cpu/bal_batch.c",
+  "conditions": "2 threads (production tuned) and 1 thread, 1,000,000 hashes per run, 3 repeats, live mainnet miner and node contending",
+  "variants": {
+    "prod_o3_native": {
+      "flags": "-O3 -march=native",
+      "build_rc": 0,
+      "verify_100k_vs_hashlib": "True: 100000 digests match hashlib",
+      "verify_genesis_search": "True: rc=1 nonce=2083236893 attempted=9",
+      "asm": {
+        "sha256rnds2_in_this_library": 0,
+        "sha256_transform_calls": 4,
+        "hash_nonce_instructions": 408,
+        "hash_nonce_stack_frame_bytes": 416
+      },
+      "bench_threads_2": {
+        "count_per_run": 1000000,
+        "threads": 2,
+        "repeats": 3,
+        "rates_hs": [
+          3055743,
+          2347336,
+          1410693
+        ],
+        "median_hs": 2347336,
+        "min_hs": 1410693,
+        "max_hs": 3055743,
+        "spread_pct": 70.1
+      },
+      "bench_threads_1": {
+        "count_per_run": 1000000,
+        "threads": 1,
+        "repeats": 3,
+        "rates_hs": [
+          1717979,
+          1699701,
+          1296638
+        ],
+        "median_hs": 1699701,
+        "min_hs": 1296638,
+        "max_hs": 1717979,
+        "spread_pct": 24.8
+      }
+    },
+    "o2_native": {
+      "flags": "-O2 -march=native",
+      "build_rc": 0,
+      "verify_100k_vs_hashlib": "True: 100000 digests match hashlib",
+      "verify_genesis_search": "True: rc=1 nonce=2083236893 attempted=9",
+      "asm": {
+        "sha256rnds2_in_this_library": 0,
+        "sha256_transform_calls": 4,
+        "hash_nonce_instructions": 408,
+        "hash_nonce_stack_frame_bytes": 416
+      },
+      "bench_threads_2": {
+        "count_per_run": 1000000,
+        "threads": 2,
+        "repeats": 3,
+        "rates_hs": [
+          1472158,
+          1097449,
+          1763867
+        ],
+        "median_hs": 1472158,
+        "min_hs": 1097449,
+        "max_hs": 1763867,
+        "spread_pct": 45.3
+      },
+      "bench_threads_1": {
+        "count_per_run": 1000000,
+        "threads": 1,
+        "repeats": 3,
+        "rates_hs": [
+          1266636,
+          1832129,
+          1294424
+        ],
+        "median_hs": 1294424,
+        "min_hs": 1266636,
+        "max_hs": 1832129,
+        "spread_pct": 43.7
+      }
+    },
+    "o3_generic": {
+      "flags": "-O3 -march=x86-64",
+      "build_rc": 0,
+      "verify_100k_vs_hashlib": "True: 100000 digests match hashlib",
+      "verify_genesis_search": "True: rc=1 nonce=2083236893 attempted=4",
+      "asm": {
+        "sha256rnds2_in_this_library": 0,
+        "sha256_transform_calls": 4,
+        "hash_nonce_instructions": 534,
+        "hash_nonce_stack_frame_bytes": 456
+      },
+      "bench_threads_2": {
+        "count_per_run": 1000000,
+        "threads": 2,
+        "repeats": 3,
+        "rates_hs": [
+          2188081,
+          1986902,
+          2316161
+        ],
+        "median_hs": 2188081,
+        "min_hs": 1986902,
+        "max_hs": 2316161,
+        "spread_pct": 15.0
+      },
+      "bench_threads_1": {
+        "count_per_run": 1000000,
+        "threads": 1,
+        "repeats": 3,
+        "rates_hs": [
+          1758627,
+          1012590,
+          1076998
+        ],
+        "median_hs": 1076998,
+        "min_hs": 1012590,
+        "max_hs": 1758627,
+        "spread_pct": 69.3
+      }
+    },
+    "o3_native_lto": {
+      "flags": "-O3 -march=native -flto",
+      "build_rc": 0,
+      "verify_100k_vs_hashlib": "True: 100000 digests match hashlib",
+      "verify_genesis_search": "True: rc=1 nonce=2083236893 attempted=4",
+      "asm": {
+        "sha256rnds2_in_this_library": 0,
+        "sha256_transform_calls": 4,
+        "hash_nonce_instructions": 408,
+        "hash_nonce_stack_frame_bytes": 416
+      },
+      "bench_threads_2": {
+        "count_per_run": 1000000,
+        "threads": 2,
+        "repeats": 3,
+        "rates_hs": [
+          2598743,
+          1897272,
+          2195680
+        ],
+        "median_hs": 2195680,
+        "min_hs": 1897272,
+        "max_hs": 2598743,
+        "spread_pct": 31.9
+      },
+      "bench_threads_1": {
+        "count_per_run": 1000000,
+        "threads": 1,
+        "repeats": 3,
+        "rates_hs": [
+          1503398,
+          1124393,
+          1599606
+        ],
+        "median_hs": 1503398,
+        "min_hs": 1124393,
+        "max_hs": 1599606,
+        "spread_pct": 31.6
+      }
+    },
+    "o3_native_unroll": {
+      "flags": "-O3 -march=native -funroll-loops",
+      "build_rc": 0,
+      "verify_100k_vs_hashlib": "True: 100000 digests match hashlib",
+      "verify_genesis_search": "True: rc=1 nonce=2083236893 attempted=4",
+      "asm": {
+        "sha256rnds2_in_this_library": 0,
+        "sha256_transform_calls": 4,
+        "hash_nonce_instructions": 409,
+        "hash_nonce_stack_frame_bytes": 416
+      },
+      "bench_threads_2": {
+        "count_per_run": 1000000,
+        "threads": 2,
+        "repeats": 3,
+        "rates_hs": [
+          1486255,
+          2164702,
+          2050686
+        ],
+        "median_hs": 2050686,
+        "min_hs": 1486255,
+        "max_hs": 2164702,
+        "spread_pct": 33.1
+      },
+      "bench_threads_1": {
+        "count_per_run": 1000000,
+        "threads": 1,
+        "repeats": 3,
+        "rates_hs": [
+          1455820,
+          1722594,
+          1270719
+        ],
+        "median_hs": 1455820,
+        "min_hs": 1270719,
+        "max_hs": 1722594,
+        "spread_pct": 31.0
+      }
+    }
+  },
+  "verdicts": {
+    "o2_native": {
+      "median_vs_prod_pct": -37.3,
+      "spreads_overlap": true,
+      "decision": "reject"
+    },
+    "o3_generic": {
+      "median_vs_prod_pct": -6.8,
+      "spreads_overlap": true,
+      "decision": "reject"
+    },
+    "o3_native_lto": {
+      "median_vs_prod_pct": -6.5,
+      "spreads_overlap": true,
+      "decision": "reject"
+    },
+    "o3_native_unroll": {
+      "median_vs_prod_pct": -12.6,
+      "spreads_overlap": true,
+      "decision": "reject"
+    }
+  }
+}
