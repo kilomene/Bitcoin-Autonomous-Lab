@@ -1135,3 +1135,572 @@ src/exp020_round_search.py.
   ternlog for the classic form, P6C-007's
   delta disappears and this record is the
   evidence it existed.
+
+## EXP-021: Heterogeneous worker pair (Y-097)
+
+Status: COMPLETE (2026-11-14). The mixed pool
+does not beat the best homogeneous pool at
+either thread count, under either timing
+semantics measured. At two threads the
+homogeneous AVX-512 MB pool is significantly
+faster than the mixed pool pooled, and the
+mixed pool is statistically indistinguishable
+from the homogeneous SHA-NI pool it half
+consists of; at four threads the ordering is
+strictly MB pool above mixed pool above
+SHA-NI pool, pooled. The cross-family
+contention-relief mechanism Y-097 proposes
+does not appear in the worker-level rates
+either: neither family's per-worker rate
+improves measurably when its neighbours are
+the other family. Raw artifacts:
+benchmarks/exp021/ (18 append-only sessions,
+the analysis, the secondary analysis, and a
+100-pair smoke session filed under smoke/).
+Tools: benchmarks/exp021_pool.py,
+benchmarks/exp021_paired_bench.py,
+benchmarks/exp021_analyze.py,
+benchmarks/exp021_secondary.py. Gates:
+extreme_optimization/tests/test_exp021.py.
+
+- **Hypothesis.** Y-097: on this contended
+  guest (about 1.5 effective CPUs under a
+  4-vCPU cap), the two kernel families stress
+  different resources (SHA-NI streams are
+  latency-chain bound; the AVX-512 MB kernel
+  is wide-vector bound), so a mixed worker
+  pool, some threads running each family on
+  disjoint nonce partitions of one search,
+  beats the best homogeneous pool at the same
+  total thread count, because the families
+  contend less with each other than with
+  themselves. Motivated by the EXP-007
+  variance anomaly (flat AVX-512 response
+  while scalar rates rose).
+- **Design (predeclared).** Pools are lists
+  of one-thread workers. MB worker:
+  bal_v_batch2, threads=1 (the EXP-007
+  kernel; libbal_v512.so). SHA-NI worker:
+  bal_m_batch2m, threads=1, streams=4,
+  mode=1 strided (the EXP-005 best
+  per-worker geometry; libbal_geo.so). A
+  pool partitions its nonce range into
+  contiguous per-worker chunks of multiples
+  of 16 summing exactly to the block; the
+  pool driver (exp021_pool.py) launches the
+  workers on a shared barrier and times the
+  makespan. Two-thread pools: mb2 [mb, mb],
+  mixed2 [mb, shani], shani2 [shani, shani];
+  four-thread pools: mb4, mixed22 [mb, mb,
+  shani, shani], shani4. All three pairwise
+  comparisons at each thread count, three
+  independent sessions each, 160 recorded
+  pairs per session after 8 warmup pairs,
+  65,536 hashes per worker per block
+  (131,072 per two-thread block, 262,144 per
+  four-thread block), randomised AB or BA
+  order, same range for both arms of a pair.
+  Statistic: the adopted EXP-017 one
+  (paired log-ratio of pool rates, OLS
+  adjustment on steal-difference,
+  runnable-load-difference and order,
+  10,000-resample pairs bootstrap).
+  Success criterion, predeclared: Y-097 is
+  a verified improvement (as a search
+  configuration finding) only if the best
+  mixed pool is significant against BOTH
+  homogeneous pools in every session and
+  pooled. One 100-pair smoke session of
+  mixed2 vs mb2 was run first to validate
+  the driver and is filed under
+  benchmarks/exp021/smoke/; it is not part
+  of the protocol sessions and is not
+  pooled.
+- **Correctness evidence.** The pool gate
+  set ran before any benchmark
+  (tests/test_exp021.py, all checks pass):
+  candidate sets at the regtest-easy target
+  (2^248) equal the independent Python
+  recount and are identical across six
+  splits of a 20,000 range (82 candidates),
+  with every digest of every worker verified
+  against hashlib; the genesis nonce is
+  flagged by whichever family owns its
+  partition (MB and SHA-NI owners, first
+  and second partition slots, no other
+  candidate in range); a range ending
+  exactly at 2^32 and an unaligned start
+  (12,345) verify in full; an empty
+  partition (three workers, two waves)
+  contributes attempted 0 and the union
+  stays exact; single-worker pools of both
+  families verify in full; randomised
+  splits on a random template (12,000
+  range, full digest check) and the three
+  four-worker deployment shapes pass. The
+  bench driver additionally asserts
+  per-worker attempted, and MB backend
+  counts, equal the partition plan on every
+  timed call; no assertion fired in 18
+  sessions (2,880 recorded pairs per arm
+  side at two threads, the same at four).
+- **Measured result (predeclared makespan
+  statistic, adjusted).** Two threads,
+  pooled log-ratios (candidate over
+  reference): mixed2 vs mb2 -0.1884 (CI
+  -0.294 to -0.082; ratio 0.828x; pairs won
+  0.408), sessions -0.2308, -0.2700, -0.0708,
+  the first two significant against the
+  mixed pool, the third not significant;
+  mixed2 vs shani2 +0.0125 (CI -0.087 to
+  +0.109; 1.013x; won 0.506), sessions
+  +0.0103, +0.0715, -0.0496, none
+  significant; mb2 vs shani2 +0.3100 (CI
+  +0.211 to +0.409; 1.363x; won 0.637),
+  significant in all three sessions. Four
+  threads: mixed22 vs mb4 -0.1285 (CI
+  -0.203 to -0.054; 0.879x; won 0.388),
+  sessions -0.0307, -0.1281, -0.2327 (the
+  last significant against the mixed pool);
+  mixed22 vs shani4 +0.1442 (CI +0.073 to
+  +0.215; 1.155x; won 0.598), sessions
+  +0.0946, +0.2123, +0.1290, the pooled
+  result significant, one session
+  significant; mb4 vs shani4 +0.2848 (CI
+  +0.214 to +0.357; 1.329x; won 0.669),
+  significant in all three sessions.
+  Session median pool rates under the day's
+  contention (runnable 13 to 16 throughout):
+  two threads, mb2 2.07M to 4.46M, mixed2
+  1.82M to 2.63M, shani2 1.68M to 1.98M;
+  four threads, mb4 2.87M to 3.15M, mixed22
+  2.80M to 3.05M, shani4 2.65M to 2.88M.
+  Within-session variance of the paired
+  log-ratio 0.69 to 1.45, between-session
+  at most 0.005; covariate adjustment
+  stayed near-neutral (CI width ratios
+  0.94 to 0.98), as in EXP-017 and
+  EXP-020. Node state per session is in
+  the session files: nine of 36
+  session-boundary RPC reads answered
+  (blocks 412,169 to 412,223, headers
+  975,822, initial block download
+  continuing), the rest timed out under
+  load and are recorded as unavailable.
+  The miner, node, autopilot and keeper
+  were never touched; pool-accepted shares
+  advanced from 84 to 89 over the
+  experiment window on the production
+  miner's own work.
+- **Secondary analysis (descriptive, not
+  the verdict statistic).** A barrier block
+  understates a mixed pool's production
+  shape: mainnet_live assigns spans
+  continuously, so a mixed pool's
+  steady-state rate is the sum of its
+  workers' concurrent rates, not the
+  makespan of equal blocks. The driver
+  recorded every worker's elapsed time, so
+  exp021_secondary.py recomputes the
+  implied continuous-assignment rate of
+  every recorded call and reruns the same
+  adjusted statistic over the recomputed
+  log-ratios (artifact:
+  benchmarks/exp021/secondary_implied_
+  rates_20261114T183056Z.json). Pooled:
+  mixed2 vs mb2 -0.1029 (CI -0.206 to
+  +0.004; won 0.446), sessions -0.1675,
+  -0.1877, +0.0376; mixed2 vs shani2
+  +0.1176 (CI +0.020 to +0.218; won 0.540),
+  significant pooled; mb2 vs shani2
+  +0.3519 (CI +0.254 to +0.451). Four
+  threads: mixed22 vs mb4 -0.1007 (CI
+  -0.186 to -0.014; won 0.429), significant
+  against the mixed pool pooled though no
+  session is individually significant;
+  mixed22 vs shani4 +0.2342 (CI +0.160 to
+  +0.307), significant in all sessions;
+  mb4 vs shani4 +0.3616 (CI +0.279 to
+  +0.442). The ordering MB pool above
+  mixed pool above SHA-NI pool is the same
+  under both semantics; the deployment
+  shape narrows the mixed pool's deficit
+  at two threads (from -0.188 to -0.103)
+  without changing its sign. Per-worker
+  median rates by context (descriptive,
+  across sessions): two-thread contexts,
+  MB worker 3.10M in mb2 and 3.02M in
+  mixed2, SHA-NI worker 1.76M in shani2
+  and 1.68M in mixed2; four-thread
+  contexts, MB worker 0.98M in mb4 and
+  1.10M in mixed22, SHA-NI worker 0.83M
+  in shani4 and 0.85M in mixed22. No
+  family runs measurably faster beside
+  the other family than beside itself;
+  the small positive point values at four
+  threads sit inside cross-session
+  condition drift and are not claimed.
+- **Statistical assessment.** The
+  predeclared criterion fails on its
+  first clause: the mixed pool is not
+  above the MB pool anywhere it matters;
+  pooled, it is significantly below it at
+  both thread counts under the predeclared
+  statistic, and below it under the
+  secondary statistic as well (pooled at
+  four threads, point estimate and two of
+  three sessions at two). The makespan
+  arithmetic explains the two-thread
+  shape: with equal partitions the mixed
+  block ends when its SHA-NI worker ends,
+  so mixed2 tracks shani2 (pooled ratio
+  1.013x, indistinguishable), while mb2's
+  workers both run at the faster family's
+  rate. The continuous-assignment shape
+  removes that artefact and the mixed
+  pool still does not reach the MB pool,
+  because the sum of the two families'
+  concurrent per-worker rates (about
+  3.0M + 1.7M at two-thread contexts) is
+  below two MB workers' sum (about
+  6.2M). Diversification cannot beat
+  concentration on the faster family
+  when both draw on the same capped CPU
+  budget and neither relieves the other;
+  the EXP-007 anomaly does not cash out
+  at pool level on this guest. As in
+  EXP-018 and EXP-020, no sessions were
+  added after seeing the intervals.
+- **Decision.** Y-097 is NOT a verified
+  improvement. The registry's success
+  line (a heterogeneous total above both
+  homogeneous totals, reproduced) is not
+  met; the reproduced result is the
+  opposite ordering against the MB pool.
+  Tier: ESTABLISHED NEGATIVE for the
+  heterogeneity mechanism on this guest,
+  under both timing semantics, with the
+  worker-level mechanism measured. No
+  production integration and none
+  recommended: the homogeneous MB pool
+  remains the fastest measured search
+  configuration, which is what production
+  already runs. Production byte-identical.
+- **Environment note (added on
+  completion).** All EXP-021 gates and
+  sessions ran on the programme's AMD
+  EPYC 9D25 host (SHA extensions and the
+  full AVX-512 set including VBMI
+  exposed), 17:44 to 18:05 UTC. At about
+  18:08 UTC the VM was replaced onto an
+  Intel Xeon Platinum 8321HC host that
+  exposes AVX-512F, BW, VL and VNNI but
+  no SHA extensions and no VBMI. A
+  post-hoc re-run of the gate set on the
+  new host therefore faults (SIGILL) in
+  both research libraries as built: the
+  geo library executes SHA instructions
+  the host lacks, and the research MB
+  library, compiled -march=native on the
+  EPYC host, contains VBMI permute
+  instructions (vpermt2b, vpermi2b) in
+  its staging code. Neither library can
+  re-execute on the current host; the
+  sources and per-session manifests are
+  recorded, so a rebuild on a SHA and
+  VBMI host reproduces the experiment.
+  The production library was built with
+  restricted flags (-mavx512f -mavx512bw,
+  the audited integration) and the live
+  miner re-selected v512 on the new host
+  through its CPUID probe and digest
+  self-test and is mining on it: the
+  incident is an incidental end-to-end
+  validation of the integration's
+  dispatch design, and it changes no
+  EXP-021 number, all of which predate
+  the replacement.
+- **Follow-up.** One refinement was
+  visible but not run, recorded here
+  rather than silently absorbed:
+  rate-proportional partition sizing
+  under continuous assignment. Its
+  ceiling is the sum of concurrent
+  per-worker rates, which the worker
+  medians above bound below the MB
+  pool's total at two threads and at
+  about parity at four threads, so the
+  prior is poor; it would need its own
+  experiment ID and a fresh predeclared
+  design if the owner wants it settled
+  rather than bounded. The EXP-007
+  variance anomaly itself remains
+  attributed as in EXP-010 (the vector
+  kernel's own behaviour under a
+  saturated runnable queue), not to
+  cross-family pipe contention.
+
+## EXP-022: Flags-only MB batch via mask registers (Y-084)
+
+Status: COMPLETE (2026-11-14). VERIFIED
+IMPROVEMENT in batch scope under the adopted
+EXP-017 rule: the flags-only batch form of the
+AVX-512 multi-buffer kernel beats the
+production batch kernel at every candidate
+density tested, in every session and pooled,
+at both thread counts measured. The gain is
+largest where the registry predicted the
+mechanism bites (sparse candidates: pooled
+1.82x) and smallest where every lane is a
+candidate (1.33x), because what is being
+removed is the per-lane work production batch
+spends on hashes whose digests nobody reads.
+This is a batch-mode result only: the
+production search path never paid the batch
+epilogue, and no search-rate claim is made.
+Raw artifacts: benchmarks/exp022/ (15
+append-only sessions, the gates record, the
+analysis). Tools: benchmarks/exp022_gates.py,
+benchmarks/exp022_paired_bench.py,
+benchmarks/exp022_analyze.py (statistic),
+benchmarks/exp022_analyze_incremental.py
+(scheduling only; see the analysis note).
+Kernel: extreme_optimization/src/
+avx512_mb_flags.c (research variant,
+export bal_v_batchf2).
+
+- **Hypothesis.** Y-084, as written in the
+  registry: MB batch mode stores 32 bytes per
+  hash that most consumers never read. The
+  mechanism is a batch mode that computes the
+  target comparison in vector form, stores one
+  flag byte (or one mask bit) per hash, and
+  extracts digests only for flagged lanes.
+  The registry scopes the claim itself:
+  moderate impact in batch-shaped consumers
+  (verification, statistics), negligible in
+  search mode. Success line as written:
+  batch-mode gain at stated densities, with
+  gates including candidate sets at three
+  densities. The task framing's wider reading
+  (masking lanes off mid-search to cover
+  heterogeneous spans) is not what the
+  registry claims, and is structurally void
+  in this kernel shape besides: the 16 lanes
+  advance in lockstep through both
+  compressions, a lane's digest exists only
+  when the group completes, and masking a
+  lane's stores does not retire its round
+  work, so no search-mode variant of the
+  claim was built or measured.
+- **Design (predeclared, before timing).**
+  Primary comparison: flagsx (variant with
+  flagged-digest extraction) versus
+  production bal_v_batch2 at candidate
+  density approx 0 (target_int 0), two
+  threads. Verdict rule: VERIFIED
+  IMPROVEMENT (batch scope) iff the primary
+  comparison is significant (adjusted CI
+  entirely above 0) in every session (at
+  least 3) and pooled under the EXP-017
+  statistic. Scope evidence, not part of
+  the verdict rule: the same comparison at
+  densities 2^-8 and 1, a pure-flags arm
+  (digests NULL) at density approx 0, and
+  the primary comparison at one thread.
+  Blocks of 65,536 hashes, randomised AB/BA
+  order, 120 pairs per session, attempted
+  and backend asserted on every timed call.
+- **Implementation.** avx512_mb_flags.c is
+  the EXP-007 research kernel (byte-identical
+  kernel logic to production in its batch
+  and search paths) plus bal_v_batchf2. The
+  flags group runs the same two
+  compressions, then compares in vector
+  form: v_meets scans digest bytes from
+  index 31 down, so the comparison is a
+  lexicographic unsigned compare of the
+  eight words bswap32(state[7-j]) against
+  bswap32(tword[7-j]), carried in opmask
+  registers (per word, undecided lanes take
+  the cmplt/cmpgt result; a lane meets iff
+  it is never greater; equality meets, as
+  in v_meets). The group result is one
+  __mmask16, stored as two flag bytes per
+  group into a per-span private bit array
+  and merged into the caller's flag-bit
+  array (bit i set iff nonce start+i meets
+  the target). The digest transpose store
+  happens only when a lane in the group is
+  flagged, and only flagged lanes are
+  extracted, into the same slot layout as
+  bal_v_batch2. With digests NULL nothing
+  is materialised. Accounting is identical
+  to production: attempted == count,
+  backend == sum over spans of
+  ceil(span/16)*16, dummy lanes masked out.
+  Both libraries were built on the current
+  host with the restricted flag set
+  (-O3 -mavx512f -mavx512bw, never
+  -march=native), the baseline from the
+  unmodified research source.
+- **Gates (all PASS before timing;**
+  benchmarks/exp022_gates.py, record in
+  benchmarks/exp022/). G1: at the maximum
+  target every lane is flagged, so 154,316
+  nonces across four headers and both
+  thread counts exercise full extraction;
+  every digest equals hashlib exactly and
+  accounting matches production. G2:
+  candidate sets from the variant bit array
+  equal the production flag-byte sets
+  exactly at densities 0, 2^-16, 2^-8 and
+  1 (0, 0, 216 and 65,536 candidates per
+  65,536), at threads 1, 2 and 3; pure-flags
+  bits identical to extract-mode bits;
+  every extracted digest equals the
+  production digest at its slot. G3: over
+  the genesis window under the genesis
+  target exactly one bit is set, at the
+  genesis nonce, and the extracted digest
+  equals hashlib of the genesis header.
+  G4: target equality flags the nonce,
+  target minus one does not, target plus
+  one does, at seven sampled nonces across
+  lane and group boundaries. G5: attempted
+  and backend equal production's on 32
+  (count, threads) pairs including counts
+  1, 15, 16, 17, 31, 100, 1000 and 65537,
+  whose span begins are not multiples of
+  eight (the flag-bit merge alignment).
+- **Measured result (adjusted pooled**
+  log-ratio, EXP-017 statistic; ratio is
+  exp of it). Primary, flagsx vs production
+  at density approx 0, two threads: +0.5984
+  (CI +0.5042 to +0.6905), 1.82x, pairs won
+  0.742; sessions +0.5825, +0.6157, +0.5988,
+  every session significant. Density 2^-8:
+  +0.4628 (CI +0.3770 to +0.5484), 1.59x,
+  won 0.736; sessions +0.4338, +0.4607,
+  +0.4856, all significant. Density 1:
+  +0.2854 (CI +0.2035 to +0.3663), 1.33x,
+  won 0.639; sessions +0.2502, +0.3227,
+  +0.2799, all significant. Pure flags at
+  density approx 0: +0.6344 (CI +0.5377 to
+  +0.7291), 1.89x, won 0.769, all sessions
+  significant. Primary at one thread:
+  +0.6033 (CI +0.5025 to +0.7032), 1.83x,
+  won 0.731, all sessions significant.
+  Median per-call rates move with host
+  contention (production arm medians
+  0.83M to 1.31M H/s across sessions,
+  variant 1.12M to 2.44M); the paired
+  statistic is the evidence, not the
+  medians.
+- **Mechanism (measured, not conjectured).**
+  The effect is monotone in exactly the
+  variable the mechanism names: the
+  fraction of lanes whose digests are
+  never read. At density approx 0 the
+  variant does no extraction at all, and
+  the entire production epilogue disappears
+  with it: the eight zmm staging stores,
+  the scalar per-lane byte extraction of
+  all sixteen digests (512 byte stores per
+  group), the 32-byte per-hash output copy
+  and the scalar per-lane v_meets. In its
+  place: eight vector compares folded into
+  opmask registers and two flag bytes per
+  group, plus the in-call bit merge. At
+  density 1 the variant extracts every
+  lane, like production, and the residual
+  1.33x is what remains of the advantage:
+  the vector compare against the scalar
+  per-lane compare, the flag bits against
+  the separate flag bytes, and one staging
+  store written directly to output slots
+  against production's staging plus copy.
+  The pure-flags arm sits slightly above
+  the extraction arm at the same density
+  (+0.6344 vs +0.5984), the price of
+  carrying the extraction path at all.
+  The conclusion the registry's H-04
+  observation pointed at is now measured
+  on this kernel: in batch mode the
+  production epilogue, not the compression,
+  was roughly half the call.
+- **Statistical assessment.** The
+  predeclared criterion is met on its
+  first clause and every scope comparison
+  agrees in sign and significance: fifteen
+  sessions, fifteen individually
+  significant, five pooled intervals all
+  excluding zero by wide margins. No
+  sessions were added after seeing the
+  intervals. Covariate adjustment is
+  near-neutral throughout (pooled
+  unadjusted +0.5976 vs adjusted +0.5984
+  on the primary), as in EXP-017: pairing
+  does the work. One analysis note: the
+  monolithic exp022_analyze.py run stalled
+  past twelve minutes under the
+  replacement host's CPU pressure
+  (pressure stall average above 80
+  percent) and was killed without output;
+  the recorded analysis was computed by
+  exp022_analyze_incremental.py, which
+  imports the same analyse_group statistic
+  and the same per-group seed derivation
+  and differs only in scheduling (primary
+  group first, output rewritten after each
+  group). The numbers are the adopted
+  statistic either way.
+- **Decision.** Y-084 is a VERIFIED
+  IMPROVEMENT in batch scope under the
+  adopted rule, at all three stated
+  densities. No production change is made
+  by this experiment: the live miner uses
+  the search path, which this result does
+  not touch, and production batch
+  (bal_v_batch2) is consumed by the
+  engine's verification and statistics
+  paths, where adopting a flags-only
+  output shape is an interface decision
+  for the owner, recorded here as a
+  recommendation: batch consumers that
+  read flags and rare digests should be
+  offered the flags form, worth about
+  1.8x on sparse-candidate batch work on
+  this host class. Production
+  byte-identical.
+- **Environment.** All EXP-022 work ran on
+  the replacement host (Intel Xeon
+  Platinum 8321HC at 1.40 GHz, AVX-512F,
+  BW, VL and VNNI present, no SHA
+  extensions, no VBMI), 19:05 to 19:35
+  UTC, under heavy co-tenancy (load
+  average 10 to 15, the live miner and
+  node running throughout and never
+  touched). The restricted flag set is
+  what makes the experiment possible on
+  this host at all: the EXP-021 libraries
+  built -march=native on the EPYC host
+  fault here, while both EXP-022 libraries
+  use only AVX-512F and BW instructions.
+  Session manifests record the host and
+  the source and binary hashes.
+- **Follow-up.** The registry's Y-096
+  entry (production-shaped harness
+  measurement of Y-084's flags-only
+  output through mining/engine.py span
+  patterns) is the natural next step if
+  the owner wants an integration-grade
+  comparison for the batch consumers;
+  this experiment measured the kernel
+  bench shape, as Y-084's own test line
+  specifies. A flags-form search epilogue
+  is not a follow-up: the search path
+  already avoids the batch epilogue, and
+  the mid-batch lane-retirement reading of
+  the hypothesis is structurally void, as
+  recorded under Hypothesis above.
