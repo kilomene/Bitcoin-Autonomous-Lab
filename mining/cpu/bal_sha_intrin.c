@@ -9,9 +9,17 @@
  *   SHA256MSG1 / SHA256MSG2 advance the message schedule.
  *
  * On top of the raw rounds this kernel adds mining structure:
- * a snapshot of the inner state after round 2 (the nonce enters
- * the schedule only at W3, i.e. round 3), so per nonce the inner
- * compression resumes at round 3 with W0..W2 already folded in.
+ * a snapshot of the inner state after rounds 0 and 1 (two rounds,
+ * one SHA256RNDS2 pair). Rounds 0, 1 and 2 consume only W0, W1
+ * and W2, which come from the header tail and are nonce
+ * independent; the nonce first enters the message schedule at
+ * W3 and is first consumed by round 3. The snapshot nevertheless
+ * stops after round 1, because SHA256RNDS2 always computes rounds
+ * in pairs: the next pair covers rounds 2 and 3, and round 3
+ * needs the nonce word, so no further complete pair can be
+ * precomputed. Per nonce the inner compression therefore resumes
+ * at round 2 with W0 and W1 already folded in. (Task 001 Part 7
+ * audit; see results/TASK001_CPU_CORRECTION.md.)
  *
  * Exported ABI mirrors bal_batch.c: bal_i_batch / bal_i_search
  * with identical semantics, so the A/B comparison is drop-in.
@@ -22,8 +30,20 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdalign.h>
+#include <stdatomic.h>
 #include <pthread.h>
 #include <immintrin.h>
+
+#include "bal_search.h"
+
+_Atomic int bal_create_fail_after = -1;
+_Atomic int bal_create_fail_calls = 0;
+
+/* Test hook: fail pthread_create after n successes (-1 disables). */
+void bal_i_test_set_create_fail_after(int n) {
+  atomic_store(&bal_create_fail_calls, 0);
+  atomic_store(&bal_create_fail_after, n);
+}
 
 #if !defined(__SHA__)
 #error "compile with -msha"
@@ -188,113 +208,144 @@ static int meets(const uint8_t *digest, const uint8_t *target_le) {
 typedef struct {
   const Template *tp;
   uint64_t start;
-  uint32_t begin, end;
+  uint64_t begin, end;
   const uint8_t *target;
   uint8_t *hashes, *flags;
+  uint64_t attempted;
 } Job;
 
 static void *worker(void *arg) {
   Job *job = (Job *)arg;
-  for (uint32_t i = job->begin; i < job->end; i++) {
+  uint64_t done = 0;
+  for (uint64_t i = job->begin; i < job->end; i++) {
     uint8_t d[32];
     hash_nonce(job->tp, (uint32_t)(job->start + i), d);
     memcpy(job->hashes + 32 * (size_t)i, d, 32);
     job->flags[i] = meets(d, job->target) ? 1 : 0;
+    done++;
   }
+  job->attempted = done;
   return NULL;
+}
+
+int bal_i_batch2(const uint8_t *header, uint64_t start, uint64_t count,
+                 unsigned threads, const uint8_t *target, uint8_t *hashes,
+                 uint8_t *flags, uint64_t *out_attempted) {
+  if (!header || !target || !hashes || !flags) return -1;
+  if (!threads || threads > 16) return -1;
+  int v = bal_validate_range(start, count);
+  if (v != 0) return v;
+  Template tp;
+  template_init(&tp, header);
+  uint64_t begins[16], ends[16];
+  unsigned spans = bal_partition(count, threads, begins, ends);
+  pthread_t tids[16];
+  int created[16] = {0};
+  Job jobs[16];
+  for (unsigned s = 0; s < spans; s++) {
+    jobs[s] = (Job){&tp, start, begins[s], ends[s], target, hashes,
+                    flags, 0};
+    if (bal_pthread_create(&tids[s], NULL, worker, &jobs[s]) != 0) {
+      worker(&jobs[s]);
+    } else {
+      created[s] = 1;
+    }
+  }
+  for (unsigned s = 0; s < spans; s++)
+    if (created[s]) pthread_join(tids[s], NULL);
+  if (out_attempted) {
+    uint64_t total = 0;
+    for (unsigned s = 0; s < spans; s++) total += jobs[s].attempted;
+    *out_attempted = total;
+  }
+  return 0;
 }
 
 int bal_i_batch(const uint8_t *header, uint64_t start, uint32_t count,
                 unsigned threads, const uint8_t *target, uint8_t *hashes,
                 uint8_t *flags) {
-  if (!count || !threads || threads > 16) return -1;
-  if (start + count > 0x100000000ULL) return -1;
-  Template tp;
-  template_init(&tp, header);
-  if (threads > count) threads = count;
-  pthread_t tids[16];
-  Job jobs[16];
-  uint32_t chunk = (count + threads - 1) / threads;
-  unsigned launched = 0, spans = 0;
-  for (unsigned t = 0; t < threads; t++) {
-    uint32_t begin = t * chunk;
-    if (begin >= count) break;
-    uint32_t end = begin + chunk;
-    if (end > count) end = count;
-    jobs[spans] = (Job){&tp, start, begin, end, target, hashes, flags};
-    if (pthread_create(&tids[spans], NULL, worker, &jobs[spans]) != 0) {
-      worker(&jobs[spans]);
-    } else {
-      launched++;
-    }
-    spans++;
-  }
-  for (unsigned t = 0; t < launched; t++) pthread_join(tids[t], NULL);
-  return 0;
+  return bal_i_batch2(header, start, count, threads, target, hashes,
+                      flags, NULL);
 }
 
-/* ---- early-exit search ABI ---- */
-
-static volatile int g_stop;
-static volatile uint32_t g_found_nonce;
-static uint8_t g_found_digest[32];
+/* ---- early-exit search ABI ----
+ * Concurrency design is the shared one from bal_search.h: a
+ * per-search BalSearchCtx on this call's stack, a C11 atomic stop
+ * flag, and a mutex-published winner. The old file-scope volatile
+ * globals are gone, so simultaneous independent searches are safe
+ * and this entry point is reentrant. */
 
 typedef struct {
   const Template *tp;
   uint64_t start;
-  uint32_t begin, end;
+  uint64_t begin, end;
   const uint8_t *target;
+  BalSearchCtx *ctx;
+  uint64_t attempted;
 } SJob;
 
 static void *sworker(void *arg) {
   SJob *job = (SJob *)arg;
-  for (uint32_t i = job->begin; i < job->end && !g_stop; i++) {
+  uint64_t done = 0;
+  for (uint64_t i = job->begin; i < job->end; i++) {
+    if (bal_ctx_stopped(job->ctx)) break;
     uint8_t d[32];
     uint32_t nonce = (uint32_t)(job->start + i);
     hash_nonce(job->tp, nonce, d);
+    done++;
     if (meets(d, job->target)) {
-      if (!g_stop) {
-        memcpy(g_found_digest, d, 32);
-        g_found_nonce = nonce;
-      }
-      g_stop = 1;
-      return NULL;
+      bal_ctx_publish(job->ctx, nonce, d);
+      break;
     }
   }
+  job->attempted = done;
   return NULL;
+}
+
+int bal_i_search2(const uint8_t *header, uint64_t start, uint64_t count,
+                  unsigned threads, const uint8_t *target,
+                  uint32_t *out_nonce, uint8_t *out_digest,
+                  uint64_t *out_attempted) {
+  if (!header || !target || !out_nonce || !out_digest) return -1;
+  if (!threads || threads > 16) return -1;
+  int v = bal_validate_range(start, count);
+  if (v != 0) return v;
+  Template tp;
+  template_init(&tp, header);
+  BalSearchCtx ctx;
+  bal_ctx_init(&ctx);
+  uint64_t begins[16], ends[16];
+  unsigned spans = bal_partition(count, threads, begins, ends);
+  pthread_t tids[16];
+  int created[16] = {0};
+  SJob jobs[16];
+  for (unsigned s = 0; s < spans; s++) {
+    jobs[s] = (SJob){&tp, start, begins[s], ends[s], target, &ctx, 0};
+    if (bal_pthread_create(&tids[s], NULL, sworker, &jobs[s]) != 0) {
+      sworker(&jobs[s]);
+    } else {
+      created[s] = 1;
+    }
+  }
+  for (unsigned s = 0; s < spans; s++)
+    if (created[s]) pthread_join(tids[s], NULL);
+  if (out_attempted) {
+    uint64_t total = 0;
+    for (unsigned s = 0; s < spans; s++) total += jobs[s].attempted;
+    *out_attempted = total;
+  }
+  int found = ctx.found_valid;
+  if (found) {
+    *out_nonce = ctx.found_nonce;
+    memcpy(out_digest, ctx.found_digest, 32);
+  }
+  bal_ctx_destroy(&ctx);
+  return found ? 1 : 0;
 }
 
 int bal_i_search(const uint8_t *header, uint64_t start, uint32_t count,
                  unsigned threads, const uint8_t *target,
                  uint32_t *out_nonce, uint8_t *out_digest) {
-  if (!count || !threads || threads > 16) return -1;
-  if (start + count > 0x100000000ULL) return -1;
-  Template tp;
-  template_init(&tp, header);
-  if (threads > count) threads = count;
-  g_stop = 0;
-  pthread_t tids[16];
-  SJob jobs[16];
-  uint32_t chunk = (count + threads - 1) / threads;
-  unsigned launched = 0, spans = 0;
-  for (unsigned t = 0; t < threads; t++) {
-    uint32_t begin = t * chunk;
-    if (begin >= count) break;
-    uint32_t end = begin + chunk;
-    if (end > count) end = count;
-    jobs[spans] = (SJob){&tp, start, begin, end, target};
-    if (pthread_create(&tids[spans], NULL, sworker, &jobs[spans]) != 0) {
-      sworker(&jobs[spans]);
-    } else {
-      launched++;
-    }
-    spans++;
-  }
-  for (unsigned t = 0; t < launched; t++) pthread_join(tids[t], NULL);
-  if (g_stop) {
-    *out_nonce = g_found_nonce;
-    memcpy(out_digest, g_found_digest, 32);
-    return 1;
-  }
-  return 0;
+  return bal_i_search2(header, start, count, threads, target, out_nonce,
+                       out_digest, NULL);
 }
