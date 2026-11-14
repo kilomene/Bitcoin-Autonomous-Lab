@@ -2117,6 +2117,19 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
   with a control-pair validation.
 - Workstream G / Difficulty medium / Confidence
   high / Cost low.
+- Status (2026-11-14, EXP-017): PARTIAL. The
+  paired log-ratio statistic with bootstrap
+  validated as an estimator (injected +0.20
+  recovered with bias at most 0.0006; controls
+  null; real verdicts stable across sessions),
+  but the steal and runnable-load adjustment
+  itself was measured near-neutral: pooled CI
+  width ratios 0.970 to 0.999 versus the
+  unadjusted statistic, point shifts at most
+  0.0004. The pairing carries the decision
+  value at 65,536-hash granularity. Covariate
+  recording continues; adjustment is retained
+  as a predeclared option, not a proven gain.
 
 ### Y-102: Fine-grained paired interleaving (100k blocks)
 - Limitation: round-robin at 1M granularity still
@@ -2139,6 +2152,15 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
   pairing with randomized order.
 - Workstream G / Difficulty low / Confidence high /
   Cost low.
+- Status (2026-11-14, EXP-017): SUPPORTED at
+  65,536 hashes. Paired interleaving at that
+  block size returned the same verdict in every
+  session of every comparison (controls null,
+  both real comparisons significant), the
+  stability three whole-round decisions never
+  achieved. No claim is made about other block
+  sizes; 65,536 is the validated size. Adopted
+  as the Phase 6 paired protocol.
 
 ### Y-103: Equal-pair control methodology (the ternlog pair as instrument)
 - Limitation: the programme has no standing control
@@ -2160,6 +2182,17 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
 - Success: the retroactive analysis published.
 - Workstream G / Difficulty low / Confidence high /
   Cost low.
+- Status (2026-11-14, EXP-017): SUPPORTED in its
+  EXP-017 form (identical implementations as the
+  two arms, the strongest form of the control):
+  both controls returned decision-grade nulls in
+  all sessions and pooled under the paired
+  statistic, and the historical min/max rule
+  passed a phantom difference in 0 of 6 control
+  sessions, pricing that rule's failure mode as
+  false negatives rather than false positives.
+  The equal-pair control is now a standing part
+  of the Phase 6 paired protocol.
 
 ### Y-104: Node-sync interaction with kernel benchmarks
 - Limitation: the mainnet node's initial sync has
