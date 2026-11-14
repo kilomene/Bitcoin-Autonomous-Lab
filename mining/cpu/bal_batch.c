@@ -9,28 +9,48 @@
  * Exported for gpu/engine.py (ComputeEngine) through ctypes. Output
  * layout matches the CUDA library: hashes is count*32 bytes, flags
  * is count bytes (1 when the digest meets the little-endian target).
+ *
+ * Concurrency, nonce-range and winner-publication rules live in
+ * bal_search.h and are shared with bal_sha_intrin.c: per-search
+ * context, C11 atomics, mutex-published winner, per-span thread
+ * tracking, 64-bit half-open nonce intervals. There is no shared
+ * mutable search state in this file, so independent searches may
+ * run concurrently and the entry points are reentrant.
+ *
+ * Extended entry points (the originals are kept as wrappers):
+ *   bal_c_search2 / bal_c_batch2 accept a 64-bit count and report
+ *   the ACTUAL number of hash attempts through out_attempted.
+ *   bal_c_batch always hashes the whole range, so its attempt
+ *   count equals the range size; bal_c_search stops early on a
+ *   hit, so its attempt count is the sum of the per-worker counts
+ *   at the moment every worker stopped, which is at most the
+ *   range size and usually far less.
+ * Return values: 1 found (search only), 0 range exhausted,
+ * -1 bad arguments, -2 nonce range exceeds the 32-bit space.
  */
 #include <openssl/sha.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <string.h>
 
-typedef struct {
-  const uint8_t *header;
-  uint32_t midstate[8];
-  uint64_t start;
-  uint32_t begin, end;
-  const uint8_t *target;
-  uint8_t *hashes;
-  uint8_t *flags;
-} Job;
+#include "bal_search.h"
+
+_Atomic int bal_create_fail_after = -1;
+_Atomic int bal_create_fail_calls = 0;
+
+/* Test hook: fail pthread_create after n successes (-1 disables). */
+void bal_c_test_set_create_fail_after(int n) {
+  atomic_store(&bal_create_fail_calls, 0);
+  atomic_store(&bal_create_fail_after, n);
+}
 
 static int meets(const uint8_t *digest, const uint8_t *target) {
   for (int i = 31; i >= 0; i--) {
     if (digest[i] < target[i]) return 1;
     if (digest[i] > target[i]) return 0;
   }
-  return 1;
+  return 1; /* exactly equal to the target also meets it */
 }
 
 static void store_be32(uint8_t *out, uint32_t v) {
@@ -38,152 +58,106 @@ static void store_be32(uint8_t *out, uint32_t v) {
   out[2] = (uint8_t)(v >> 8);  out[3] = (uint8_t)v;
 }
 
-static void *worker(void *arg) {
-  Job *job = (Job *)arg;
-  for (uint32_t i = job->begin; i < job->end; i++) {
-    uint32_t nonce = (uint32_t)(job->start + i);
-    /* Second block of the inner hash: header bytes 64..79 + padding. */
-    uint8_t block[64];
-    memset(block, 0, sizeof(block));
-    memcpy(block, job->header + 64, 12);            /* bytes 64..75 */
-    block[12] = (uint8_t)(nonce & 0xff);            /* nonce, LE in header */
-    block[13] = (uint8_t)((nonce >> 8) & 0xff);
-    block[14] = (uint8_t)((nonce >> 16) & 0xff);
-    block[15] = (uint8_t)((nonce >> 24) & 0xff);
-    block[16] = 0x80;
-    store_be32(block + 60, 640);                    /* 80 bytes * 8 */
-    /* SHA256_Transform takes the block as big-endian words; the raw
-       memory layout above is exactly that serialization. */
-    SHA256_CTX ictx;
-    memset(&ictx, 0, sizeof(ictx));
-    for (int w = 0; w < 8; w++) ictx.h[w] = job->midstate[w];
-    SHA256_Transform(&ictx, block);
-    uint32_t state[8];
-    for (int w = 0; w < 8; w++) state[w] = ictx.h[w];
-    uint8_t inner[32];
-    for (int w = 0; w < 8; w++) store_be32(inner + 4 * w, state[w]);
-    /* Outer hash: one block, standard initial state. */
-    uint8_t oblock[64];
-    memset(oblock, 0, sizeof(oblock));
-    memcpy(oblock, inner, 32);
-    oblock[32] = 0x80;
-    store_be32(oblock + 60, 256);
-    static const uint32_t H0[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372,
-        0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
-    SHA256_CTX octx;
-    memset(&octx, 0, sizeof(octx));
-    for (int w = 0; w < 8; w++) octx.h[w] = H0[w];
-    SHA256_Transform(&octx, oblock);
-    uint32_t ostate[8];
-    for (int w = 0; w < 8; w++) ostate[w] = octx.h[w];
-    uint8_t digest[32];
-    for (int w = 0; w < 8; w++) store_be32(digest + 4 * w, ostate[w]);
-    memcpy(job->hashes + (size_t)i * 32, digest, 32);
-    job->flags[i] = (uint8_t)meets(digest, job->target);
-  }
-  return NULL;
+static const uint32_t BAL_H0[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372,
+    0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
+
+/* One double hash for (header tail, midstate, nonce). Writes the
+ * 32-byte digest in big-endian word order (the byte string whose
+ * little-endian integer interpretation Bitcoin compares). */
+static void hash_nonce(const uint8_t *header, const uint32_t midstate[8],
+                       uint32_t nonce, uint8_t digest[32]) {
+  uint8_t block[64];
+  memset(block, 0, sizeof(block));
+  memcpy(block, header + 64, 12);            /* bytes 64..75 */
+  block[12] = (uint8_t)(nonce & 0xff);       /* nonce, LE in header */
+  block[13] = (uint8_t)((nonce >> 8) & 0xff);
+  block[14] = (uint8_t)((nonce >> 16) & 0xff);
+  block[15] = (uint8_t)((nonce >> 24) & 0xff);
+  block[16] = 0x80;
+  store_be32(block + 60, 640);               /* 80 bytes * 8 */
+  SHA256_CTX ictx;
+  memset(&ictx, 0, sizeof(ictx));
+  for (int w = 0; w < 8; w++) ictx.h[w] = midstate[w];
+  SHA256_Transform(&ictx, block);
+  uint8_t inner[32];
+  for (int w = 0; w < 8; w++) store_be32(inner + 4 * w, ictx.h[w]);
+  uint8_t oblock[64];
+  memset(oblock, 0, sizeof(oblock));
+  memcpy(oblock, inner, 32);
+  oblock[32] = 0x80;
+  store_be32(oblock + 60, 256);
+  SHA256_CTX octx;
+  memset(&octx, 0, sizeof(octx));
+  for (int w = 0; w < 8; w++) octx.h[w] = BAL_H0[w];
+  SHA256_Transform(&octx, oblock);
+  for (int w = 0; w < 8; w++) store_be32(digest + 4 * w, octx.h[w]);
 }
 
-/* Early-exit search: scan [start, start+count) and stop at the
- * first nonce whose digest meets the target. No digest array is
- * written; this is the production mining path. Returns 1 and fills
- * out_nonce and out_digest on success, 0 when the range is
- * exhausted, negative on bad arguments. Threads share an atomic
- * stop flag and the winner records the LOWEST nonce it saw; callers
- * that need the canonical lowest nonce in the range should use a
- * single thread or rescan. For mining, any valid nonce is a block.
- */
-static volatile int g_stop;
-static volatile uint32_t g_found_nonce;
-static uint8_t g_found_digest[32];
+static void compute_midstate(const uint8_t *header, uint32_t midstate[8]) {
+  SHA256_CTX ctx;
+  SHA256_Init(&ctx);
+  SHA256_Update(&ctx, header, 64);
+  for (int w = 0; w < 8; w++) midstate[w] = ctx.h[w];
+}
+
+/* ---- batch: hash every nonce in the range ---- */
 
 typedef struct {
   const uint8_t *header;
   uint32_t midstate[8];
   uint64_t start;
-  uint32_t begin, end;
+  uint64_t begin, end; /* offsets into the range, 64-bit */
   const uint8_t *target;
-} SearchJob;
+  uint8_t *hashes;
+  uint8_t *flags;
+  uint64_t attempted;
+} Job;
 
-static void *search_worker(void *arg) {
-  SearchJob *job = (SearchJob *)arg;
-  for (uint32_t i = job->begin; i < job->end && !g_stop; i++) {
+static void *worker(void *arg) {
+  Job *job = (Job *)arg;
+  uint64_t done = 0;
+  for (uint64_t i = job->begin; i < job->end; i++) {
     uint32_t nonce = (uint32_t)(job->start + i);
-    uint8_t block[64];
-    memset(block, 0, sizeof(block));
-    memcpy(block, job->header + 64, 12);
-    block[12] = (uint8_t)(nonce & 0xff);
-    block[13] = (uint8_t)((nonce >> 8) & 0xff);
-    block[14] = (uint8_t)((nonce >> 16) & 0xff);
-    block[15] = (uint8_t)((nonce >> 24) & 0xff);
-    block[16] = 0x80;
-    store_be32(block + 60, 640);
-    SHA256_CTX ictx;
-    memset(&ictx, 0, sizeof(ictx));
-    for (int w = 0; w < 8; w++) ictx.h[w] = job->midstate[w];
-    SHA256_Transform(&ictx, block);
-    uint8_t inner[32];
-    for (int w = 0; w < 8; w++) store_be32(inner + 4 * w, ictx.h[w]);
-    uint8_t oblock[64];
-    memset(oblock, 0, sizeof(oblock));
-    memcpy(oblock, inner, 32);
-    oblock[32] = 0x80;
-    store_be32(oblock + 60, 256);
-    static const uint32_t H0[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372,
-        0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
-    SHA256_CTX octx;
-    memset(&octx, 0, sizeof(octx));
-    for (int w = 0; w < 8; w++) octx.h[w] = H0[w];
-    SHA256_Transform(&octx, oblock);
     uint8_t digest[32];
-    for (int w = 0; w < 8; w++) store_be32(digest + 4 * w, octx.h[w]);
-    if (meets(digest, job->target)) {
-      if (!g_stop) {
-        memcpy(g_found_digest, digest, 32);
-        g_found_nonce = nonce;
-      }
-      g_stop = 1;
-      return NULL;
-    }
+    hash_nonce(job->header, job->midstate, nonce, digest);
+    memcpy(job->hashes + (size_t)i * 32, digest, 32);
+    job->flags[i] = (uint8_t)meets(digest, job->target);
+    done++;
   }
+  job->attempted = done;
   return NULL;
 }
 
-int bal_c_search(const uint8_t *header, uint64_t start, uint32_t count,
-                 unsigned threads, const uint8_t *target,
-                 uint32_t *out_nonce, uint8_t *out_digest) {
-  if (!count || !threads || threads > 16) return -1;
-  if (start + count > 0x100000000ULL) return -1;
-  SHA256_CTX ctx;
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, header, 64);
+int bal_c_batch2(const uint8_t *header, uint64_t start, uint64_t count,
+                 unsigned threads, const uint8_t *target, uint8_t *hashes,
+                 uint8_t *flags, uint64_t *out_attempted) {
+  if (!header || !target || !hashes || !flags) return -1;
+  if (!threads || threads > 16) return -1;
+  int v = bal_validate_range(start, count);
+  if (v != 0) return v;
   uint32_t midstate[8];
-  for (int w = 0; w < 8; w++) midstate[w] = ctx.h[w];
-  if (threads > count) threads = count;
-  g_stop = 0;
+  compute_midstate(header, midstate);
+  uint64_t begins[16], ends[16];
+  unsigned spans = bal_partition(count, threads, begins, ends);
   pthread_t tids[16];
-  SearchJob jobs[16];
-  uint32_t chunk = (count + threads - 1) / threads;
-  unsigned launched = 0, spans = 0;
-  for (unsigned t = 0; t < threads; t++) {
-    uint32_t begin = t * chunk;
-    if (begin >= count) break;
-    uint32_t end = begin + chunk;
-    if (end > count) end = count;
-    jobs[spans] = (SearchJob){header, {0}, start, begin, end, target};
-    memcpy(jobs[spans].midstate, midstate, sizeof(midstate));
-    if (pthread_create(&tids[spans], NULL, search_worker, &jobs[spans]) != 0) {
-      search_worker(&jobs[spans]);
+  int created[16] = {0};
+  Job jobs[16];
+  for (unsigned s = 0; s < spans; s++) {
+    jobs[s] = (Job){header, {0}, start, begins[s], ends[s], target,
+                    hashes, flags, 0};
+    memcpy(jobs[s].midstate, midstate, sizeof(midstate));
+    if (bal_pthread_create(&tids[s], NULL, worker, &jobs[s]) != 0) {
+      worker(&jobs[s]); /* synchronous fallback, disjoint outputs */
     } else {
-      launched++;
+      created[s] = 1;
     }
-    spans++;
   }
-  for (unsigned t = 0; t < launched; t++) pthread_join(tids[t], NULL);
-  if (g_stop) {
-    *out_nonce = g_found_nonce;
-    memcpy(out_digest, g_found_digest, 32);
-    return 1;
+  for (unsigned s = 0; s < spans; s++)
+    if (created[s]) pthread_join(tids[s], NULL);
+  if (out_attempted) {
+    uint64_t total = 0;
+    for (unsigned s = 0; s < spans; s++) total += jobs[s].attempted;
+    *out_attempted = total;
   }
   return 0;
 }
@@ -191,33 +165,86 @@ int bal_c_search(const uint8_t *header, uint64_t start, uint32_t count,
 int bal_c_batch(const uint8_t *header, uint64_t start, uint32_t count,
                 unsigned threads, const uint8_t *target, uint8_t *hashes,
                 uint8_t *flags) {
-  if (!count || !threads || threads > 16) return -1;
-  if (start + count > 0x100000000ULL) return -1;
-  /* Midstate: hash the constant first 64 header bytes. */
-  SHA256_CTX ctx;
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, header, 64);
+  return bal_c_batch2(header, start, count, threads, target, hashes,
+                      flags, NULL);
+}
+
+/* ---- early-exit search: stop at the first qualifying nonce ---- */
+
+typedef struct {
+  const uint8_t *header;
   uint32_t midstate[8];
-  for (int w = 0; w < 8; w++) midstate[w] = ctx.h[w];
-  if (threads > count) threads = count;
-  pthread_t tids[16];
-  Job jobs[16];
-  uint32_t chunk = (count + threads - 1) / threads;
-  unsigned launched = 0, spans = 0;
-  for (unsigned t = 0; t < threads; t++) {
-    uint32_t begin = t * chunk;
-    if (begin >= count) break;
-    uint32_t end = begin + chunk;
-    if (end > count) end = count;
-    jobs[spans] = (Job){header, {0}, start, begin, end, target, hashes, flags};
-    memcpy(jobs[spans].midstate, midstate, sizeof(midstate));
-    if (pthread_create(&tids[spans], NULL, worker, &jobs[spans]) != 0) {
-      worker(&jobs[spans]);
-    } else {
-      launched++;
+  uint64_t start;
+  uint64_t begin, end;
+  const uint8_t *target;
+  BalSearchCtx *ctx;
+  uint64_t attempted;
+} SearchJob;
+
+static void *search_worker(void *arg) {
+  SearchJob *job = (SearchJob *)arg;
+  uint64_t done = 0;
+  for (uint64_t i = job->begin; i < job->end; i++) {
+    if (bal_ctx_stopped(job->ctx)) break;
+    uint32_t nonce = (uint32_t)(job->start + i);
+    uint8_t digest[32];
+    hash_nonce(job->header, job->midstate, nonce, digest);
+    done++;
+    if (meets(digest, job->target)) {
+      bal_ctx_publish(job->ctx, nonce, digest);
+      break;
     }
-    spans++;
   }
-  for (unsigned t = 0; t < launched; t++) pthread_join(tids[t], NULL);
-  return 0;
+  job->attempted = done;
+  return NULL;
+}
+
+int bal_c_search2(const uint8_t *header, uint64_t start, uint64_t count,
+                  unsigned threads, const uint8_t *target,
+                  uint32_t *out_nonce, uint8_t *out_digest,
+                  uint64_t *out_attempted) {
+  if (!header || !target || !out_nonce || !out_digest) return -1;
+  if (!threads || threads > 16) return -1;
+  int v = bal_validate_range(start, count);
+  if (v != 0) return v;
+  uint32_t midstate[8];
+  compute_midstate(header, midstate);
+  BalSearchCtx ctx;
+  bal_ctx_init(&ctx);
+  uint64_t begins[16], ends[16];
+  unsigned spans = bal_partition(count, threads, begins, ends);
+  pthread_t tids[16];
+  int created[16] = {0};
+  SearchJob jobs[16];
+  for (unsigned s = 0; s < spans; s++) {
+    jobs[s] = (SearchJob){header, {0}, start, begins[s], ends[s],
+                          target, &ctx, 0};
+    memcpy(jobs[s].midstate, midstate, sizeof(midstate));
+    if (bal_pthread_create(&tids[s], NULL, search_worker, &jobs[s]) != 0) {
+      search_worker(&jobs[s]);
+    } else {
+      created[s] = 1;
+    }
+  }
+  for (unsigned s = 0; s < spans; s++)
+    if (created[s]) pthread_join(tids[s], NULL);
+  if (out_attempted) {
+    uint64_t total = 0;
+    for (unsigned s = 0; s < spans; s++) total += jobs[s].attempted;
+    *out_attempted = total;
+  }
+  int found = ctx.found_valid;
+  if (found) {
+    *out_nonce = ctx.found_nonce;
+    memcpy(out_digest, ctx.found_digest, 32);
+  }
+  bal_ctx_destroy(&ctx);
+  return found ? 1 : 0;
+}
+
+int bal_c_search(const uint8_t *header, uint64_t start, uint32_t count,
+                 unsigned threads, const uint8_t *target,
+                 uint32_t *out_nonce, uint8_t *out_digest) {
+  return bal_c_search2(header, start, count, threads, target, out_nonce,
+                       out_digest, NULL);
 }
