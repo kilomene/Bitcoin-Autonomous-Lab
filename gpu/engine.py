@@ -94,6 +94,107 @@ def verify_candidate(header, target, nonce, digest):
     return int.from_bytes(digest, "little") <= target
 
 
+class CudaContext:
+    """Persistent CUDA execution context (Task 002 production path).
+
+    Buffers live on the device across batches; a production search
+    uploads work once per header (midstate, tail, target), then each
+    batch returns only candidate records. Overflow of the bounded
+    candidate array raises: a truncated candidate list is never
+    presented as a complete search.
+    """
+
+    CAND_CAP = 4096
+
+    def __init__(self, lib, max_count=MAX_BATCH):
+        self._lib = lib
+        self._ctx = None
+        self._work_key = None
+        lib.bal_cuda_ctx_create.restype = ctypes.c_int
+        lib.bal_cuda_ctx_create.argtypes = [
+            ctypes.c_uint32, ctypes.c_uint32,
+            ctypes.POINTER(ctypes.c_void_p)]
+        lib.bal_cuda_ctx_destroy.restype = ctypes.c_int
+        lib.bal_cuda_ctx_destroy.argtypes = [ctypes.c_void_p]
+        lib.bal_cuda_ctx_set_work.restype = ctypes.c_int
+        lib.bal_cuda_ctx_set_work.argtypes = [
+            ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
+        lib.bal_cuda_ctx_search.restype = ctypes.c_int
+        lib.bal_cuda_ctx_search.argtypes = [
+            ctypes.c_void_p, ctypes.c_uint64, ctypes.c_uint32,
+            ctypes.c_uint, ctypes.POINTER(ctypes.c_uint32),
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.POINTER(ctypes.c_uint32), ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_float)]
+        lib.bal_cuda_ctx_batch_diag.restype = ctypes.c_int
+        lib.bal_cuda_ctx_batch_diag.argtypes = [
+            ctypes.c_void_p, ctypes.c_uint64, ctypes.c_uint32,
+            ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.c_char_p, ctypes.c_char_p]
+        handle = ctypes.c_void_p()
+        rc = lib.bal_cuda_ctx_create(max_count, self.CAND_CAP,
+                                     ctypes.byref(handle))
+        if rc != 0 or not handle.value:
+            raise RuntimeError(f"bal_cuda_ctx_create failed: {rc}")
+        self._ctx = handle
+
+    def close(self):
+        if self._ctx:
+            rc = self._lib.bal_cuda_ctx_destroy(self._ctx)
+            self._ctx = None
+            if rc != 0:
+                raise RuntimeError(f"bal_cuda_ctx_destroy failed: {rc}")
+
+    def set_work(self, header, target):
+        key = (header, target)
+        if self._work_key == key:
+            return
+        rc = self._lib.bal_cuda_ctx_set_work(
+            self._ctx, header, target.to_bytes(32, "little"))
+        if rc != 0:
+            raise RuntimeError(f"bal_cuda_ctx_set_work failed: {rc}")
+        self._work_key = key
+
+    def search(self, header, target, start, count, threads=256):
+        """Returns (candidates, info). candidates are raw
+        (nonce, digest) pairs, NOT yet CPU verified."""
+        self.set_work(header, target)
+        out_count = ctypes.c_uint32(0)
+        out_ovf = ctypes.c_uint32(0)
+        kernel_ms = ctypes.c_float(0.0)
+        nonces = (ctypes.c_uint32 * self.CAND_CAP)()
+        digests = ctypes.create_string_buffer(32 * self.CAND_CAP)
+        rc = self._lib.bal_cuda_ctx_search(
+            self._ctx, start, count, threads,
+            ctypes.byref(out_count), ctypes.byref(out_ovf),
+            nonces, digests, ctypes.byref(kernel_ms))
+        if rc != 0:
+            raise RuntimeError(f"bal_cuda_ctx_search failed: {rc}")
+        if out_ovf.value:
+            raise RuntimeError(
+                f"candidate buffer overflow: {out_count.value} "
+                f"candidates exceeded capacity {self.CAND_CAP} for "
+                f"range start={start} count={count}; result would "
+                f"be truncated and is refused")
+        raw = digests.raw
+        cands = [(nonces[i], raw[32 * i:32 * i + 32])
+                 for i in range(out_count.value)]
+        return cands, {"kernel_ms": kernel_ms.value,
+                       "candidates_found": out_count.value}
+
+    def batch_diag(self, header, target, start, count, threads=128):
+        """Diagnostic mode: every digest, for self-tests only."""
+        hashes = ctypes.create_string_buffer(32 * count)
+        flags = ctypes.create_string_buffer(count)
+        rc = self._lib.bal_cuda_ctx_batch_diag(
+            self._ctx, start, count, threads, header,
+            target.to_bytes(32, "little"), hashes, flags)
+        if rc != 0:
+            return None
+        raw = hashes.raw
+        return [raw[32 * i:32 * i + 32] for i in range(count)]
+
+
 class ComputeEngine:
     def __init__(self, lib_path=LIB_PATH, requested="auto",
                  c_lib_path=C_LIB_PATH):
@@ -103,13 +204,20 @@ class ComputeEngine:
         self.device_count = 0
         self._lib = None
         self._c_lib = None
+        self._cuda_ctx = None
+        self.cuda_ctx_reason = None
         self.cuda_fallback_reason = None
+        self.fallback_events = []
         self.last_search_stats = None
-        if requested in ("auto", "cuda"):
+        if requested in ("auto", "cuda", "cuda-only"):
             self._try_cuda(lib_path)
             self.cuda_fallback_reason = self.fallback_reason
         if self.backend != "cuda" and requested in ("auto", "c"):
             self._try_c(c_lib_path)
+        if requested == "cuda-only" and self.backend != "cuda":
+            raise RuntimeError(
+                "CUDA-only mode requested but CUDA cannot execute: "
+                f"{self.cuda_fallback_reason or self.fallback_reason}")
         if self.backend == "cuda":
             self.fallback_reason = None
         elif self.backend == "c":
@@ -327,6 +435,27 @@ class ComputeEngine:
         self.device_count = n
         self.backend = "cuda"
         self.fallback_reason = None
+        # Persistent context: verified separately through the
+        # diagnostic path (midstate kernel) against the CPU. If it
+        # cannot be created or verified, the legacy batch path stays
+        # in use and the reason is recorded; CUDA is never claimed
+        # from the context's mere existence.
+        if hasattr(lib, "bal_cuda_ctx_create"):
+            try:
+                ctx = CudaContext(lib)
+                diag = ctx.batch_diag(header, target, 0, 256)
+                if diag is None or any(
+                        diag[i] != cpu_digest(header, i)
+                        for i in range(256)):
+                    ctx.close()
+                    self.cuda_ctx_reason = ("persistent context "
+                                            "diagnostic mismatch")
+                else:
+                    self._cuda_ctx = ctx
+            except Exception as exc:
+                self.cuda_ctx_reason = f"persistent context failed: {exc}"
+        else:
+            self.cuda_ctx_reason = "library has no persistent context ABI"
 
     def _cuda_batch(self, lib, header, target, start, count):
         hashes = ctypes.create_string_buffer(32 * count)
@@ -367,11 +496,43 @@ class ComputeEngine:
                     "backend": used, "hashes": count, "seconds": seconds,
                     "hashrate": count / seconds, "start": start,
                 }
+        if self.backend == "cuda" and self._cuda_ctx is not None:
+            # Production CUDA path: only candidate records cross
+            # back; each is CPU verified before it is returned.
+            try:
+                pairs, info = self._cuda_ctx.search(header, target,
+                                                    start, count)
+                for nonce, d in pairs:
+                    if verify_candidate(header, target, nonce, d):
+                        candidates.append({"nonce": nonce,
+                                           "hash": d[::-1].hex(),
+                                           "backend": "cuda"})
+                seconds = max(time.perf_counter() - t0, 1e-9)
+                return candidates, {
+                    "backend": "cuda", "hashes": count,
+                    "seconds": seconds, "hashrate": count / seconds,
+                    "start": start, "mode": "candidates_only",
+                    "kernel_ms": info["kernel_ms"],
+                    "candidates_found": info["candidates_found"],
+                    "fallback_events": len(self.fallback_events),
+                }
+            except RuntimeError as exc:
+                if "overflow" in str(exc):
+                    raise  # truncated results are never softened
+                self.fallback_reason = f"CUDA context failed: {exc}"
+                self.fallback_events.append(
+                    {"start": start, "count": count,
+                     "reason": str(exc), "retried_on": "cpu"})
+                used = "cpu"
         digests = None
-        if self.backend == "cuda":
+        if self.backend == "cuda" and used == "cuda":
             digests = self._cuda_batch(self._lib, header, target, start, count)
             if digests is None:
                 self.fallback_reason = "CUDA batch failed at runtime; fell back"
+                self.fallback_events.append(
+                    {"start": start, "count": count,
+                     "reason": "legacy CUDA batch returned failure",
+                     "retried_on": "cpu"})
                 used = "cpu"
         if digests is None:
             digests = [cpu_digest(header, start + i) for i in range(count)]
@@ -386,6 +547,7 @@ class ComputeEngine:
         return candidates, {
             "backend": used, "hashes": count, "seconds": seconds,
             "hashrate": count / seconds, "start": start,
+            "fallback_events": len(self.fallback_events),
         }
 
     def benchmark(self, seconds_hint_batches=3, batch=65536):
@@ -413,5 +575,8 @@ class ComputeEngine:
             "c_threads": C_THREADS,
             "c_attempt_counting": bool(
                 self._c_lib and hasattr(self._c_lib, "bal_c_search2")),
+            "cuda_context": bool(self._cuda_ctx),
+            "cuda_context_reason": self.cuda_ctx_reason,
+            "fallback_events": self.fallback_events,
             "last_search_stats": self.last_search_stats,
         }
