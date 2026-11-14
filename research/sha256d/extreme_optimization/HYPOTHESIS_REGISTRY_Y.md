@@ -1724,6 +1724,34 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
   in the serving path.
 - Workstream E / Difficulty low / Confidence high /
   Cost low.
+- Status (2026-11-14, EXP-023): TESTED,
+  REJECTED as specified (established
+  negative). Both prongs fail on the code as
+  built. (i) No lab serving path rebuilds a
+  midstate per extranonce step: the solo
+  server builds jobs per template and
+  validates shares with whole-header hashing
+  (it holds no midstate and never steps an
+  extranonce), the stratum client's per-step
+  cost is 117.9 us of coinbase and branch
+  hashing against a full nonce scan (share
+  3.4e-7), and the GBT engine's kernel
+  computes the midstate per search batch, not
+  per extranonce; the named cache on/off test
+  is not expressible in the solo harness.
+  (ii) The quantity it proposes to cache is
+  not extranonce independent: the merkle root
+  occupies block-1 bytes 36 to 63 and
+  avalanches, so an extranonce step alters
+  block 1 past byte 36 and changes the
+  midstate (gate G-D, 20 randomised pairs);
+  the deepest extranonce-independent snapshot
+  is the R8 prefix state (rounds 0 to 8,
+  version and prevhash), not the half block.
+  The amortisation objective behind it is
+  real in the GBT path and is measured under
+  Y-077. See ../phase6/EXPERIMENT_RESULTS.md,
+  EXP-023.
 
 ### Y-077: Two-level midstate cache for job families
 - Limitation: pool jobs in a family share version
@@ -1741,6 +1769,44 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
   alignment condition stated.
 - Workstream E / Difficulty low / Confidence high /
   Cost low.
+- Status (2026-11-14, EXP-023): TESTED,
+  VERIFIED IMPROVEMENT at the data level;
+  the compression-prefix mechanism as
+  stated is separately REJECTED as
+  immaterial. The two-level prototype
+  (level 1: family constants, the payout
+  script and halving interval the current
+  code re-derives by RPC on every call;
+  level 2: the per-template transaction
+  pass, witness commitment and merkle tree,
+  with only the coinbase spine, 9 double
+  hashes at 500 transactions, paid per step)
+  passed 1,320 randomised byte-identity
+  cases against build_candidate, then beat
+  it under the EXP-017 paired protocol in
+  every session and pooled: 16 extranonce
+  steps on one template, pooled 18.49x at
+  500 transactions (adjusted +2.9174, CI
+  +2.7884 to +3.0406) and 16.46x at 100;
+  16 jobs of one family, 22.06x (CI 18.93x
+  to 25.63x); pairs won 1.000 on both
+  primaries. Boundary, as the mechanism
+  predicts: when every job's tx set churns,
+  pooled 0.97x, not significant. Break-even
+  is about 1.8 steps per template. The
+  stated level-1 mechanism (caching block
+  1's first-half compression) does not
+  carry the result: that prefix is valid
+  without alignment only to round 8, to
+  round 11 only when the merkle head
+  (bytes 36 to 47) aligns, probability
+  2^-96 for unrelated roots, and it is
+  worth at most about 304 us per block-1
+  compression in a Python path and zero in
+  the kernel path. Integration into
+  mining/engine.py is recommended to the
+  owner, not made. See
+  ../phase6/EXPERIMENT_RESULTS.md, EXP-023.
 
 ### Y-078: Outer-state reuse across nonces (closure candidate)
 - Limitation: none; registered to close the idea
@@ -1778,6 +1844,43 @@ HYPOTHESIS or UNPROVEN BREAKTHROUGH; none starts higher.
 - Success: the verified table.
 - Workstream A / Difficulty low / Confidence high /
   Cost low.
+- Status (2026-11-14, EXP-023): TESTED,
+  VERIFIED TABLE delivered. All 32 subsets
+  of the five fields were verified by
+  construction (3 randomised header pairs
+  per subset, equality at the tabulated
+  rung and inequality at every deeper rung),
+  plus two supplementary boundary rows.
+  Deepest valid snapshot by shallowest
+  varying field (nonce always varies):
+  version varies, none (even the round-0
+  state dies); prevhash head varies, R0
+  (block-1 state after round 0); merkle
+  tail varies (the root as one field, a
+  change avalanches over all eight words),
+  R8; time varies, B2R0 (midstate plus
+  block-2 round 0); nbits varies, B2R1;
+  none of the five varies, SCH17 (block-2
+  state after round 2 plus schedule words
+  W16 and W17). Against the named menu:
+  block-1 half (R11) is the deepest valid
+  snapshot for NO subset; it requires a
+  merkle-head-aligned root change
+  (supplementary row S2: a change confined
+  to root bytes 12 to 27 leaves R11
+  deepest, verified). Full midstate is the
+  deepest named depth for time and nbits
+  rolls, whose true depths (B2R0, B2R1) sit
+  between the named rungs. Supplementary
+  row S1: a change confined to the merkle
+  tail word (bytes 64 to 67) leaves the
+  full midstate valid and kills B2R0.
+  Serving rule supported: cache R8 across
+  root changes inside a family, the
+  midstate across time, nbits and
+  tail-word rolls, SCH17 across nonces
+  only. See ../phase6/EXPERIMENT_RESULTS.md,
+  EXP-023.
 
 ### Y-080: Register-passed outer input in the SHA-NI family
 - Limitation: the H-01/H-02 kernels write the inner
