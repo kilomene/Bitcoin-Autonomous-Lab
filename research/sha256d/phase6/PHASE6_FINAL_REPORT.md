@@ -328,3 +328,56 @@ deployed library is complete, so D-1 was
 unreachable in the running deployment). Full
 record: POST_INTEGRATION_AUDIT.md, resolution
 section of 2026-11-14.
+
+## Addendum (2026-11-14): EXP-019, carry-save schedule pricing (Y-002, Y-001)
+
+EXP-019 has run in its designed order: price
+list first, kernel only if a form wins on
+measured micro-cost AND dependency chain. No
+form won, so no kernel exists and none was
+benchmarked. The price list (three paired
+sessions per separation 0..15, plus an
+L1-resident supplement) establishes:
+
+- A software 3:2 compressor on AVX-512 costs
+  three instructions (2 VPTERNLOGD plus 1
+  VPSLLD carry alignment), a term the Y-001
+  and Y-002 registry costings omitted. A
+  resolved carry-save four-operand sum costs
+  5 instructions with a 4-stage chain (one
+  level) or 7 with a 5-stage chain (two
+  levels), against the incumbent's 3 VPADDD
+  and 3 stages. Deferral moves the resolution
+  adds; it does not remove them.
+- Resolution is forced at separation 0 (the
+  fused round's T1) or separation 1 (sigma1
+  input to W[t+2]), and a sigma cannot consume
+  a redundant pair. At exactly those
+  separations the measured carry-save cost is
+  1.17 to 1.53 times the incumbent. Under
+  L1-resident operands (the kernel's own
+  residency) the carry-save forms are slower
+  at every separation from 1 up; their
+  apparent advantage at wide separations
+  under L2 streams is a streaming-pattern
+  artifact, recorded as such.
+
+Conclusions under the three tiers:
+
+- VERIFIED IMPROVEMENT: none. Production is
+  byte-identical.
+- PROMISING HYPOTHESIS: none new. The
+  balanced-tree control's readings disagreed
+  across residency regimes and are left as a
+  data point for Y-003, unclaimed.
+- UNPROVEN BREAKTHROUGH: unchanged.
+- Established negatives: Y-002 REJECTED (its
+  winner table is delivered; the winner is
+  the incumbent) and Y-001 REJECTED at the
+  pricing level. The price list, with the
+  corrected compressor pricing, is now the
+  discovery cost model's resolution table.
+
+Full record: EXPERIMENT_RESULTS.md, EXP-019;
+raw data in benchmarks/exp019/ and
+analysis/exp019_price_list.json.
