@@ -310,3 +310,35 @@ via apt from NVIDIA's official repository, listed above.
 - The toolkit lives in system paths, so a future VM replacement
   will remove it again; build.py now reports that state honestly
   instead of failing obscurely.
+
+## Task 003 addendum (2026-11-14)
+
+Task 003 hardened three GPU items from this report; see
+results/TASK003_CORRECTIONS.md for the full evidence. Gates 4, 6
+and 7 remain UNVERIFIED: this VM still has no NVIDIA GPU.
+
+- Candidate overflow (was: reported and refused, search lost):
+  CudaContext.search still raises on overflow, now as the typed
+  CandidateOverflowError, and the new guaranteed-coverage driver
+  collect_candidates_complete (used by CudaContext.
+  search_complete and by ComputeEngine.batch_search) partitions
+  the range into target-sized sub-batches and splits only an
+  overflowing sub-range until it resolves. No candidate is
+  discarded, re-searched work is accounted separately from unique
+  coverage, and the returned set is deduplicated by nonce.
+  Exercised end-to-end through a Python stub with device-identical
+  bounded semantics, since no device exists here.
+- Startup validation (was: legacy batch plus a diagnostic-path
+  context check could leave CUDA selected): CUDA is now selected
+  only when cuda_production_selftest passes on the persistent
+  context. It exercises the production candidate path itself
+  (work setup and midstate, candidate search, counter, capacity
+  overflow probe, overflow recovery) and compares the candidate
+  set against a CPU recount. Diagnostic success alone can no
+  longer authorize CUDA.
+- C ABI range validation (was: start + count comparisons):
+  bal_cuda_ctx_search, bal_cuda_ctx_batch_diag and the legacy
+  bal_cuda_batch now call the shared subtraction-based
+  bal_nonce_range_valid from kernels/sha256.h, and context
+  creation bounds its allocation sizes. The validator is proven
+  12 of 12 on the host build (gpu/cuda/host_checks.cpp line 7).
