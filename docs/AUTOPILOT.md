@@ -82,6 +82,63 @@ one payout address. Two agents are 200 percent of one machine,
 five are 500 percent. The boost is the team, each member at
 full workforce on its own VM.
 
+## Automatic install and activation
+
+Installation is one command: `bash scripts/install.sh`. It
+builds the engine, runs network self-configuration, smoke
+tests the exact code path that will mine (including the
+thread auto-tune and the genesis nonce), installs the
+systemd service where systemd exists, starts mining under
+the autopilot, and prints an activation receipt. It is
+idempotent and refuses to claim activation when the pool
+endpoint is unreachable. `bash scripts/install.sh --dry-run`
+prints the plan without changing anything.
+
+## Network self-configuration
+
+The lab's network shape is small and fixed, and
+`scripts/network_setup.py` makes the machine suit it at
+install time. Mining is outbound only (one TCP connection
+to the pool's Stratum endpoint); self-update needs HTTPS to
+GitHub; the optional node needs outbound 8333 to its pinned
+peers only. Nothing inbound is ever required. The script
+probes each endpoint, detects the machine's proxy from its
+own environment, writes that proxy into this repo's git
+config so cloning and self-update use the machine's working
+door, and records a report in `.local/network.json`. Proxy
+credentials are never recorded, only scheme, host and port.
+
+## Block judgement
+
+The miner reasons about which block to mine and confirms a
+good block before claiming anything:
+
+1. **Template validation.** Every pool template passes
+   `validate_job` before a single hash is spent on it:
+   prevhash and merkle branches must be real 32-byte hashes,
+   coinbase parts must be hex, nbits must decode into range,
+   and ntime must be fresh (within 2 hours either way).
+   Failures are rejected with named reasons and logged as
+   `template_rejected`; passes are logged as
+   `template_validated` with the network difficulty decoded
+   from nbits.
+2. **Freshest template wins.** Any accepted template
+   supersedes work in progress immediately, clean or not, so
+   the workforce is never spent on a block the pool has
+   already replaced.
+3. **Candidate confirmation.** A search hit is not
+   submitted on the search engine's word. The digest is
+   recomputed with hashlib, independent of the backend, and
+   checked against the pool target and against the network
+   target from the job's nbits (which is what makes it a
+   block candidate, not just a share), and the template must
+   still be the freshest. Only then is it submitted, logged
+   as `candidate_confirmed`; the pool's verdict returns as
+   `share_result`. The chain template, candidate, verdict is
+   the confirmation record; a block is claimed only on a
+   pool acceptance or an on-chain record, as everywhere in
+   this lab.
+
 ## The node, and stopping approval spam
 
 Pool mining needs no local node. A node is only needed to host
