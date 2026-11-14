@@ -48,3 +48,10 @@ layout and build.sh):
   for template-fixed block-2 rounds; libbal_k512.so.
 - bitslice32.c (EXP-015): bitsliced 32-lane
   SHA-256d; libbal_zbs.so.
+
+Contents added by EXP-018 (2026-11-14, Phase 6):
+
+- avx512_mb_reg.c (EXP-018, Y-023): register-resident
+  dual-batch AVX-512 multi-buffer; ring-relabeled
+  state held in named vector variables across an
+  eight-round repeating unit; libbal_r512.so.
