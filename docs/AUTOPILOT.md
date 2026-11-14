@@ -14,7 +14,7 @@ bash scripts/autopilot.sh start
 | Function | Cadence | Behaviour |
 | --- | --- | --- |
 | Heartbeat | every 5 s | `.local/heartbeat.json` rewritten: miner pid and state, uptime, restart count, accepted shares total, evidence freshness |
-| Watchdog (crash) | 2 s poll | miner process death detected within seconds; relaunch with exponential backoff starting at 1 s and capped at 30 s, so a dead miner is never left resting |
+| Watchdog (crash) | 1 s poll | miner process death detected within about a second; relaunch with exponential backoff starting at 1 s and capped at 30 s, so a dead miner is never left resting |
 | Watchdog (hung) | 300 s window (5 minutes) | if the evidence log shows no new job for 300 s the miner is judged hung, killed and relaunched |
 | Session rotation | 24 h sessions | the moment one session ends the next begins; mining is continuous |
 | Self-update | every 15 min | compares HEAD to origin/main; on a new version: fast-forward pull, PoW smoke test, restart miner onto new code; on smoke failure: hard rollback to the previous HEAD and the old code keeps mining |
@@ -138,6 +138,20 @@ good block before claiming anything:
    the confirmation record; a block is claimed only on a
    pool acceptance or an on-chain record, as everywhere in
    this lab.
+
+Speed and reliability of the same path: scan chunks are
+sized from the machine's auto-tune probe to about one
+second of work, so a fresher template preempts within about
+a second; reported difficulties are the exact DIFF1 / value
+ratio; a template for the same tip with an older ntime is
+rejected as a stale echo and exact duplicates are ignored;
+Stratum sockets run with TCP_NODELAY and the client
+reconnects itself within seconds of a drop (session reset,
+re-subscribe, re-authorize, fresh template), so a pool
+hiccup no longer costs a full miner restart. First live
+proof of the confirmation chain: 2026-11-14 05:51 UTC,
+candidate confirmed on every check and accepted by the
+pool 0.1 s later (share 29 for this lab).
 
 ## The node, and stopping approval spam
 
