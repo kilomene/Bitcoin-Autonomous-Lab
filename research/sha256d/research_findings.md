@@ -262,3 +262,23 @@ pricing, EXP-020 full-round rewriting). No
 production change, no verified improvement
 claimed. Full report: phase6/PHASE6_FINAL_REPORT
 .md.
+
+## Pointer: EXP-017 measurement stack (2026-11-14)
+
+EXP-017 has run. The paired protocol and its
+predeclared adjusted paired log-ratio statistic
+are validated: both equal-pair controls null in
+every session and pooled, the old min/max rule
+passed a phantom difference in 0 of 6 control
+sessions, and covariate adjustment was priced
+near-neutral (the pairing carries the value).
+Under the EXP-017 measurement rule, AVX-512 MB
+(+1.2652 pooled, 3.55x) and streams=4 strided
+(+1.0298, 2.80x) are significantly faster than
+production in every session. Measurement result
+only, not an integration; a decision-rule change
+is proposed to the owner in
+phase6/EXPERIMENT_RESULTS.md and not enacted.
+Sub-verdicts: Y-103 PASS, Y-102 PASS at 65,536
+hashes, Y-101 PARTIAL. Full record:
+phase6/EXPERIMENT_RESULTS.md, EXP-017.
