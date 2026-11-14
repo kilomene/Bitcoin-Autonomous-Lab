@@ -282,3 +282,23 @@ phase6/EXPERIMENT_RESULTS.md and not enacted.
 Sub-verdicts: Y-103 PASS, Y-102 PASS at 65,536
 hashes, Y-101 PARTIAL. Full record:
 phase6/EXPERIMENT_RESULTS.md, EXP-017.
+
+## Pointer: EXP-018 register-resident dual-batch (2026-11-14)
+
+EXP-018 (Y-023) has run. The new kernel
+(extreme_optimization/src/avx512_mb_reg.c)
+achieves register residency for the
+dual-batch state at the near-zero level
+(one of sixteen state vectors in a single
+stack slot, per the assembly audit in
+phase6/benchmarks/exp018/asm_audit.json),
+and passes the full correctness gate set.
+Under the EXP-017 statistic it is not
+significantly faster than single-batch MB
+(pooled +0.0836, CI -0.0247 to +0.1902),
+though it is significantly faster than
+production (+1.5027, 4.49x). Verdict: not a
+verified improvement; state traffic was not
+the binding cost. No integration. Full
+record: phase6/EXPERIMENT_RESULTS.md,
+EXP-018.
