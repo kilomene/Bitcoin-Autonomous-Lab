@@ -27,6 +27,15 @@ STOP = os.path.join(ROOT, ".local", "autopilot.stop")
 
 
 def main():
+    # Worker identity: the default worker name comes from the
+    # hostname, is Stratum-safe, and is stable across calls, so a
+    # team of agents never collides on one shared worker name.
+    from mining.autopilot import default_worker
+    w = default_worker()
+    assert w and all(c.islower() or c.isdigit() or c == "-"
+                     for c in w), w
+    assert default_worker() == w
+    print(f"default worker name: {w}")
     # If a production autopilot already owns this checkout, the
     # lock doing its job makes this test meaningless here; skip.
     lock = os.path.join(ROOT, ".local", "autopilot.lock")
