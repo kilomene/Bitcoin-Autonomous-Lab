@@ -333,6 +333,67 @@ BAL_HD static inline int bal_nonce_range_valid(uint64_t start, uint64_t count) {
   return 1;
 }
 
+// ------------------------------------------------------------------
+// CUDA C ABI validation (Task 003.8), shared by engine.cu and the
+// host validation build so the exact checks the legacy entry point
+// performs are executable without a device. Error codes crossing
+// the C ABI (negative values are local validation errors; zero is
+// success; positive values are CUDA runtime error codes):
+//   0  success
+//  -1  invalid argument (null pointer, zero count, bad thread count)
+//  -2  host allocation failure
+//  -3  invalid kernel configuration
+//  -4  invalid nonce range (subtraction-based check failed)
+//  -5  allocation-size overflow or size over the documented limit
+//  -6  batch count over BAL_CUDA_LEGACY_MAX_BATCH
+// The legacy one-shot entry point materializes every digest, so
+// its documented maximum batch is 2^24 nonces: at most 512 MiB of
+// digest output and 16 MiB of flags. Larger searches belong on the
+// persistent candidate-filtering context or in caller-sized chunks.
+// ------------------------------------------------------------------
+#define BAL_CUDA_OK 0
+#define BAL_CUDA_ERR_INVALID_ARGUMENT -1
+#define BAL_CUDA_ERR_HOST_ALLOCATION -2
+#define BAL_CUDA_ERR_INVALID_CONFIGURATION -3
+#define BAL_CUDA_ERR_INVALID_RANGE -4
+#define BAL_CUDA_ERR_SIZE_LIMIT -5
+#define BAL_CUDA_ERR_BATCH_TOO_LARGE -6
+#define BAL_CUDA_LEGACY_MAX_BATCH 16777216ULL
+
+BAL_HD static inline int bal_checked_mul_size(size_t a, size_t b,
+                                              size_t* out) {
+  if (!out) return 0;
+  if (a != 0 && b > ((size_t)-1) / a) return 0;
+  *out = a * b;
+  return 1;
+}
+
+// Validate every bal_cuda_batch argument BEFORE any pointer is
+// dereferenced, copied, or passed to a CUDA memory operation, and
+// compute the two count-derived allocation sizes with checked
+// multiplication. out_hash_bytes and out_flag_bytes may be null
+// when the caller only wants validation.
+BAL_HD static inline int bal_cuda_batch_validate(
+    const void* header, const void* target_le, const void* hashes,
+    const void* flags, uint64_t start, uint64_t count,
+    unsigned threads, size_t* out_hash_bytes, size_t* out_flag_bytes) {
+  if (!header || !target_le || !hashes || !flags)
+    return BAL_CUDA_ERR_INVALID_ARGUMENT;
+  if (!count || !threads || threads > 1024)
+    return BAL_CUDA_ERR_INVALID_ARGUMENT;
+  if (count > BAL_CUDA_LEGACY_MAX_BATCH)
+    return BAL_CUDA_ERR_BATCH_TOO_LARGE;
+  if (!bal_nonce_range_valid(start, count))
+    return BAL_CUDA_ERR_INVALID_RANGE;
+  size_t hash_bytes = 0, flag_bytes = 0;
+  if (!bal_checked_mul_size((size_t)count, (size_t)32, &hash_bytes) ||
+      !bal_checked_mul_size((size_t)count, (size_t)1, &flag_bytes))
+    return BAL_CUDA_ERR_SIZE_LIMIT;
+  if (out_hash_bytes) *out_hash_bytes = hash_bytes;
+  if (out_flag_bytes) *out_flag_bytes = flag_bytes;
+  return BAL_CUDA_OK;
+}
+
 // Target check: digest and target are both 32-byte little-endian values.
 BAL_HD static inline int bal_meets_target(const uint8_t* digest, const uint8_t* target_le) {
   for (int i=31;i>=0;i--) {
