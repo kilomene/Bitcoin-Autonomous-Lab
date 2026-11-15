@@ -1,0 +1,38 @@
+EXP-034 test run, 2026-11-15, tests/test_exp034_job_template.py
+Command: python3 tests/test_exp034_job_template.py
+Host VM: regtest node already running (tip 1101 at start).
+Final result: ALL EXP-034 JOB AND TEMPLATE TESTS PASSED
+
+ok A height_only_change: sibling refused, new entry, byte-identical to uncached
+ok A mintime_per_build_input: same identity, header time follows mintime on both paths
+ok A dwc_field_on_witnessless_template: new identity, identical bytes (safe over-keying)
+ok A dwc_string_padded_still_contains: sibling refused, new entry, byte-identical to uncached
+ok A target_string_case: new identity, identical bytes (representation keyed, safe over-keying)
+ok A unmodelled_core_fields_ignored: served under the same identity, byte-identical to uncached
+ok A coinbaseaux_missing: served under the same identity, byte-identical to uncached
+ok A cache_bound: cap 128 held over 330 prepares, oldest-first eviction, held entry survives eviction and stays byte-identical
+ok A held_object_mutation_boundary: version, prevhash and bits follow an in-place mutation of the held template; tx mutation does not move root or body (documented trust boundary, see report)
+ok A extranonce_stepping_anatomy: steps differ only via the coinbase and its merkle root
+ok A equal_content_sibling_served: deep-copy sibling serves under the prepared identity
+ok C1 two_engine_collision: two MiningEngine instances with the same payout build byte-identical candidates at all 64 extranonce rounds
+ok C2 separation_by_payout_only: a different payout address separates the spaces; nothing else does
+ok C3 engine_vs_solo_anatomy: engine scriptSig is height + /BAL/ + en4; solo scriptSig is height + /BAL/ + en1 + en2 (4 bytes longer, no collision with empty flags); the solo tag /BAL-solo/ never enters the coinbase
+ok C4 extranonce_space_fix: configured spaces are disjoint, union equals the default space, default is (0, 64), mine_cycle steps exactly the configured rounds, out-of-range spaces are refused
+ok D1 job_refresher: tip-hash keyed refresh, no refresh on time alone, age cap refreshes, superseded job ids are cancelled (unknown job)
+ok D2 engine_freshness: mid-cycle tip change does not invalidate in-flight work; the next cycle picks it up; version is never rolled inside a cycle
+ok D3 stratum_client_freshness: same-tip ntime regression rejected as stale echo; new prevhash with an older ntime accepted as new work; exact duplicate ignored
+ok B1 solo_branch_vs_full_root: branch depth 3 over 6 template txs; worker header byte-identical to server header
+ok B2 solo_block_vs_core: block at height 1104 accepted by Core; Core merkleroot and tx order match the job construction
+ok B3 engine_block_vs_core: block at height 1105 accepted; Core merkleroot, tx order, coinbase value 39079798 sats and payout script all match the template construction (cache prepares=1)
+
+Pre-fix evidence for the solo coinbase split defect (same test,
+run before the mining/solo_server.py fix): section C3 failed
+with the served solo scriptSig equal to
+b'\x02\xe8\x03/BAL/\xee\xee\x01\x00\x00\x00\x00\x00'
+(height push, "/BAL/", two retained placeholder bytes 0xee 0xee,
+extranonce1, and only the first 2 bytes of extranonce2 inside
+the declared 16-byte scriptSig), proving coinb1/coinb2 were
+split at an offset taken from the full (witness-carrying)
+coinbase and applied to the stripped coinbase. After the fix
+the same assertion passes with the exact expected scriptSig:
+height push + "/BAL/" + extranonce1 + extranonce2.
