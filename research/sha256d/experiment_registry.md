@@ -902,3 +902,226 @@ EXP-023; raw data in
 phase6/benchmarks/exp023/. Twenty-four
 experiments now recorded (EXP-000 to
 EXP-023); next unreserved ID is EXP-024.
+
+## EXP-025: EXP-023 cache correctness and identity repair (2026-11-15)
+
+Phase 6B Assignment C (EXP-024, the AVX-512
+mask-search experiment, is recorded in
+phase6b/EXPERIMENT_RESULTS.md). The EXP-023
+prototype's 8-field fingerprint was audited
+against a dependency matrix derived field by
+field from mining/engine.py and mining/pow.py,
+and the defect was demonstrated against the
+unmodified prototype before any repair: five
+stale-serve shapes with the fingerprint
+unchanged (middle transaction replaced,
+witness-only change with txid fixed, middle
+reorder, coinbaseaux flags change, target
+change) and two validation bypasses (fee
+raised with coinbasevalue fixed, wrong
+default_witness_commitment). The repaired
+cache (phase6b/benchmarks/exp025_repaired.py)
+uses a layered identity (family, transaction,
+coinbase and header keys under one dsha256
+identity) covering the complete dependency
+set; sibling serves recompute the identity
+from scratch and raise on mismatch. Gates:
+19 adversarial invalidation cases pass,
+positive reuse controls pass, 1,320 randomised
+differential cases byte-identical to
+production build_candidate; regtest block
+through the repaired construction accepted at
+height 826, hash
+4d43835d08290e3db41d3953c47e3e39d213f4b2166299c16be38cd57a3e8734.
+Performance re-check under the EXP-017
+protocol on an AMD EPYC 9D25 host: steps500
+pooled 23.02x (CI 20.22 to 25.93), VERIFIED;
+family500 pooled 1.083x, NOT VERIFIED (the
+full identity recomputation, 3.573 ms median
+against a 4.499 ms uncached build at 500
+transactions, consumes most of the family
+gain the unsafe fingerprint appeared to buy).
+Verdict: ACCEPTED on all six predeclared
+correctness elements; the original EXP-023
+prototype remains unsafe and unintegrated;
+the repaired design is a recommendation for
+the owner's decision. Production
+byte-identical. Full record:
+phase6b/EXP025_CACHE_CORRECTNESS.md and
+phase6b/EXPERIMENT_RESULTS.md, EXP-025; raw
+data in phase6b/benchmarks/exp025/.
+Twenty-six experiment IDs now recorded
+(EXP-000 to EXP-025); next unreserved ID is
+EXP-026.
+
+## EXP-026: Extreme AVX-512 execution research (2026-11-15)
+
+Phase 6B Assignment D. A written cost model for
+five candidate combinations was filed before any
+kernel was compiled; three candidates (register
+schedule ring, phase pipelining, hand-scheduled
+assembly) were killed at the model with quantified
+reasons. Two were built. C1 TernMask (EXP-024 mask
+kernel with explicit VPTERNLOGD cones) is an
+ESTABLISHED NEGATIVE as a combination: pooled
+1.083x vs production at 2 threads, not significant,
+and pooled 0.764x against its own strongest
+ingredient, mask C. C2 DualMask (EXP-018
+register-resident dual-batch compress plus the
+EXP-024 opmask compare per batch, extraction only
+on a hit batch, dual-atomic early exit) is a
+VERIFIED IMPROVEMENT in the search path at density
+0 under the EXP-017 rule: pooled 1.718x vs
+production and 1.444x vs mask C at 2 threads,
+significant in every session and pooled, control
+null, gates all passed before timing (the gates
+caught and the record preserves a real
+transcription defect in C2 before its fix), fresh
+regtest block accepted at height 827, hash
+3bee3dae4d9d8b0c99c38cc6130cc75f5e517491be59fec68c7e31d5128e6c49.
+Not integrated; integration is an owner decision.
+Registry note: EXP-025's agent appended its record
+to this lowercase file while the Phase 6B audit had
+identified the uppercase
+extreme_optimization/EXPERIMENT_REGISTRY.md as the
+live registry; EXP-026 has updated BOTH files and
+aligned the uppercase EXP-025 entry, which still
+read RESERVED there. Full record:
+phase6b/EXP026_AVX512_EXECUTION.md and
+phase6b/EXPERIMENT_RESULTS.md, EXP-026; raw data
+in phase6b/benchmarks/exp026/. Twenty-seven
+experiment IDs now recorded (EXP-000 to EXP-026);
+EXP-027 to EXP-029 are reserved by Phase 6B, so
+the next unreserved ID is EXP-030.
+
+## EXP-024b: Mask search confirmation run (2026-11-15)
+
+Lettered confirmation of EXP-024, owner approved
+2026-11-14, run after EXP-025 and EXP-026; not a
+new ID (next unreserved stays EXP-030). Design C
+predeclared as primary before timing. Compact
+gates PASS (131,072 differentials vs hashlib;
+equivalence at densities 0 and 2^-12; genesis
+re-found). Primary (C vs production, density 0,
+2 threads, EXP-017 protocol): pooled 1.398x
+[1.242, 1.578], significant in every session and
+pooled, criterion MET; control C vs C null;
+1 thread 1.463x, every session. Same-process B/C
+interleave: 1.011x, null, so the EXP-024 B/C
+divergence was layout and scheduling, not code.
+Verdict: design C VERIFIED IMPROVEMENT (search
+scope). Not integrated; EXP-026 DualMask remains
+the leading integration candidate, C is the
+certified single-batch fallback. Full record:
+phase6b/EXP024_MASK_SEARCH.md (EXP-024b sections)
+and phase6b/EXPERIMENT_RESULTS.md; raw data in
+phase6b/benchmarks/exp024b/.
+
+## EXP-027: New computational representations (2026-11-15)
+
+Phase 6B Assignment E, Track B. Characterised
+search outside the vocabulary EXP-020 closed,
+with a negative result. Every named space ends
+closed at a stated scope: GFNI affine forms
+(sigma maps proven GF(2)-linear by z3 UNSAT, but
+every Sigma0 output byte depends on all four
+input bytes, refuting single-instruction forms
+and flooring any GFNI network at 11 ops against
+the incumbent 4; Ch and Maj proven non-affine by
+z3 SAT counterexamples, numerically rechecked;
+GFNI hardware semantics differential-verified at
+1,000,000 bytes); VPSHUFB rotations (all 625
+byte-select patterns refuted on 10,038 inputs;
+the mixed construction proven exact and measured
+at 2.00x the VPROLD price); alternative state
+representations (rotated and byte-swapped forms
+refuted by addition counterexamples; bitslicing
+already closed by EXP-015; delta state by
+EXP-016); carry-save beyond the schedule (round
+additions have deferral distance exactly 0
+because every state output is bitwise-consumed
+next round; T1 costs 6 or 8 against 4 at the
+standing compressor price); addition networks
+(binary-add counting floor met by the incumbent;
+lookahead census about 18 ops per add; 52-bit
+IFMA accumulation proven exact and costed out at
+5 against 4); joint optimisation (0 nontrivial
+subterms shared across the round boundary; the
+outer compression's 48 computed schedule words
+all depend on the inner digest, 0 independent
+rounds; non-sharing cross-round restructuring
+left explicitly open, blocker search-space size);
+schedule forms (unrolled tree exactly 259,905
+nodes at W63 against 384 DAG ops); automated
+instruction selection over extended vocabularies
+(no cone extracted below its EXP-020 cost).
+No VERIFIED IMPROVEMENT, no PROMISING
+HYPOTHESIS; no kernel compiled, so no EXP-017
+benchmark was triggered. Not integrated.
+Production byte-identical. Full record:
+phase6b/EXP027_COMPUTATION_REPRESENTATIONS.md
+and phase6b/EXPERIMENT_RESULTS.md, EXP-027;
+proofs in phase6b/proofs/; raw data in
+phase6b/benchmarks/exp027/. Twenty-eight
+experiment IDs now recorded (EXP-000 to
+EXP-027); EXP-028 and EXP-029 are reserved by
+Phase 6B, so the next unreserved ID is EXP-030.
+
+## EXP-028 and EXP-029: Phase 6B Assignment F (2026-11-15)
+
+EXP-028 (cross-architecture roadmap): COMPLETE as a
+roadmap and dispatch specification. Flag-free probe
+TU (16-bit feature mask) and executable dispatch
+spec verified on the AMD EPYC 9D25 host (mask
+0xffff, object census scalar-only, five fallback
+scenarios as expected). AVX-512 F+BW VERIFIED on
+two hosts (AMD EPYC 9D25; Intel Xeon 8321HC, no SHA
+extensions, no VBMI); SHA extensions MEASURED in
+research on AMD (EXP-002/003/005, EXP-021); Intel
+SHA, AVX-512 wider subsets, AVX2 and ARMv8 SHA2
+plus NEON SPECIFIED, UNVERIFIED, no rates quoted;
+portable C and hashlib VERIFIED floor. Not
+integrated. Full record: phase6b/EXP028_CPU_
+ARCHITECTURES.md and phase6b/EXPERIMENT_RESULTS.md;
+artifacts in phase6b/benchmarks/exp028/.
+
+EXP-029 (distributed execution roadmap): COMPLETE.
+Allocator prototype proven by targeted cases and a
+120-trial randomised campaign (exact disjoint
+coverage in every trial; 20,474 repeated
+computations accounted, none in unique coverage);
+coordination overhead measured for a local
+in-process prototype only (460,929 unique/s at 1
+worker, 493,484 at 4 workers chunk 10,000, 120,000
+nonces, this contended host); distributed-path
+regtest block accepted at height 829, hash
+781cc4ef7fc3e583ff6fa9bf277c780083b7252a9d5ede4fed5d213e691a2e8f;
+centralised coordination chosen on coverage safety;
+multi-machine scaling UNVERIFIED; no claim toward
+500 GH/s or 140 TH/s. Not integrated. Full record:
+phase6b/EXP029_DISTRIBUTED_EXECUTION.md and
+phase6b/EXPERIMENT_RESULTS.md; artifacts in
+phase6b/benchmarks/exp029/. Thirty experiment IDs
+now recorded (EXP-000 to EXP-029 plus EXP-024b);
+the next unreserved ID is EXP-030.
+
+## Integration addendum: EXP-026 C2 DualMask (2026-11-15)
+
+The owner decided on 2026-11-14 to integrate
+EXP-026 candidate C2 (DualMask) after EXP-024b
+finished. C2 is now the production backend
+"v512dual" (kernel mining/cpu/bal_avx512_dual.c;
+gates: 197,616 differentials, 0 mismatches; suite
+23 of 24 with only the pre-existing test-rtl
+environment failure; regtest blocks at heights 830
+and 877; first live share 2026-11-15T06:57:29Z).
+Independent post-integration audit:
+phase6b/DUALMASK_POST_INTEGRATION_AUDIT.md, verdict
+PASS WITH NOTES, zero defects (auditor's own
+121,400 differentials; regtest block at height
+910). Full record:
+phase6b/PRODUCTION_INTEGRATION_LOG.md Entry 1 and
+phase6b/EXPERIMENT_RESULTS.md (integration record).
+Phase 6B closed with
+phase6b/PHASE6B_FINAL_REPORT.md. The next
+unreserved ID remains EXP-030.
