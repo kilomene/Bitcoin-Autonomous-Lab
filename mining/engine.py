@@ -19,6 +19,8 @@ import time
 
 from blockchain.transactions import btc_to_sats
 from gpu.engine import ComputeEngine
+from mining.mining_statistics import (FrontierAccountant,
+                                      MiningStatistics)
 from mining.pow import coinbase_subsidy, merkle_root, dsha256
 from mining.work_checkpoint import WorkCheckpoint
 
@@ -462,7 +464,7 @@ class TemplateCache:
 class MiningEngine:
     def __init__(self, rpc, payout_address, compute=None, batch_size=65536,
                  use_template_cache=True, extranonce_space=(0, 64),
-                 checkpoint_path=None):
+                 checkpoint_path=None, statistics=None):
         self.rpc = rpc
         self.payout = payout_address
         self.compute = compute or ComputeEngine()
@@ -507,6 +509,25 @@ class MiningEngine:
         self.checkpoint_path = checkpoint_path
         self._work_checkpoint = (WorkCheckpoint(checkpoint_path)
                                  if checkpoint_path else None)
+        # EXP-037 statistics wiring (Phase 002 step 4):
+        # mine_cycle records search accounting, candidate
+        # events and block submission outcomes into separated
+        # MiningStatistics counters as the work happens. A
+        # caller may pass its own MiningStatistics to share one
+        # across engines; the default is a fresh instance per
+        # engine, exposed as self.statistics. Recording goes
+        # through the failure-isolated FrontierAccountant, so a
+        # statistics defect never stops mining, and no result
+        # dict changes: the counters are observable only
+        # through self.statistics.snapshot(). The accountant's
+        # per-header frontier is this engine's in-memory
+        # accounting for its own lifetime; the EXP-038
+        # checkpoint above remains the cross-restart mechanism
+        # and is untouched by this.
+        self.statistics = (statistics if statistics is not None
+                           else MiningStatistics())
+        self._accountant = FrontierAccountant(self.statistics)
+        self._stats_recorder = self._accountant.recorder
 
     def cache_family(self):
         """The engine's TemplateFamily, built lazily on the
@@ -726,15 +747,36 @@ class MiningEngine:
                     attempted = count
                 total_hashes += attempted
                 batches += 1
+                self._accountant.record_search(
+                    cand["header"], start, attempted, not hit,
+                    backend=self.compute.backend)
                 if hit:
+                    # A candidate the backend presented. The
+                    # GBT path's verification is Core's own
+                    # submitblock and best-chain verdict below,
+                    # so valid_candidates and
+                    # network_target_candidates (defined by the
+                    # EXP-036 verifier's classification) are not
+                    # recorded here; the block counters carry
+                    # this path's outcomes.
+                    self._stats_recorder.record(
+                        "candidates", 1,
+                        backend=self.compute.backend)
                     sol = {"nonce": hit[0]}
                     header = cand["header"][:76] + struct.pack(
                         "<I", sol["nonce"])
                     block = header + cand["body"]
                     block_hash = dsha256(header)[::-1].hex()
                     submit = self.rpc.call("submitblock", block.hex())
+                    self._stats_recorder.record(
+                        "blocks_submitted", 1,
+                        backend=self.compute.backend)
                     best = self.rpc.get_best_block_hash()
                     accepted = (submit is None and best == block_hash)
+                    self._stats_recorder.record(
+                        "blocks_accepted" if accepted
+                        else "blocks_rejected", 1,
+                        backend=self.compute.backend)
                     result = {
                         "accepted": accepted,
                         "submit_result": submit,
