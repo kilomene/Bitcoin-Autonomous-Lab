@@ -69,6 +69,39 @@ Batch enumeration covers the full range, so unique_coverage
 equals the requested count while backend_hashes may exceed it
 by the dummy lanes of the final partial wave of each span.
 
+Flags batch note (EXP-022, Y-084; integrated 2026-11-15
+under the owner's explicit decision, option B): when an
+AVX-512 backend (v512 or v512dual) is selected and the
+flags batch library (mining/cpu/bal_avx512_flags.c, built
+as .local/cpu/libbal_v512flags.so) passes the same
+selection discipline as the kernels (flag-free CPUID
+probe confirming AVX-512F and AVX-512BW, library
+completeness checked before any call, hashlib self-test),
+batch_search routes its batch enumeration through the
+flags entry bal_v_batchf2: the target comparison runs in
+opmask registers and digests are extracted only for
+flagged lanes, instead of materialising all digests plus
+a flag byte per hash. This is a BATCH-scope change only:
+the search entry points, the search dispatch order and
+every search accounting figure are untouched, and no
+search rate changes. The digest-materialising batch of
+the selected backend remains the preserved fallback: it
+serves whenever the flags library is absent, incomplete,
+unsupported or fails at runtime, whenever a pinned
+backend excludes it, and for every caller that needs
+full digests for non-candidate lanes (the backend
+selection self-tests and the want_all batch wrappers).
+The flags kernel's counted accounting matches
+bal_v_batch2 exactly (attempted == count, backend ==
+sum over spans of ceil(span/16)*16), so batch stats are
+identical whichever of the two serves; the stats record
+which one served under "batch_path" ("flags" or
+"materialised"). EXP-022 verified the flags batch at
+pooled 1.82x against the production batch at density
+about 0 under the EXP-017 protocol, reproduced by
+EXP-024 at pooled 1.649x; both figures are batch-scope
+ratios, never search or system rates.
+
 Every candidate from any backend is re-verified on the CPU before it
 is returned. A CUDA failure at any point falls back to CPU and the
 reason is recorded on the engine (fallback_reason). Nothing about the
@@ -133,6 +166,7 @@ LIB_PATH = os.path.join(ROOT, ".local", "cuda", "libbal_cuda.so")
 C_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_batch.so")
 V_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_v512.so")
 VD_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_v512dual.so")
+VF_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_v512flags.so")
 import os as _os
 # Full-workforce thread count for the C search. An explicit
 # BAL_C_THREADS always wins. Otherwise the engine measures the
@@ -805,7 +839,7 @@ class CudaContext:
 class ComputeEngine:
     def __init__(self, lib_path=LIB_PATH, requested="auto",
                  c_lib_path=C_LIB_PATH, v_lib_path=V_LIB_PATH,
-                 vd_lib_path=VD_LIB_PATH):
+                 vd_lib_path=VD_LIB_PATH, vf_lib_path=VF_LIB_PATH):
         self.requested = requested
         self.backend = "cpu"
         self.fallback_reason = None
@@ -818,6 +852,9 @@ class ComputeEngine:
         self._vd_lib = None
         self.v512dual_reason = None
         self._vd_last_counts = None
+        self._vf_lib = None
+        self.v512flags_reason = None
+        self._vf_last_counts = None
         self._cuda_ctx = None
         self.cuda_ctx_reason = None
         self.cuda_fallback_reason = None
@@ -851,6 +888,13 @@ class ComputeEngine:
             tune_v512_threads(self)
         elif self.backend == "v512dual":
             tune_v512dual_threads(self)
+        # Flags batch selection (EXP-022): independent of
+        # the search backend selection above and never
+        # changes it. Attempted only when the request
+        # allows an AVX-512 batch path; a pinned "c" or
+        # "cpu" request keeps the batch exactly as it was.
+        if requested in ("auto", "v512", "v512dual"):
+            self._try_v512flags(vf_lib_path)
 
     def _try_c(self, c_lib_path):
         if not os.path.isfile(c_lib_path):
@@ -1220,6 +1264,160 @@ class ComputeEngine:
                 break
             out.append((start + i, raw[32 * i:32 * i + 32]))
             pos = i + 1
+        return out
+
+    def _try_v512flags(self, vf_lib_path):
+        """Runtime CPUID dispatch for the AVX-512 flags
+        batch library (EXP-022, Y-084). This selects a
+        BATCH entry point only; it never selects or
+        changes the search backend. The discipline mirrors
+        _try_v512dual, with the audit D-1 rule applied to
+        every symbol: the library is loaded (loading never
+        executes kernel code), the flag-free probe compiled
+        into it must confirm AVX-512F and AVX-512BW,
+        library completeness is checked with hasattr
+        BEFORE any argtypes assignment, and only then is
+        the flags entry called, in a self-test whose flag
+        bits and extracted digests must reproduce a
+        hashlib recount exactly, in both extract mode and
+        pure flags mode (digests NULL). Any failure leaves
+        the flags path unselected with the reason recorded
+        on v512flags_reason; the batch consumers then use
+        the selected backend's preserved
+        digest-materialising batch, exactly as before."""
+        if not os.path.isfile(vf_lib_path):
+            self.v512flags_reason = (f"AVX-512 flags batch "
+                                     f"library not built "
+                                     f"({vf_lib_path})")
+            return
+        try:
+            lib = ctypes.CDLL(vf_lib_path)
+        except OSError as exc:
+            self.v512flags_reason = (f"AVX-512 flags batch "
+                                     f"library failed to load: "
+                                     f"{exc}")
+            return
+        if not hasattr(lib, "bal_v512_supported"):
+            self.v512flags_reason = ("AVX-512 flags batch "
+                                     "library has no CPUID "
+                                     "probe; refusing to call "
+                                     "the kernel")
+            return
+        lib.bal_v512_supported.restype = ctypes.c_int
+        try:
+            supported = lib.bal_v512_supported()
+        except Exception as exc:
+            self.v512flags_reason = f"AVX-512 CPUID probe failed: {exc}"
+            return
+        if not supported:
+            bits = None
+            if hasattr(lib, "bal_v512_feature_bits"):
+                lib.bal_v512_feature_bits.restype = ctypes.c_uint
+                bits = lib.bal_v512_feature_bits()
+            self.v512flags_reason = (
+                "CPUID dispatch: this CPU cannot execute the "
+                "AVX-512 flags batch kernel (requires AVX-512F "
+                f"and AVX-512BW; feature bits {bits})")
+            return
+        if not hasattr(lib, "bal_v_batchf2"):
+            self.v512flags_reason = (
+                "AVX-512 flags batch library is incomplete: "
+                "missing kernel entry point bal_v_batchf2; "
+                "rejecting the library as a whole and "
+                "falling back")
+            return
+        lib.bal_v_batchf2.restype = ctypes.c_int
+        lib.bal_v_batchf2.argtypes = [
+            ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+            ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint64),
+            ctypes.POINTER(ctypes.c_uint64)]
+        header = bytes(range(80))
+        target = 1 << 255
+        pairs = self._vf_batch_flagged(lib, header, target, 0, 256)
+        if pairs is None:
+            self.v512flags_reason = ("AVX-512 flags batch "
+                                     "self-test batch failed")
+            return
+        want = {}
+        for nonce in range(256):
+            d = cpu_digest(header, nonce)
+            if int.from_bytes(d, "little") <= target:
+                want[nonce] = d
+        if dict(pairs) != want:
+            self.v512flags_reason = ("AVX-512 flags batch "
+                                     "self-test candidate set "
+                                     "or digest mismatch")
+            return
+        if self._vf_last_counts != (256, 256):
+            self.v512flags_reason = ("AVX-512 flags batch "
+                                     "self-test accounting "
+                                     "mismatch")
+            return
+        # Pure flags mode: digests NULL must yield the same
+        # flag bits the extract mode reported.
+        flagbits = ctypes.create_string_buffer((256 + 7) // 8)
+        out_attempted = ctypes.c_uint64(0)
+        out_backend = ctypes.c_uint64(0)
+        rc = lib.bal_v_batchf2(
+            header, 0, 256, C_THREADS,
+            target.to_bytes(32, "little"), flagbits, None,
+            ctypes.byref(out_attempted), ctypes.byref(out_backend))
+        if rc != 0:
+            self.v512flags_reason = ("AVX-512 flags batch pure "
+                                     "mode self-test failed")
+            return
+        bits = flagbits.raw
+        pure = {i for i in range(256)
+                if (bits[i >> 3] >> (i & 7)) & 1}
+        if pure != set(want):
+            self.v512flags_reason = ("AVX-512 flags batch pure "
+                                     "mode flag bits mismatch")
+            return
+        self._vf_lib = lib
+        self.v512flags_reason = ("selected: CPUID probe "
+                                 "confirms AVX-512F and "
+                                 "AVX-512BW and the flags "
+                                 "batch reproduces the "
+                                 "hashlib recount in extract "
+                                 "and pure modes")
+
+    def _vf_batch_flagged(self, lib, header, target, start, count):
+        """Run an AVX-512 flags batch and return the flagged
+        (nonce, digest) pairs: the kernel compares in
+        opmask registers and extracts digests only for
+        flagged lanes into the digest buffer, so the
+        unflagged lanes' slots are never read here. The
+        counted ABI's actuals are stashed on
+        self._vf_last_counts for the caller's accounting;
+        they match the bal_v_batch2 contract exactly
+        (attempted == count, backend == sum over spans of
+        ceil(span/16)*16)."""
+        flagbits = ctypes.create_string_buffer((count + 7) // 8)
+        digests = ctypes.create_string_buffer(32 * count)
+        target_le = target.to_bytes(32, "little")
+        out_attempted = ctypes.c_uint64(0)
+        out_backend = ctypes.c_uint64(0)
+        rc = lib.bal_v_batchf2(header, start, count, C_THREADS,
+                               target_le, flagbits, digests,
+                               ctypes.byref(out_attempted),
+                               ctypes.byref(out_backend))
+        if rc != 0:
+            return None
+        self._vf_last_counts = (out_attempted.value,
+                                out_backend.value)
+        raw = digests.raw
+        bits = flagbits.raw
+        out = []
+        for byte_index in range(len(bits)):
+            b = bits[byte_index]
+            while b:
+                low = b & (-b)
+                lane = (byte_index << 3) + (low.bit_length() - 1)
+                if lane < count:
+                    out.append((start + lane,
+                                raw[32 * lane:32 * lane + 32]))
+                b ^= low
         return out
 
     def _recover_bad_candidate(self, header, target, start, count,
@@ -1736,15 +1934,30 @@ class ComputeEngine:
         if self.backend in ("c", "v512", "v512dual"):
             is_v = self.backend == "v512"
             is_vd = self.backend == "v512dual"
-            if is_vd:
-                pairs = self._vd_batch_flagged(
-                    self._vd_lib, header, target, start, count)
-            elif is_v:
-                pairs = self._v_batch_flagged(
-                    self._v_lib, header, target, start, count)
-            else:
-                pairs = self._c_batch_flagged(
-                    self._c_lib, header, target, start, count)
+            # EXP-022 flags batch routing: an AVX-512
+            # backend's batch enumeration goes through the
+            # flags entry when it is selected (opmask
+            # compare, digests extracted only for flagged
+            # lanes). Any flags failure falls through to
+            # the selected backend's preserved
+            # digest-materialising batch below, unchanged.
+            pairs = None
+            batch_path = "materialised"
+            if (is_v or is_vd) and self._vf_lib is not None:
+                pairs = self._vf_batch_flagged(
+                    self._vf_lib, header, target, start, count)
+                if pairs is not None:
+                    batch_path = "flags"
+            if pairs is None:
+                if is_vd:
+                    pairs = self._vd_batch_flagged(
+                        self._vd_lib, header, target, start, count)
+                elif is_v:
+                    pairs = self._v_batch_flagged(
+                        self._v_lib, header, target, start, count)
+                else:
+                    pairs = self._c_batch_flagged(
+                        self._c_lib, header, target, start, count)
             if pairs is None:
                 used = "cpu"
             else:
@@ -1779,12 +1992,16 @@ class ComputeEngine:
                 # Verification computations and any rescan work
                 # are verification-layer work, reported only under
                 # verification_hashes, never inside backend_hashes.
-                backend_hashes = (self._vd_last_counts[1] if is_vd
-                                  else self._v_last_counts[1] if is_v
-                                  else count)
+                backend_hashes = (
+                    self._vf_last_counts[1]
+                    if batch_path == "flags" else
+                    self._vd_last_counts[1] if is_vd
+                    else self._v_last_counts[1] if is_v
+                    else count)
                 verification_hashes = verify_count + rescan_verification
                 return candidates, {
                     "backend": used,
+                    "batch_path": batch_path,
                     "original_backend": self.backend,
                     "hashes": backend_hashes + verification_hashes,
                     "backend_hashes": backend_hashes,
@@ -2108,6 +2325,8 @@ class ComputeEngine:
             "v512_reason": self.v512_reason,
             "v512dual_backend": bool(self._vd_lib),
             "v512dual_reason": self.v512dual_reason,
+            "v512flags_batch": bool(self._vf_lib),
+            "v512flags_reason": self.v512flags_reason,
             "native_impl": (
                 "avx512-dual" if self.backend == "v512dual" else
                 "avx512-mb" if self.backend == "v512" else
