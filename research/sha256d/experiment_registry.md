@@ -1125,3 +1125,21 @@ phase6b/EXPERIMENT_RESULTS.md (integration record).
 Phase 6B closed with
 phase6b/PHASE6B_FINAL_REPORT.md. The next
 unreserved ID remains EXP-030.
+
+## EXP-030 programme reservation (2026-11-15)
+
+Owner directive 2026-11-15 reserves EXP-030 to EXP-038
+for the EXP-030 umbrella programme (open-source mining
+intelligence, CPU architecture transformation, autonomous
+mining, mathematical breakthrough). EXP-030 umbrella:
+IN PROGRESS, Phase A (reference repository audit)
+executed 2026-11-15, record in exp030/REPOSITORY_AUDIT.md
+and exp030/REFERENCE_TO_NOVA_MATRIX.md. EXP-031 VM
+intelligence, EXP-032 CPU execution engine, EXP-033
+mathematics, EXP-034 job and template engine, EXP-035
+distributed architecture, EXP-036 exact verification and
+submission, EXP-037 statistics and probability, EXP-038
+autonomous operations: all RESERVED, not started. This
+supersedes EXP-028's naming of AVX2 as the EXP-030
+candidate; AVX2 multi-buffer work sits inside EXP-032.
+Next unreserved ID: EXP-039.
