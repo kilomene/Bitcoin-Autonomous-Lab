@@ -22,7 +22,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from node import node_manager
-from node.rpc_client import BitcoinRPC, RpcError
+from node.rpc_client import BitcoinRPC
 
 EVIDENCE_PATH = os.path.join(
     os.path.dirname(__file__), "..", "evidence", "regtest",
@@ -33,10 +33,9 @@ def ensure_wallet(rpc):
     wallets = rpc.call("listwallets")
     if "bal-regtest" not in wallets:
         try:
+            rpc.call("loadwallet", "bal-regtest")
+        except Exception:
             rpc.call("createwallet", "bal-regtest")
-        except RpcError as exc:
-            if "already exists" not in str(exc):
-                raise
     return BitcoinRPC(wallet="bal-regtest")
 
 
