@@ -1143,3 +1143,117 @@ autonomous operations: all RESERVED, not started. This
 supersedes EXP-028's naming of AVX2 as the EXP-030
 candidate; AVX2 multi-buffer work sits inside EXP-032.
 Next unreserved ID: EXP-039.
+
+## EXP-032 record (2026-11-15)
+
+EXP-032 (CPU execution engine, EXP-030 Phase D)
+COMPLETE 2026-11-15, research only, no production
+change. Record: exp032/EXP032_REPORT.md; gates,
+33 paired sessions and analysis under
+exp032/RAW_RESULTS/. Host AMD EPYC 9D25, EXP-017
+protocol throughout, complete production search
+benchmarked as the headline scope. Verdicts: AVX2
+multi-buffer batch VERIFIED IMPROVEMENT over the
+production C batch (pooled 1.409x, CI [1.340, 1.480]);
+SHA-NI H-01 4-stream batch VERIFIED IMPROVEMENT over
+C (pooled 2.861x, CI [2.671, 3.089]) and 0.726x of
+v512dual batch, the strongest verified fallback for
+SHA-NI hosts without AVX-512; production
+bal_sha_intrin.c ESTABLISHED NEGATIVE as a batch
+backend (0.517x of C). Flags question closed: the
+EXP-022 flags approach does NOT improve the real
+search path (flags batch_search used as search is
+2.565x slower than the native dual search; a
+flags-form search entry is not significant against
+the v512 search, pooled 0.967x CI [0.885, 1.059],
+and 0.493x of the dual search). Production dual
+search confirmed at pooled 6.781x over production C
+search end to end. Nothing integrated; AVX2 and
+SHA-NI streams kernels are dispatch candidates for
+non-AVX-512 host classes only.
+
+## EXP-037 and EXP-038 record (2026-11-15)
+
+EXP-037 (mining statistics and probability, EXP-030
+section 10) and EXP-038 (autonomous mining operations,
+section 11) COMPLETE 2026-11-15, with production
+changes. Records: exp037/STATISTICAL_MODEL.md and
+exp037/FINAL_REPORT.md; exp038/AUTONOMOUS_OPERATIONS.md
+and exp038/FINAL_REPORT.md. EXP-037: the autopilot
+evidence census defect is fixed (EvidenceCounter in
+mining/autopilot.py counts the whole evidence log
+incrementally with a persisted offset; production log
+247 accepted where the old 2,000,000-byte tail window
+returned 222, brute-force verified in tests);
+mining/mining_statistics.py holds the directive and
+EXP-035 categories as separated counters, never summed,
+with per-worker and per-backend breakdowns and a
+counter-derived WindowedRate; mining/probability.py
+adopts the research formulas (expected hashes D * 2^32,
+expected time (D * 2^32) / R, P = 1 - exp(-R t /
+(D * 2^32))) into production reach, pinned to known
+values. EXP-038: mining/work_checkpoint.py records an
+exact (extranonce, nonce) frontier of completed GBT
+search per template identity, extranonce space and
+curtime basis, written atomically, advancing only over
+completed batches; MiningEngine resumes from it under
+an opt-in checkpoint_path (default off, behaviour
+identical when off) and agent/autonomous.py enables it
+at .local/work-checkpoint.json. Tests
+test_exp037_statistics.py and test_exp038_checkpoint.py
+pass, wired as test-exp037 and test-exp038 in test-all
+(28 targets, 25 passing; failures are the known
+environment three: test-rtl without iverilog, and
+test-cpu-correction and test-task003 SIGILL on this
+SHA-less Intel host). Nothing live was restarted; the
+census fix reaches the heartbeat at the autopilot's
+next natural restart.
+
+## EXP-033 record (2026-11-15)
+
+EXP-033 (Bitcoin header and SHA-256d mathematical
+investigation, EXP-030 Phase H) COMPLETE 2026-11-15,
+research only, no production change, no kernel built
+and no benchmark run. Record:
+exp033/MATHEMATICAL_INVESTIGATION.md, with
+exp033/HYPOTHESIS_REGISTRY.json; proofs and raw
+results under exp033/PROOFS/ and exp033/RAW_RESULTS/.
+Host Intel Xeon Platinum 8321HC; z3 5.4.1. Scope 1
+(the one sub-space EXP-027 left open: non-sharing
+cross-round graph restructuring): word-level e-graph
+equality saturation over the two-round round function
+found NO cheaper graph (rounds-only case converged at
+2,388 enodes and 336 classes, per-root extraction
+costs identical before and after; joint case capped
+at 35,615 enodes; saturation soundness verified with
+0 mismatches in 380,520 enode evaluations):
+ESTABLISHED NEGATIVE at the stated bounds.
+Instruction synthesis over V = {ADD, LUT, ROTR, SHR}:
+Sigma0 and Sigma1 each proven to need exactly 4
+instructions given the produced word and arbitrary
+independent side values (CEGIS UNSAT at iteration 0;
+4-instruction incumbents z3-proven exact), so a round
+cone costs 6 by the 1 + 4 + 1 accounting, matching
+the incumbent, except for two named shapes
+(exploiting the s = T1 + T2 correlation inside the
+Sigma sub-DAG: EXCLUDED for the e-cone by
+cone-conditioned synthesis UNSAT, still open for the
+a-cone, where the conditioned query timed out at
+900 s and is INCONCLUSIVE, not negative; and routing
+Sigma through the Maj or Ch value: open for both
+cones). Scope 2 (header
+mathematics re-derived): W18 is the first
+nonce-dependent expanded schedule word (W16 and W17
+nonce-free; 46 of 48 expanded words nonce-dependent);
+the W18 and W19 delta identities hold exactly
+(100,000 of 100,000 samples and z3 UNSAT); W20 delta
+GF(2)-linearity REFUTED by a z3 counterexample,
+numerically re-verified; the conventional accounting
+is re-derived at 67 of 192 rounds per template and
+125 per nonce, stated as accounting and NOT a lower
+bound; the outer compression has 0 digest-independent
+rounds (48 of 48 computed schedule words and 64 of 64
+rounds digest-dependent), and comparison early exit
+saves no rounds. No VERIFIED IMPROVEMENT is claimed:
+no rate was measured, and a proven identity is a
+mathematical result, not a speedup.
