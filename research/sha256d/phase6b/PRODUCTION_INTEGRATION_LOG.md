@@ -353,3 +353,213 @@ State carried in at phase open, for continuity:
   documentation precision and inherited design
   boundaries): research/sha256d/phase6b/
   CACHE_POST_INTEGRATION_AUDIT.md.
+
+## Entry 3: EXP-022 flags batch adopted for the engine batch consumers (2026-11-15)
+
+- Experiment and decision record: EXP-022 (Y-084;
+  Phase 6 EXPERIMENT_RESULTS.md and benchmarks/
+  exp022 records; reproduction in
+  research/sha256d/phase6b/EXP024_MASK_SEARCH.md),
+  verdict VERIFIED IMPROVEMENT
+  in batch scope: the flags-only AVX-512 multi-buffer
+  batch entry bal_v_batchf2 (vector lexicographic
+  target compare in opmask registers, digests
+  extracted only for flagged lanes) measured pooled
+  1.82x against the production batch at density about
+  0 under the EXP-017 protocol (1.59x at 2^-8, 1.33x
+  at density 1, 1.83x at 1 thread), with 154,316
+  nonces byte-exact against hashlib and candidate
+  sets identical to production at densities 0, 2^-16,
+  2^-8 and 1. EXP-024 reproduced the batch comparison
+  at pooled 1.649x [1.466, 1.860], every session
+  significant.
+- Owner decision: explicit, 2026-11-15, option B
+  ("adopt the EXP-022 flags output shape for the
+  engine's batch consumers"), the last open Phase 6B
+  item, ordered after option A closed.
+- Consumer trace (established from source before any
+  change): the production batch surface is
+  ComputeEngine.batch_search in gpu/engine.py. For
+  the native backends it calls the selected backend's
+  flagged batch wrapper with want_all=False: it
+  consumes only the flagged (nonce, digest) pairs,
+  CPU-verifies each one, and fails closed to a
+  trusted rescan on any bad pair. Its callers include
+  gpu/benchmark.py (benchmark_report), the dashboard
+  and agent engines built on ComputeEngine, and the
+  test suites. For the AVX-512 backends those pairs
+  previously came from a digest-materialising kernel:
+  bal_v_batch2 (v512) or bal_vd_batch2 (v512dual)
+  write all 32 digest bytes per hash plus a flag byte
+  per hash, and Python walks the flag bytes. That is
+  the consumer the flags entry now serves. Callers
+  that genuinely need full digests for non-candidate
+  lanes stay on the materialising batch, identified
+  honestly: the backend selection self-tests
+  (_try_v512, _try_v512dual verify every digest of a
+  256-nonce batch against hashlib), the want_all
+  batch wrappers (_v_batch, _vd_batch, _c_batch and
+  their test and diagnostic callers, including
+  mining/cpu/miner.py's _c_batch use), and the build
+  smoke tests. The C backend batch is not an AVX-512
+  path and already returns a flags array; untouched.
+  The CUDA batch paths are untouched. The search
+  entry points (bal_v_search2, bal_vd_search2,
+  bal_c_search2) and the search dispatch order are
+  untouched, as is the template cache in
+  mining/engine.py (Entry 2).
+- Design: new production translation unit
+  mining/cpu/bal_avx512_flags.c, built by
+  mining/cpu/build.py (build_v512flags) into
+  .local/cpu/libbal_v512flags.so as its own library,
+  following the v512dual pattern exactly: kernel TU
+  compiled separately with the restricted flags
+  -O3 -mavx512f -mavx512bw (never -march=native),
+  flag-free probe TU (bal_avx512_probe.c) linked in,
+  build failure loud and separate, never failing the
+  production C build. Provenance against the research
+  original (research/sha256d/extreme_optimization/
+  src/avx512_mb_flags.c) is recorded in the file
+  header: the export name bal_v_batchf2 is carried
+  over unchanged; the research file's bal_v_batch2
+  and bal_v_search2 sections and the v_group and
+  v_meets helpers are not copied (they stay in
+  bal_avx512_mb.c, untouched, as the preserved
+  fallback); every retained section is byte-identical
+  to the research original (verified by diff at
+  integration time). Selection in gpu/engine.py
+  (_try_v512flags) is independent of search backend
+  selection and follows the same discipline: probe
+  first (AVX-512F + AVX-512BW), hasattr completeness
+  check on bal_v_batchf2 BEFORE any argtypes
+  assignment (audit D-1 rule), then a hashlib
+  self-test in extract and pure modes with exact
+  accounting. Routing: batch_search sends an AVX-512
+  backend's enumeration through the flags entry when
+  selected; any flags failure falls through to the
+  selected backend's preserved materialising batch
+  for that call. The pins requested="c" and
+  requested="cpu" select no flags path. Batch stats
+  record which path served under "batch_path"
+  ("flags" or "materialised"); all other stats are
+  unchanged, and the flags counted accounting matches
+  bal_v_batch2 exactly, so backend_hashes is the same
+  figure whichever path serves.
+- Gates, all through the production path
+  (tests/test_avx512_flags_integration.py):
+  1. Differentials: 491,520 batch differentials in
+     total. At density 1 (20 trials of 8,192 nonces,
+     163,840 digests) the flags path's extracted
+     digests are byte-identical to hashlib AND to the
+     preserved production batch's full digest array;
+     at about 2^-8 (65,536 nonces) and about 2^-16
+     (262,144 nonces) the candidate sets and flagged
+     digests agree three ways (flags, preserved,
+     hashlib recount).
+  2. Candidate-set equivalence through batch_search
+     at densities 0 (target 1), about 2^-16, about
+     2^-8 and 1: sets equal to the hashlib recount,
+     batch_path "flags", unique_coverage == count,
+     candidate_count and verification_hashes equal to
+     the recount size, device_hashes 0.
+  3. Boundaries: sizes 15/16/17/31/32/33/63/64/65 at
+     starts 0, 12345 and NONCE_SPACE - count (spans
+     ending exactly at 2^32), digests byte-exact at
+     density 1 and candidate sets exact at about
+     2^-8; target equality meets and target minus
+     one misses through batch_search.
+  4. Accounting parity: on identical inputs (miss
+     and hit cases, counts 12345 to 100000) the
+     flags ABI's (attempted, backend) equals the
+     v512 batch ABI's and the v512dual batch ABI's
+     exactly, and equals an independent simulation
+     of the shared contract (attempted == count,
+     backend == sum over bal_partition spans of
+     ceil(span/16)*16).
+  5. Forced fallback: probe-failure library,
+     symbol-incomplete library (rejected with
+     bal_v_batchf2 named; the build smoke test
+     returns its designed error, D-1 mirror),
+     corrupted-source build failure in a scratch
+     tree (no library produced), absent library, and
+     a runtime flags failure after selection each
+     leave batch_search on the preserved materialised
+     batch with exact candidate sets.
+  6. Regtest: fresh block mined through the
+     production ComputeEngine (auto engine, v512dual
+     search) and accepted by Core as best block:
+     height 985, hash
+     5434bf9ffb565e163973295bf96c56cb2699c49ff31e37f539194d256b5fb3ae
+     (dedicated gate run). The accepted block's
+     header was then re-enumerated through the
+     flags-routed batch_search, which returned the
+     block nonce among its verified candidates.
+     Suite re-runs mined further blocks through the
+     same path (height 1019 in the full-suite run).
+  7. Full suite (make -k test-all, now 26 targets
+     with the new test-avx512flags): 25 of 26 targets
+     pass; the only failure is test-rtl, which fails
+     because iverilog is absent on this VM
+     (pre-existing environment failure, unchanged).
+     No contention flake occurred in this run; every
+     other target passed on the first run, including
+     test-task0039 and the Entry 2 template cache
+     suite.
+  8. Objdump census of the built
+     libbal_v512flags.so: zero unambiguous AVX-512DQ,
+     VBMI or IFMA mnemonics (no vpmullq, no
+     vpermi2/vpermt2 families, no vpmultishiftqb, no
+     vpmadd52 forms, no vcvt*qq forms).
+- Benchmark confirmation (EXP-017 protocol, batch
+  scope): production flags batch vs production
+  batch, density about 0 (target 0), 2 threads,
+  65,536-hash paired blocks, randomised AB/BA order,
+  3 sessions of 120 pairs, run one at a time on this
+  host (AMD EPYC 9D25 guest, live miner running).
+  Pooled adjusted ratio 1.441x [1.261, 1.645],
+  significant in every session (1.436x [1.176,
+  1.777]; 1.450x [1.148, 1.831]; 1.462x [1.147,
+  1.858]) and pooled; pairs won 67.8 percent.
+  Records: research/sha256d/phase6b/benchmarks/
+  exp022f/ (sessions and analysis_20261115T085306Z).
+  The confirmation figure is below the EXP-022
+  research figure (1.82x) and the EXP-024
+  reproduction (1.649x): those were measured with
+  the research libraries on a less contended host.
+  The production confirmation is reported as
+  measured; it confirms the direction and the
+  significance of the batch-scope improvement for
+  the integrated build, and no larger figure is
+  claimed for it.
+- Scope honesty: this is a BATCH-scope improvement
+  only. The live miner's search path (v512dual,
+  EXP-026) never paid the batch epilogue and is not
+  changed by this work; no search rate and no
+  mainnet number changes. Every ratio in this entry
+  is a batch ratio. The live miner was not restarted
+  (heartbeat at close 2026-11-15T09:03:13Z: autopilot
+  pid 3136, miner pid 3140, uptime continuous,
+  restarts 0, 222 shares accepted, exactly as at the
+  pre-work baseline read).
+- Files changed: mining/cpu/bal_avx512_flags.c
+  (new), mining/cpu/build.py (additive:
+  build_v512flags, _smoke_v512flags, VFLIB),
+  gpu/engine.py (flags selection, routing,
+  batch_path stat, describe fields, docstring note),
+  tests/test_avx512_flags_integration.py (new),
+  Makefile (test-avx512flags target, test-all now 26
+  targets), research/sha256d/phase6b/benchmarks/
+  exp022f_paired_bench.py and exp022f_analyze.py and
+  exp022f/ session and analysis records (new), and
+  this log.
+- Post-integration audit: NOT performed by the
+  integration author; an independent audit is the
+  required next step before anything else moves
+  (owner rule, 2026-11-14).
+- Independent post-integration audit (2026-11-15):
+  PASS WITH NOTES, zero defects; see
+  research/sha256d/phase6b/FLAGS_POST_INTEGRATION_AUDIT.md
+  (auditor's own 246,768 differentials, five forced
+  fallbacks, regtest block 1025, one-session
+  benchmark spot-check consistent with the pooled
+  figure).
