@@ -1603,3 +1603,39 @@ toward 500 GH/s or 140 TH/s. Not integrated.
 Record: ../phase6b/EXP029_DISTRIBUTED_EXECUTION.md;
 artifacts in ../phase6b/benchmarks/exp029/. Next
 unreserved ID after EXP-028 and EXP-029: EXP-030.
+
+### EXP-030 to EXP-038 (EXP-030 programme, reserved 2026-11-15)
+
+Owner directive 2026-11-15 (record:
+~/workspace/goals/bitcoin-autonomous-lab-private-bitcoin-
+mining-lab/files/EXP030_DIRECTIVE_RECORD.md; programme
+title: Open-Source Mining Intelligence,
+CPU Architecture Transformation, Autonomous Mining and
+Mathematical Breakthrough Programme). This reservation
+SUPERSEDES EXP-028's naming of an AVX2 multi-buffer build
+as the EXP-030 candidate: AVX2 multi-buffer work now sits
+inside EXP-032. IDs:
+
+- EXP-030: umbrella programme (Phases A to H). Status:
+  IN PROGRESS, Phase A (reference repository audit)
+  executed 2026-11-15. Record: ../exp030/REPOSITORY_AUDIT.md
+  and ../exp030/REFERENCE_TO_NOVA_MATRIX.md.
+- EXP-031: CPU and virtual machine intelligence.
+  RESERVED, not started.
+- EXP-032: CPU execution engine (includes the AVX2
+  multi-buffer build moved from EXP-028's EXP-030 naming).
+  RESERVED, not started.
+- EXP-033: Bitcoin header and SHA-256d mathematical
+  investigation. RESERVED, not started.
+- EXP-034: Autonomous job and template engine. RESERVED,
+  not started.
+- EXP-035: Distributed CPU agent architecture design.
+  RESERVED, not started.
+- EXP-036: Exact candidate verification and block
+  submission. RESERVED, not started.
+- EXP-037: Mining statistics and probability engine.
+  RESERVED, not started.
+- EXP-038: Autonomous mining operations. RESERVED, not
+  started.
+
+Next unreserved ID: EXP-039.
