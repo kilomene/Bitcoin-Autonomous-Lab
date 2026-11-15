@@ -1432,3 +1432,174 @@ variation. Production byte-identical.
 Phase 6 records live in ../phase6/ (plan,
 results, final report). Next unreserved ID:
 EXP-024.
+
+---
+
+## Registry addendum (2026-11-14): Phase 6B reservations
+
+The following IDs are reserved by the Phase 6B
+directive and the Assignment A audit. Status for
+each: RESERVED / NOT STARTED. Full predeclared
+records (hypothesis, success criterion, gates) live
+in ../phase6b/. No existing entry above is altered
+by this addendum, and no ID is renumbered. Next
+unreserved ID after this addendum: EXP-030.
+
+### EXP-024 (Phase 6B, Track A)
+
+Scope: AVX-512 mask-based early-exit search:
+bring the EXP-022 vector mask comparison into the
+real production early-exit search path and measure
+it there. Status: COMPLETE 2026-11-15. Gates G1 to
+G9 PASS; fresh regtest blocks at heights 824 (design
+C) and 825 (design B) through the mask kernel.
+Primary comparison (design B vs production search,
+density 0, 2 threads, EXP-017 protocol): pooled
+1.169x [1.031, 1.327], significant pooled and in 1
+of 3 sessions, so the predeclared every-session
+criterion is NOT met. Design C: 1.416x [1.255,
+1.603], significant in every session and pooled on
+its own comparison, not promoted (not the
+predeclared primary; its density-0 margin is not
+attributable to adaptive extraction). Verdict:
+PROMISING HYPOTHESIS; not integrated; confirmation
+run EXP-024b specified. Record:
+../phase6b/EXP024_MASK_SEARCH.md.
+EXP-024b (confirmation, executed 2026-11-15,
+owner approved): design C predeclared primary;
+pooled 1.398x [1.242, 1.578] vs production at
+density 0, 2 threads, significant in every session
+and pooled, criterion MET; control null;
+same-process B/C interleave 1.011x null (the
+EXP-024 B/C divergence was layout, not code).
+Design C is a VERIFIED IMPROVEMENT (search scope);
+not integrated; EXP-026 DualMask stays the leading
+integration candidate and C the certified
+single-batch fallback.
+
+### EXP-025 (Phase 6B, Track A)
+
+Scope: EXP-023 cache correctness: complete
+dependency analysis and layered cache identity for
+the EXP-023 prototype, with adversarial invalidation
+tests, before any cache integration is trusted.
+Status: COMPLETE 2026-11-15 (ACCEPTED as a
+correctness repair; aligned here 2026-11-15 by
+EXP-026, whose agent found this entry still marked
+reserved while the lowercase registry
+research/sha256d/experiment_registry.md carried the
+full EXP-025 record). Record:
+../phase6b/EXP025_CACHE_CORRECTNESS.md.
+
+### EXP-026 (Phase 6B, Track A)
+
+Scope: extreme AVX-512 execution research: combined
+designs from EXP-018, EXP-020, EXP-022 and EXP-024,
+chosen from a written cost model before building.
+Status: COMPLETE 2026-11-15. C2 DualMask (EXP-018
+dual-batch residency plus EXP-024 opmask compare)
+is a VERIFIED IMPROVEMENT in the search path at
+density 0 (pooled 1.718x vs production and 1.444x
+vs mask C at 2 threads, significant in every
+session under the EXP-017 rule; regtest height
+827); C1 TernMask is an ESTABLISHED NEGATIVE
+(pooled 0.764x vs its own ingredient). Not
+integrated; integration is an owner decision.
+Record: ../phase6b/EXP026_AVX512_EXECUTION.md.
+Addendum (2026-11-15): the owner decided on
+2026-11-14 to integrate C2, and C2 is now the
+production backend "v512dual" (integration record:
+../phase6b/PRODUCTION_INTEGRATION_LOG.md Entry 1;
+independent audit ../phase6b/
+DUALMASK_POST_INTEGRATION_AUDIT.md, PASS WITH
+NOTES, zero defects). The "not integrated" status
+above is superseded by this addendum.
+
+### EXP-027 (Phase 6B, Track B)
+
+Scope: new computational representations for exact
+SHA-256d outside the vocabulary closed by EXP-020
+(GFNI affine forms, shuffle rotations, alternative
+state and addition representations, joint
+optimisation), each formally verified before any
+performance claim. Status: COMPLETE 2026-11-15.
+Characterised search with a negative result: the
+sigma maps are proven GF(2)-linear but GFNI forms
+cost out (floor 11, construction 35, incumbent 4;
+Ch and Maj proven non-affine by counterexample);
+pure shuffle rotations refuted exhaustively (625
+patterns, 0 survivors) and the mixed form measured
+at 2.00x the VPROLD price; rotated and byte-swapped
+states refuted by addition counterexamples;
+carry-save closed for the round cones by the
+distance-0 consumption result (T1 6 or 8 vs 4);
+addition counting floor met by the incumbent; the
+52-bit IFMA form proven exact and costed out at 5
+vs 4; cross-round sharing census 0 shared
+nontrivial nodes; outer compression fully
+digest-dependent (48 of 48 words, 0 independent
+rounds); unrolled schedule form 259,905 nodes at
+W63 vs 384 DAG ops. One sub-space left explicitly
+open (non-sharing cross-round restructuring,
+blocker: search-space size). No kernel built, no
+benchmark claimed, nothing integrated. Record:
+../phase6b/EXP027_COMPUTATION_REPRESENTATIONS.md;
+proofs in ../phase6b/proofs/; differentials in
+../phase6b/benchmarks/exp027/.
+
+### EXP-028 (Phase 6B, supporting)
+
+Scope: cross-architecture software research:
+runtime detection, safe fallback and exact output
+for AVX-512, AVX2, SHA extensions and ARM families,
+with per-architecture evidence classes stated.
+Status: COMPLETE 2026-11-15 as a roadmap and
+dispatch specification. A flag-free 16-bit probe TU
+and an executable dispatch specification were built
+and verified on this host (probe object free of
+vector mnemonics, mask 0xffff agreeing with
+cpuinfo, five fallback scenarios as expected,
+including the D-1 incomplete-library pattern).
+AVX-512 F+BW MB: VERIFIED on two hosts (AMD EPYC
+9D25; Intel Xeon Platinum 8321HC, which has no SHA
+extensions and no VBMI). SHA extensions: MEASURED
+in research on AMD (EXP-002/003/005; EXP-021 pool
+ordering); Intel SHA SPECIFIED, UNVERIFIED, no
+rate. AVX-512 wider subsets: detection specified,
+no kernel, EXP-027 priced the candidate forms out.
+AVX2 and ARMv8 SHA2 plus NEON: SPECIFIED,
+UNVERIFIED, no kernel, no rate quoted. Portable C
+and hashlib: VERIFIED floor. Not integrated.
+Record: ../phase6b/EXP028_CPU_ARCHITECTURES.md;
+artifacts in ../phase6b/benchmarks/exp028/.
+
+### EXP-029 (Phase 6B, supporting)
+
+Scope: parallel and distributed CPU execution:
+exact nonce-range allocation, dynamic distribution,
+failure recovery and duplicate prevention, under the
+phase's standing accounting separations. Status:
+COMPLETE 2026-11-15. The research allocator
+prototype (tiled partition, exclusive pull leases,
+idempotent completion, death and restart requeue
+with repeated-computation accounting, shrink-before-
+grant stealing, telemetry) is proven by targeted
+cases plus a 120-trial randomised campaign: every
+trial's completed intervals union exactly to the
+declared range, pairwise disjoint, 20,474 repeated
+computations all accounted outside unique coverage.
+Coordination overhead measured for a local
+in-process prototype only (120,000 nonces: 460,929
+unique/s at 1 worker to 493,484 at 4 workers, chunk
+10,000, on this contended guest); multi-machine
+figures UNVERIFIED, none quoted. End-to-end gate:
+fresh regtest block through the distributed path
+accepted at height 829, hash
+781cc4ef7fc3e583ff6fa9bf277c780083b7252a9d5ede4fed5d213e691a2e8f.
+Centralised coordination chosen over decentralised
+on coverage safety (filed comparison). Linear
+scaling beyond this host UNVERIFIED; no claim
+toward 500 GH/s or 140 TH/s. Not integrated.
+Record: ../phase6b/EXP029_DISTRIBUTED_EXECUTION.md;
+artifacts in ../phase6b/benchmarks/exp029/. Next
+unreserved ID after EXP-028 and EXP-029: EXP-030.
