@@ -39,11 +39,57 @@ Backends:
   failure at any step falls back cleanly to the C backend, and
   machines without AVX-512 behave exactly as before. Requesting
   "c" explicitly still selects the C backend alone.
+- shani: the SHA-NI multi-stream CPU kernel
+  (mining/cpu/bal_shani_streams.c on the H-02 core in
+  mining/cpu/bal_shani_core.h, built as
+  .local/cpu/libbal_shani.so), integrated 2026-11-15 as
+  EXP-039 after EXP-032 verified the H-01 streams-4 batch
+  at pooled 2.861x vs the production C batch (CI 2.671x
+  to 3.089x, significant in every session). Four
+  independent nonce streams advance in lockstep inside
+  each worker so the SHA256RNDS2 latency chains overlap;
+  the message schedule runs entirely on SHA256MSG1 and
+  SHA256MSG2. Selection is runtime CPUID dispatch: the
+  flag-free probe compiled into the library
+  (bal_shani_supported) must confirm the SHA extensions
+  and SSSE3 before any kernel call, so the tier never
+  executes on a SHA-less host; completeness is checked
+  before any call (audit D-1) and batch plus streams
+  search self-tests must reproduce hashlib digests and
+  exact accounting. It dispatches below v512 (an
+  AVX-512 host never reaches it) and above avx2 (its
+  verified batch rate is the higher of the two fallback
+  tiers). Wave accounting: a wave of streams is the
+  atomic unit, and the kernel hashes no dummy lanes
+  (partial waves dispatch to smaller stream
+  instantiations), so backend_hashes equals attempted
+  exactly on both the batch and the search paths.
+- avx2: the AVX2 8-way multi-buffer CPU kernel
+  (mining/cpu/bal_avx2_mb.c, built as
+  .local/cpu/libbal_avx2.so), integrated 2026-11-15 as
+  EXP-039 after EXP-032 verified its batch at pooled
+  1.409x vs the production C batch (CI 1.340x to 1.480x,
+  significant in every session). It is the lane-width
+  port of the AVX-512 multi-buffer design: eight
+  independent SHA-256d computations advance in lockstep,
+  one per 32-bit lane of a ymm register, with rotations
+  expanded to shift pairs (no VPROLD in AVX2). Selection
+  follows the v512 discipline with the fallback probe
+  (bal_avx2_supported, __builtin_cpu_supports, which
+  also confirms OS ymm state) and a hashlib batch
+  self-test. Group accounting mirrors the AVX-512 wave
+  rule at 8 lanes: attempted counts the real nonces of
+  every completed group, backend_hashes the lane
+  computations including dummy lanes of a partial final
+  group, and backend_hashes is never below attempted.
 - c: the OpenSSL midstate C library (.local/cpu/libbal_batch.so).
-- cpu: hashlib batch search. (The C SHA-NI engine in
-  mining/cpu is a research and legacy engine; it does not
-  serve the live Stratum path, which searches through this
-  ComputeEngine and whichever backend it selects.)
+- cpu: hashlib batch search. (The legacy single-stream
+  SHA-NI engine in mining/cpu/bal_sha_intrin.c is a
+  research and legacy engine; it does not serve the
+  live Stratum path, which searches through this
+  ComputeEngine and whichever backend it selects. The
+  dispatched SHA-NI tier above is the separate H-01
+  multi-stream kernel, not this legacy engine.)
 
 DualMask accounting note: the v512dual search is
 dual-atomic over 32 lanes. A started dual group always
@@ -167,6 +213,11 @@ C_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_batch.so")
 V_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_v512.so")
 VD_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_v512dual.so")
 VF_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_v512flags.so")
+A_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_avx2.so")
+M_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_shani.so")
+# EXP-039: the SHA-NI multi-stream tier is dispatched at
+# streams 4, the EXP-032 design point (H-01 streams-4).
+SHANI_STREAMS = 4
 import os as _os
 # Full-workforce thread count for the C search. An explicit
 # BAL_C_THREADS always wins. Otherwise the engine measures the
@@ -839,7 +890,8 @@ class CudaContext:
 class ComputeEngine:
     def __init__(self, lib_path=LIB_PATH, requested="auto",
                  c_lib_path=C_LIB_PATH, v_lib_path=V_LIB_PATH,
-                 vd_lib_path=VD_LIB_PATH, vf_lib_path=VF_LIB_PATH):
+                 vd_lib_path=VD_LIB_PATH, vf_lib_path=VF_LIB_PATH,
+                 a_lib_path=A_LIB_PATH, m_lib_path=M_LIB_PATH):
         self.requested = requested
         self.backend = "cpu"
         self.fallback_reason = None
@@ -855,6 +907,12 @@ class ComputeEngine:
         self._vf_lib = None
         self.v512flags_reason = None
         self._vf_last_counts = None
+        self._a_lib = None
+        self.avx2_reason = None
+        self._a_last_counts = None
+        self._m_lib = None
+        self.shani_reason = None
+        self._m_last_counts = None
         self._cuda_ctx = None
         self.cuda_ctx_reason = None
         self.cuda_fallback_reason = None
@@ -870,7 +928,16 @@ class ComputeEngine:
                 "auto", "v512", "v512dual"):
             self._try_v512(v_lib_path)
         if self.backend not in ("cuda", "v512dual", "v512") \
-                and requested in ("auto", "c", "v512", "v512dual"):
+                and requested in ("auto", "shani"):
+            self._try_shani(m_lib_path)
+        if self.backend not in ("cuda", "v512dual", "v512",
+                                "shani") \
+                and requested in ("auto", "shani", "avx2"):
+            self._try_avx2(a_lib_path)
+        if self.backend not in ("cuda", "v512dual", "v512",
+                                "shani", "avx2") \
+                and requested in ("auto", "c", "v512", "v512dual",
+                                  "shani", "avx2"):
             self._try_c(c_lib_path)
         if requested == "cuda-only" and self.backend != "cuda":
             raise RuntimeError(
@@ -878,7 +945,8 @@ class ComputeEngine:
                 f"{self.cuda_fallback_reason or self.fallback_reason}")
         if self.backend == "cuda":
             self.fallback_reason = None
-        elif self.backend in ("c", "v512", "v512dual"):
+        elif self.backend in ("c", "v512", "v512dual", "shani",
+                              "avx2"):
             self.fallback_reason = self.cuda_fallback_reason
         if requested == "cuda" and self.backend != "cuda":
             self.fallback_reason = self.fallback_reason or "CUDA requested but unavailable"
@@ -959,6 +1027,302 @@ class ComputeEngine:
                              hashes, flags)
         if rc != 0:
             return None
+        raw = hashes.raw
+        flag_bytes = flags.raw
+        if want_all:
+            return [(start + i, raw[32 * i:32 * i + 32])
+                    for i in range(count)]
+        out = []
+        pos = 0
+        while True:
+            i = flag_bytes.find(b"\x01", pos)
+            if i < 0:
+                break
+            out.append((start + i, raw[32 * i:32 * i + 32]))
+            pos = i + 1
+        return out
+
+    def _try_shani(self, m_lib_path):
+        """Runtime CPUID dispatch for the SHA-NI multi-stream
+        fallback backend (EXP-039; the H-01 streams-4 kernel
+        verified in EXP-032). The discipline mirrors
+        _try_v512dual, with the audit D-1 rule applied to
+        every symbol: the library is loaded (loading never
+        executes kernel code), the flag-free probe compiled
+        into it must confirm the SHA extensions and SSSE3,
+        library completeness is checked with hasattr BEFORE
+        any argtypes assignment, and only then are kernel
+        entry points called: a batch checked digest by
+        digest against the CPU, plus a counted search
+        self-test at one thread over 64 nonces (four stream
+        chunks of 16 at the dispatched streams-4 shape).
+        The tier must never execute on a SHA-less host: the
+        probe is the only gate and it runs before any kernel
+        call. Any failure leaves the engine unselected with
+        the reason recorded on shani_reason; selection
+        failure is never fatal, the AVX2 backend is tried
+        next."""
+        if not os.path.isfile(m_lib_path):
+            self.shani_reason = (f"SHA-NI library not built "
+                                 f"({m_lib_path})")
+            return
+        try:
+            lib = ctypes.CDLL(m_lib_path)
+        except OSError as exc:
+            self.shani_reason = f"SHA-NI library failed to load: {exc}"
+            return
+        if not hasattr(lib, "bal_shani_supported"):
+            self.shani_reason = ("SHA-NI library has no CPUID "
+                                 "probe; refusing to call the kernel")
+            return
+        lib.bal_shani_supported.restype = ctypes.c_int
+        try:
+            supported = lib.bal_shani_supported()
+        except Exception as exc:
+            self.shani_reason = f"SHA-NI CPUID probe failed: {exc}"
+            return
+        if not supported:
+            bits = None
+            if hasattr(lib, "bal_shani_feature_bits"):
+                lib.bal_shani_feature_bits.restype = ctypes.c_uint
+                bits = lib.bal_shani_feature_bits()
+            self.shani_reason = (
+                "CPUID dispatch: this CPU cannot execute the "
+                "SHA-NI multi-stream kernel (requires the SHA "
+                "extensions and SSSE3; feature bits "
+                f"{bits})")
+            return
+        missing = [name for name in
+                   ("bal_m_batch2", "bal_m_search2")
+                   if not hasattr(lib, name)]
+        if missing:
+            self.shani_reason = (
+                "SHA-NI library is incomplete: missing kernel "
+                "entry point(s) " + ", ".join(missing)
+                + "; rejecting the library as a whole and "
+                "falling back")
+            return
+        lib.bal_m_batch2.restype = ctypes.c_int
+        lib.bal_m_batch2.argtypes = [
+            ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+            ctypes.c_uint, ctypes.c_int, ctypes.c_char_p,
+            ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_uint64)]
+        lib.bal_m_search2.restype = ctypes.c_int
+        lib.bal_m_search2.argtypes = [
+            ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+            ctypes.c_uint, ctypes.c_int, ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_uint32), ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_uint64)]
+        header = bytes(range(80))
+        got = self._m_batch(lib, header, 1 << 255, 0, 256)
+        if got is None:
+            self.shani_reason = "SHA-NI self-test batch failed"
+            return
+        for nonce in range(256):
+            if got[nonce] != cpu_digest(header, nonce):
+                self.shani_reason = "SHA-NI self-test digest mismatch"
+                return
+        # Streams-shape search self-test: 64 nonces at one
+        # thread are four blocked stream chunks of 16. The
+        # winner is the first published under the kernel's
+        # mutex, not a prescribed nonce, so the check is
+        # that the reported digest is exactly the CPU digest
+        # of the reported nonce; with a target of 1 the same
+        # span must be a clean miss with exact accounting
+        # (attempted == 64; the kernel has no dummy lanes,
+        # so attempted is the exact computation count).
+        out_nonce = ctypes.c_uint32(0)
+        out_attempted = ctypes.c_uint64(0)
+        out_digest = ctypes.create_string_buffer(32)
+        rc = lib.bal_m_search2(
+            header, 0, 64, 1, SHANI_STREAMS,
+            ((1 << 256) - 1).to_bytes(32, "little"),
+            ctypes.byref(out_nonce), out_digest,
+            ctypes.byref(out_attempted))
+        if rc != 1 or out_nonce.value >= 64 or \
+                out_digest.raw != cpu_digest(header,
+                                             out_nonce.value):
+            self.shani_reason = ("SHA-NI streams search "
+                                 "self-test failed")
+            return
+        rc = lib.bal_m_search2(
+            header, 0, 64, 1, SHANI_STREAMS,
+            (1).to_bytes(32, "little"),
+            ctypes.byref(out_nonce), out_digest,
+            ctypes.byref(out_attempted))
+        if rc != 0 or out_attempted.value != 64:
+            self.shani_reason = ("SHA-NI streams search "
+                                 "self-test miss accounting "
+                                 "failed")
+            return
+        self._m_lib = lib
+        self.backend = "shani"
+        self.shani_reason = ("selected: CPUID probe confirms "
+                             "the SHA extensions and SSSE3, "
+                             "the batch reproduces hashlib "
+                             "digests, and the streams search "
+                             "self-test passes")
+
+    def _m_batch(self, lib, header, target, start, count):
+        pairs = self._m_batch_flagged(lib, header, target, start,
+                                      count, want_all=True)
+        if pairs is None:
+            return None
+        digests = [b""] * count
+        for nonce, digest in pairs:
+            digests[nonce - start] = digest
+        return digests
+
+    def _m_batch_flagged(self, lib, header, target, start, count,
+                         want_all=False):
+        """Run a SHA-NI multi-stream batch (streams 4, the
+        EXP-032 design point) and return (nonce, digest)
+        pairs (all of them, or only the target-flagged
+        ones), located through the kernel's flags array.
+        The kernel's ABI reports attempted only: it hashes
+        no dummy lanes (partial waves dispatch to smaller
+        stream instantiations), so backend computations
+        equal attempted exactly, and the stashed counts
+        pair is (attempted, attempted)."""
+        hashes = ctypes.create_string_buffer(32 * count)
+        flags = ctypes.create_string_buffer(count)
+        target_le = target.to_bytes(32, "little")
+        out_attempted = ctypes.c_uint64(0)
+        rc = lib.bal_m_batch2(header, start, count, C_THREADS,
+                              SHANI_STREAMS, target_le, hashes,
+                              flags, ctypes.byref(out_attempted))
+        if rc != 0:
+            return None
+        self._m_last_counts = (out_attempted.value,
+                               out_attempted.value)
+        raw = hashes.raw
+        flag_bytes = flags.raw
+        if want_all:
+            return [(start + i, raw[32 * i:32 * i + 32])
+                    for i in range(count)]
+        out = []
+        pos = 0
+        while True:
+            i = flag_bytes.find(b"\x01", pos)
+            if i < 0:
+                break
+            out.append((start + i, raw[32 * i:32 * i + 32]))
+            pos = i + 1
+        return out
+
+    def _try_avx2(self, a_lib_path):
+        """Runtime CPUID dispatch for the AVX2 multi-buffer
+        fallback backend (EXP-039; the 8-way kernel verified
+        in EXP-032). Mirrors _try_v512 with the probe and
+        entry points of the fallback library: the flag-free
+        probe must confirm AVX2 (CPUID plus OS ymm state,
+        via __builtin_cpu_supports) before any kernel call,
+        completeness is checked with hasattr BEFORE any
+        argtypes assignment (audit D-1), and a kernel batch
+        must reproduce hashlib digests before selection.
+        Any failure leaves the engine unselected with the
+        reason recorded on avx2_reason; selection failure
+        is never fatal, the C backend is tried next."""
+        if not os.path.isfile(a_lib_path):
+            self.avx2_reason = (f"AVX2 library not built "
+                                f"({a_lib_path})")
+            return
+        try:
+            lib = ctypes.CDLL(a_lib_path)
+        except OSError as exc:
+            self.avx2_reason = f"AVX2 library failed to load: {exc}"
+            return
+        if not hasattr(lib, "bal_avx2_supported"):
+            self.avx2_reason = ("AVX2 library has no CPUID "
+                                "probe; refusing to call the kernel")
+            return
+        lib.bal_avx2_supported.restype = ctypes.c_int
+        try:
+            supported = lib.bal_avx2_supported()
+        except Exception as exc:
+            self.avx2_reason = f"AVX2 CPUID probe failed: {exc}"
+            return
+        if not supported:
+            bits = None
+            if hasattr(lib, "bal_avx2_feature_bits"):
+                lib.bal_avx2_feature_bits.restype = ctypes.c_uint
+                bits = lib.bal_avx2_feature_bits()
+            self.avx2_reason = (
+                "CPUID dispatch: this CPU cannot execute the "
+                "AVX2 multi-buffer kernel (requires AVX2; "
+                f"feature bits {bits})")
+            return
+        missing = [name for name in
+                   ("bal_a_batch2", "bal_a_search2")
+                   if not hasattr(lib, name)]
+        if missing:
+            self.avx2_reason = (
+                "AVX2 library is incomplete: missing kernel "
+                "entry point(s) " + ", ".join(missing)
+                + "; rejecting the library as a whole and "
+                "falling back")
+            return
+        lib.bal_a_batch2.restype = ctypes.c_int
+        lib.bal_a_batch2.argtypes = [
+            ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+            ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint64),
+            ctypes.POINTER(ctypes.c_uint64)]
+        lib.bal_a_search2.restype = ctypes.c_int
+        lib.bal_a_search2.argtypes = [
+            ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+            ctypes.c_uint, ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_uint32), ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_uint64),
+            ctypes.POINTER(ctypes.c_uint64)]
+        header = bytes(range(80))
+        got = self._a_batch(lib, header, 1 << 255, 0, 256)
+        if got is None:
+            self.avx2_reason = "AVX2 self-test batch failed"
+            return
+        for nonce in range(256):
+            if got[nonce] != cpu_digest(header, nonce):
+                self.avx2_reason = "AVX2 self-test digest mismatch"
+                return
+        self._a_lib = lib
+        self.backend = "avx2"
+        self.avx2_reason = ("selected: CPUID probe confirms "
+                            "AVX2 and the batch reproduces "
+                            "hashlib digests")
+
+    def _a_batch(self, lib, header, target, start, count):
+        pairs = self._a_batch_flagged(lib, header, target, start,
+                                      count, want_all=True)
+        if pairs is None:
+            return None
+        digests = [b""] * count
+        for nonce, digest in pairs:
+            digests[nonce - start] = digest
+        return digests
+
+    def _a_batch_flagged(self, lib, header, target, start, count,
+                         want_all=False):
+        """Run an AVX2 multi-buffer batch and return (nonce,
+        digest) pairs (all of them, or only the
+        target-flagged ones), located through the kernel's
+        flags array. The counted ABI's actuals (real nonces
+        covered, lane computations including dummy lanes)
+        are stashed on self._a_last_counts for the caller's
+        accounting."""
+        hashes = ctypes.create_string_buffer(32 * count)
+        flags = ctypes.create_string_buffer(count)
+        target_le = target.to_bytes(32, "little")
+        out_attempted = ctypes.c_uint64(0)
+        out_backend = ctypes.c_uint64(0)
+        rc = lib.bal_a_batch2(header, start, count, C_THREADS,
+                              target_le, hashes, flags,
+                              ctypes.byref(out_attempted),
+                              ctypes.byref(out_backend))
+        if rc != 0:
+            return None
+        self._a_last_counts = (out_attempted.value,
+                               out_backend.value)
         raw = hashes.raw
         flag_bytes = flags.raw
         if want_all:
@@ -1597,6 +1961,100 @@ class ComputeEngine:
                         f"{native_att} distinct nonces and the "
                         "verification rescan re-examined a prefix; "
                         "their exact union is not measurable")
+        elif self.backend == "shani":
+            out_nonce = ctypes.c_uint32(0)
+            out_attempted = ctypes.c_uint64(0)
+            out_digest = ctypes.create_string_buffer(32)
+            target_le = target.to_bytes(32, "little")
+            rc = self._m_lib.bal_m_search2(
+                header, start, count, C_THREADS, SHANI_STREAMS,
+                target_le, ctypes.byref(out_nonce), out_digest,
+                ctypes.byref(out_attempted))
+            if rc not in (0, 1):
+                raise RuntimeError(f"bal_m_search2 returned {rc}")
+            # Wave accounting (H-01 semantics): a wave of
+            # streams is the atomic unit; attempted counts
+            # every stream hash of every completed wave. The
+            # kernel hashes no dummy lanes (partial waves
+            # dispatch to smaller stream instantiations), so
+            # backend_hashes equals attempted exactly: every
+            # backend computation examined a real nonce.
+            attempted = out_attempted.value
+            acct["backend_hashes"] = out_attempted.value
+            acct["unique_coverage"] = attempted
+            if rc == 1:
+                nonce = out_nonce.value
+                digest = out_digest.raw
+                acct["candidate_count"] = 1
+                acct["verification_hashes"] += 1
+                if verify_candidate(header, target, nonce, digest):
+                    hit = (nonce, digest)
+                else:
+                    # Task 003.4 discipline, applied to the
+                    # SHA-NI backend identically: never a
+                    # silent miss.
+                    native_att = attempted
+                    hit, attempted = self._recover_bad_candidate(
+                        header, target, start, count, attempted,
+                        "native SHA-NI streams (bal_m_search2)")
+                    rescan_attempted = attempted - native_att
+                    rescanned = True
+                    backend_used = "cpu-rescan"
+                    acct["verification_hashes"] += rescan_attempted
+                    acct["unique_coverage"] = None
+                    acct["unique_coverage_note"] = (
+                        "backend examined "
+                        f"{native_att} distinct nonces and the "
+                        "verification rescan re-examined a prefix; "
+                        "their exact union is not measurable")
+        elif self.backend == "avx2":
+            out_nonce = ctypes.c_uint32(0)
+            out_attempted = ctypes.c_uint64(0)
+            out_backend = ctypes.c_uint64(0)
+            out_digest = ctypes.create_string_buffer(32)
+            target_le = target.to_bytes(32, "little")
+            rc = self._a_lib.bal_a_search2(
+                header, start, count, C_THREADS, target_le,
+                ctypes.byref(out_nonce), out_digest,
+                ctypes.byref(out_attempted),
+                ctypes.byref(out_backend))
+            if rc not in (0, 1):
+                raise RuntimeError(f"bal_a_search2 returned {rc}")
+            # Group accounting (EXP-039 semantics, mirroring
+            # the AVX-512 MB wave rule at 8 lanes): attempted
+            # is the real nonces of every completed 8-lane
+            # group; backend_hashes is the lane computations
+            # behind them, dummy lanes of a partial final
+            # group included, so backend_hashes >= attempted
+            # always.
+            attempted = out_attempted.value
+            acct["backend_hashes"] = out_backend.value
+            acct["unique_coverage"] = attempted
+            if rc == 1:
+                nonce = out_nonce.value
+                digest = out_digest.raw
+                acct["candidate_count"] = 1
+                acct["verification_hashes"] += 1
+                if verify_candidate(header, target, nonce, digest):
+                    hit = (nonce, digest)
+                else:
+                    # Task 003.4 discipline, applied to the
+                    # AVX2 backend identically: never a silent
+                    # miss.
+                    native_att = attempted
+                    hit, attempted = self._recover_bad_candidate(
+                        header, target, start, count, attempted,
+                        "native AVX2 MB (bal_a_search2)")
+                    rescan_attempted = attempted - native_att
+                    rescanned = True
+                    backend_used = "cpu-rescan"
+                    acct["verification_hashes"] += rescan_attempted
+                    acct["unique_coverage"] = None
+                    acct["unique_coverage_note"] = (
+                        "backend examined "
+                        f"{native_att} distinct nonces and the "
+                        "verification rescan re-examined a prefix; "
+                        "their exact union is not measurable")
         elif self.backend == "c" and hasattr(self._c_lib, "bal_c_search2"):
             out_nonce = ctypes.c_uint32(0)
             out_attempted = ctypes.c_uint64(0)
@@ -1712,7 +2170,7 @@ class ComputeEngine:
         self.last_search_stats = {
             "backend": backend_used,
             "threads": C_THREADS if backend_used in (
-                "c", "v512", "v512dual")
+                "c", "v512", "v512dual", "shani", "avx2")
             else 1,
             "start": start, "requested": count,
             "requested_hashes": count,
@@ -1931,9 +2389,12 @@ class ComputeEngine:
         t0 = time.perf_counter()
         candidates = []
         used = self.backend
-        if self.backend in ("c", "v512", "v512dual"):
+        if self.backend in ("c", "v512", "v512dual", "shani",
+                            "avx2"):
             is_v = self.backend == "v512"
             is_vd = self.backend == "v512dual"
+            is_m = self.backend == "shani"
+            is_a = self.backend == "avx2"
             # EXP-022 flags batch routing: an AVX-512
             # backend's batch enumeration goes through the
             # flags entry when it is selected (opmask
@@ -1955,6 +2416,12 @@ class ComputeEngine:
                 elif is_v:
                     pairs = self._v_batch_flagged(
                         self._v_lib, header, target, start, count)
+                elif is_m:
+                    pairs = self._m_batch_flagged(
+                        self._m_lib, header, target, start, count)
+                elif is_a:
+                    pairs = self._a_batch_flagged(
+                        self._a_lib, header, target, start, count)
                 else:
                     pairs = self._c_batch_flagged(
                         self._c_lib, header, target, start, count)
@@ -1976,6 +2443,8 @@ class ComputeEngine:
                             header, target, start, count,
                             "native AVX-512 DualMask batch" if is_vd
                             else "native AVX-512 MB batch" if is_v
+                            else "native SHA-NI streams batch" if is_m
+                            else "native AVX2 MB batch" if is_a
                             else "native C batch", bad)
                     used = "cpu-rescan"
                 else:
@@ -1997,6 +2466,8 @@ class ComputeEngine:
                     if batch_path == "flags" else
                     self._vd_last_counts[1] if is_vd
                     else self._v_last_counts[1] if is_v
+                    else self._a_last_counts[1] if is_a
+                    else self._m_last_counts[0] if is_m
                     else count)
                 verification_hashes = verify_count + rescan_verification
                 return candidates, {
@@ -2327,9 +2798,15 @@ class ComputeEngine:
             "v512dual_reason": self.v512dual_reason,
             "v512flags_batch": bool(self._vf_lib),
             "v512flags_reason": self.v512flags_reason,
+            "shani_backend": bool(self._m_lib),
+            "shani_reason": self.shani_reason,
+            "avx2_backend": bool(self._a_lib),
+            "avx2_reason": self.avx2_reason,
             "native_impl": (
                 "avx512-dual" if self.backend == "v512dual" else
                 "avx512-mb" if self.backend == "v512" else
+                "shani-streams" if self.backend == "shani" else
+                "avx2-mb" if self.backend == "avx2" else
                 "openssl-c" if self.backend == "c" else None),
             "c_threads": C_THREADS,
             "c_attempt_counting": bool(
