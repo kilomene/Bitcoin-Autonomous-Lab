@@ -24,7 +24,6 @@ plus a restart of this process; see docs/SOLO_CUTOVER.md.
 """
 
 import argparse
-import hashlib
 import json
 import os
 import struct
@@ -36,8 +35,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from gpu import engine as gpu_engine
 from gpu.engine import ComputeEngine
-from mining.stratum_client import (StratumClient, Evidence,
-                                   build_header, target_from_nbits)
+from mining.candidate_verify import verify_candidate
+from mining.pow_engine import POW_LIMIT_MAINNET
+from mining.stratum_client import StratumClient, Evidence, build_header
 
 DEFAULT_ADDRESS = "bc1q528egeqsvv8aa382j43edxskqw6x7zxc2xpcf3"
 ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -54,6 +54,11 @@ def difficulty_of(digest):
 
 
 def target_for_difficulty(diff):
+    """The pool's share target, derived from the floating
+    difficulty the pool itself set. This value decides only
+    what is worth submitting as a share; it is never a
+    consensus test. Block candidacy is decided by exact nBits
+    semantics in mining/candidate_verify.py (EXP-036)."""
     return int(DIFF1_TARGET / diff)
 
 
@@ -183,40 +188,49 @@ def main():
             if hit is not None:
                 found, digest = hit
                 # Confirm the candidate before anything is
-                # submitted: recompute the digest with hashlib,
-                # independent of the search backend, recheck it
-                # against the pool target and the network target
-                # from the job's nbits, and confirm the template
-                # is still the freshest one. Only a candidate
-                # that passes every check is a good block
-                # candidate; only confirmed candidates are sent.
+                # submitted (EXP-036): the reconstructed header
+                # goes through mining/candidate_verify.py, which
+                # recomputes SHA-256d with hashlib AND with the
+                # independent pure-Python implementation, and
+                # judges the network target by exact nBits
+                # semantics (check_pow). The backend digest must
+                # agree with both recomputations, the header's
+                # target must be a legal target, the exact
+                # integer share compare must pass, and the
+                # template must still be the freshest one. Only
+                # confirmed candidates are sent, and block
+                # candidacy comes from check_pow alone, never
+                # from the float-derived pool target.
                 check_header, _m, _c = build_header(
                     job, client.extranonce1, en2, found, "wordswap")
-                indep = hashlib.sha256(
-                    hashlib.sha256(check_header).digest()).digest()
-                value = int.from_bytes(digest, "little")
-                net_target = target_from_nbits(job["nbits"])
+                v = verify_candidate(check_header, POW_LIMIT_MAINNET,
+                                     share_target=target)
+                hash_match = (digest == v["digest"]
+                              and v["digests_agree"])
                 with client.lock:
                     fresh = client.job_generation == gen
-                confirmed = (indep == digest
-                             and value <= target
+                confirmed = (hash_match
+                             and v["valid_header"]
+                             and v["meets_share_target"]
                              and fresh)
+                is_block_candidate = v["meets_network_target"]
                 d = difficulty_of(digest)
                 best = max(best, d)
                 ev.log("candidate_confirmed" if confirmed
                        else "candidate_rejected",
                        nonce=found, difficulty=d,
                        job_id=job.get("job_id"),
-                       independent_hash_match=indep == digest,
-                       meets_pool_target=value <= target,
-                       meets_network_target=value <= net_target,
+                       independent_hash_match=hash_match,
+                       meets_pool_target=v["meets_share_target"],
+                       meets_network_target=is_block_candidate,
+                       verify_reason=v["reason"],
                        template_still_fresh=fresh)
                 if confirmed:
                     client.submit(job, en2, found)
                     submitted += 1
                     ev.log("share_submitted", nonce=found,
                            difficulty=d, job_id=job.get("job_id"),
-                           is_block_candidate=value <= net_target)
+                           is_block_candidate=is_block_candidate)
                     print(f"SHARE submitted nonce={found} "
                           f"diff={d:.2f}", flush=True)
                 nonce = max(nonce, found + 1)
