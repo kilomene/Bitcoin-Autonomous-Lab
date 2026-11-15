@@ -83,7 +83,13 @@ test-template-cache:
 test-avx512flags:
 	python3 tests/test_avx512_flags_integration.py
 
-test-all: test test-regtest test-engine test-pow test-gpu test-gpu-correction test-mining test-adversarial test-deepening test-cpu test-cpu-correction test-rtl test-solo test-solo-cutover test-research test-autopilot test-judgement test-installer test-task003 test-task0038 test-task0039 test-avx512 test-avx512dual test-mainnet-live test-template-cache test-avx512flags
+test-exp036:
+	python3 tests/test_exp036_verification.py
+
+test-exp034:
+	python3 tests/test_exp034_job_template.py
+
+test-all: test test-regtest test-engine test-pow test-gpu test-gpu-correction test-mining test-adversarial test-deepening test-cpu test-cpu-correction test-rtl test-solo test-solo-cutover test-research test-autopilot test-judgement test-installer test-task003 test-task0038 test-task0039 test-avx512 test-avx512dual test-mainnet-live test-template-cache test-avx512flags test-exp036 test-exp034
 
 cuda-build:
 	python3 gpu/cuda/build.py
