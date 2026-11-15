@@ -58,6 +58,7 @@ LOCK_PATH = os.path.join(LOCAL, "autopilot.lock")
 STOP_PATH = os.path.join(LOCAL, "autopilot.stop")
 LOG_PATH = os.path.join(LOCAL, "autopilot.log")
 EVIDENCE = os.path.join(ROOT, "evidence", "mainnet-live.jsonl")
+COUNT_STATE_PATH = os.path.join(LOCAL, "evidence-count.json")
 
 
 def default_worker():
@@ -89,34 +90,219 @@ def log(msg):
         pass
 
 
-def evidence_stats():
-    """(accepted_shares, last_event_epoch) from the evidence log."""
-    accepted = 0
-    last_epoch = 0.0
+_HEAD_FP_BYTES = 8192
+_READ_CHUNK = 1 << 20
+
+
+def _ts_epoch(ts):
+    """Epoch seconds for an evidence timestamp, 0.0 if unusable."""
     try:
-        with open(EVIDENCE, "rb") as f:
-            f.seek(0, os.SEEK_END)
-            size = f.tell()
-            f.seek(max(0, size - 2_000_000))
-            tail = f.read().decode("utf-8", "replace")
-        for line in tail.splitlines():
+        import calendar
+        return float(calendar.timegm(
+            time.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")))
+    except (ValueError, TypeError):
+        return 0.0
+
+
+class EvidenceCounter:
+    """Incremental census of the append-only evidence log.
+
+    EXP-037 fix. The previous implementation read only the last
+    2,000,000 bytes of evidence/mainnet-live.jsonl, so once the
+    log grew past that window the heartbeat's accepted-share
+    total silently excluded early shares and drifted further
+    from the lifetime total with every session (measured
+    2026-11-15: full log 247 accepted, tail-window count 222).
+
+    This counter streams the log exactly once from byte 0 and
+    then advances incrementally over newly appended bytes only.
+    Its position (byte offset, counts, last event epoch, and a
+    SHA-256 fingerprint of the file's first bytes) is persisted
+    atomically to a state file after every advance, so a
+    restarted autopilot resumes where the last one stopped
+    instead of rescanning, and steady-state cost per poll is
+    one stat plus reading only the bytes appended since the
+    previous poll. Memory use is one read chunk plus one
+    partial line, independent of log size.
+
+    Rotation and replacement handling: if the file shrinks
+    below the recorded offset, or its first bytes no longer
+    match the recorded fingerprint, the log is treated as a
+    new file and recounted from byte 0. A partial final line
+    (a writer caught mid-append) is never consumed: the offset
+    advances only past complete newline-terminated lines, and
+    the partial line is recounted once it is completed. A
+    missing log resets the census to zero. A corrupt or
+    unreadable state file falls back to a full recount. One
+    replacement shape is undetectable by construction and is
+    documented rather than hidden: a new file that is at least
+    as large as the old offset and whose first _HEAD_FP_BYTES
+    bytes are identical to the old file's would be mistaken
+    for appends; no rotation scheme in use here (rename and
+    recreate, or truncate) produces that shape.
+    """
+
+    def __init__(self, path=EVIDENCE, state_path=COUNT_STATE_PATH):
+        self.path = path
+        self.state_path = state_path
+        self.accepted = 0
+        self.rejected = 0
+        self.share_results = 0
+        self.last_epoch = 0.0
+        self.offset = 0
+        self._head_len = 0
+        self._head_sha = None
+        self._loaded = False
+
+    def _reset(self):
+        self.accepted = 0
+        self.rejected = 0
+        self.share_results = 0
+        self.last_epoch = 0.0
+        self.offset = 0
+        self._head_len = 0
+        self._head_sha = None
+
+    def _load_state(self):
+        self._loaded = True
+        try:
+            with open(self.state_path) as f:
+                st = json.load(f)
+            self.accepted = int(st["accepted"])
+            self.rejected = int(st.get("rejected", 0))
+            self.share_results = int(st.get("share_results", 0))
+            self.last_epoch = float(st.get("last_epoch", 0.0))
+            self.offset = int(st["offset"])
+            self._head_len = int(st.get("head_len", 0))
+            self._head_sha = st.get("head_sha")
+        except (OSError, ValueError, KeyError, TypeError):
+            self._reset()
+
+    def _save_state(self):
+        st = {
+            "version": 1,
+            "accepted": self.accepted,
+            "rejected": self.rejected,
+            "share_results": self.share_results,
+            "last_epoch": self.last_epoch,
+            "offset": self.offset,
+            "head_len": self._head_len,
+            "head_sha": self._head_sha,
+        }
+        try:
+            os.makedirs(os.path.dirname(self.state_path) or ".",
+                        exist_ok=True)
+            tmp = self.state_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(st, f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.state_path)
+        except OSError:
+            pass
+
+    def _process_line(self, raw):
+        try:
+            ev = json.loads(raw.decode("utf-8", "replace"))
+        except ValueError:
+            return
+        if not isinstance(ev, dict):
+            return
+        if ev.get("event") == "share_result":
+            self.share_results += 1
+            if ev.get("accepted"):
+                self.accepted += 1
+            else:
+                self.rejected += 1
+        ts = ev.get("ts")
+        if ts:
+            epoch = _ts_epoch(ts)
+            if epoch > self.last_epoch:
+                self.last_epoch = epoch
+
+    def _scan_from_offset(self, f):
+        """Consume complete lines from self.offset onward and
+        advance the offset past them. Returns bytes consumed."""
+        f.seek(self.offset)
+        pending = b""
+        consumed = 0
+        while True:
+            chunk = f.read(_READ_CHUNK)
+            if not chunk:
+                break
+            parts = (pending + chunk).split(b"\n")
+            pending = parts.pop()
+            for raw in parts:
+                consumed += len(raw) + 1
+                self._process_line(raw)
+        self.offset += consumed
+        return consumed
+
+    def update(self):
+        """Advance over any new log bytes. Returns
+        (accepted_shares, last_event_epoch) over the WHOLE log,
+        the same contract the old tail-window code claimed."""
+        import hashlib
+        if not self._loaded:
+            self._load_state()
+        try:
+            size = os.path.getsize(self.path)
+        except OSError:
+            self._reset()
+            self._save_state()
+            return self.accepted, self.last_epoch
+        rescan = False
+        if size < self.offset:
+            rescan = True
+        elif self._head_sha is not None and self._head_len > 0:
             try:
-                ev = json.loads(line)
-            except ValueError:
-                continue
-            if ev.get("event") == "share_result" and ev.get("accepted"):
-                accepted += 1
-            ts = ev.get("ts")
-            if ts:
-                try:
-                    import calendar
-                    last_epoch = max(last_epoch, calendar.timegm(
-                        time.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")))
-                except ValueError:
-                    pass
-    except OSError:
-        pass
-    return accepted, last_epoch
+                with open(self.path, "rb") as f:
+                    head = f.read(self._head_len)
+            except OSError:
+                head = b""
+            if hashlib.sha256(head).hexdigest() != self._head_sha:
+                rescan = True
+        if rescan:
+            keep_epoch = 0.0
+            self._reset()
+            self.last_epoch = keep_epoch
+        changed = rescan
+        try:
+            with open(self.path, "rb") as f:
+                if self._scan_from_offset(f) > 0:
+                    changed = True
+                head_len = min(size, _HEAD_FP_BYTES)
+                if rescan or head_len != self._head_len:
+                    f.seek(0)
+                    head = f.read(head_len)
+                    self._head_len = len(head)
+                    self._head_sha = hashlib.sha256(
+                        head).hexdigest()
+                    changed = True
+        except OSError:
+            pass
+        if changed:
+            self._save_state()
+        return self.accepted, self.last_epoch
+
+
+_default_counter = None
+
+
+def evidence_stats(path=None, state_path=None):
+    """(accepted_shares, last_event_epoch) from the evidence
+    log, counted over the whole log via EvidenceCounter. With
+    no arguments, uses the production paths and a shared
+    counter so repeated polls stay incremental."""
+    global _default_counter
+    if path is None and state_path is None:
+        if _default_counter is None:
+            _default_counter = EvidenceCounter()
+        return _default_counter.update()
+    counter = EvidenceCounter(
+        path or EVIDENCE,
+        state_path or ((path or EVIDENCE) + ".count.json"))
+    return counter.update()
 
 
 def acquire_lock():
