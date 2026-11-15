@@ -192,6 +192,15 @@ class StratumClient:
         self.responses = {}
         self.methods_by_id = {}
         self.suggest_difficulty = None
+        # Optional share-result hook (EXP-037 wiring): when a
+        # consumer sets this to a callable, it is invoked with
+        # the accepted boolean for every mining.submit verdict
+        # as it arrives, after the evidence log records it.
+        # Default None is the historical behaviour exactly; the
+        # hook is how mining/mainnet_live.py feeds its
+        # MiningStatistics without the client depending on the
+        # statistics module.
+        self.on_share_result = None
         self.stop_flag = False
         self._tip_ntime = {}  # prevhash -> highest ntime accepted
 
@@ -331,9 +340,20 @@ class StratumClient:
                 if ok:
                     self.authorized.set()
             elif method == "mining.submit":
+                accepted = bool(msg.get("result"))
                 self.ev.log("share_result", id=mid,
-                            accepted=bool(msg.get("result")),
+                            accepted=accepted,
                             error=msg.get("error"))
+                callback = self.on_share_result
+                if callback is not None:
+                    # The reader loop must never die because a
+                    # statistics hook failed: the evidence log
+                    # above is the durable record, the hook is
+                    # advisory telemetry on top of it.
+                    try:
+                        callback(accepted)
+                    except Exception:
+                        pass
             else:
                 self.ev.log("response", id=mid, method=method,
                             result=msg.get("result"), error=msg.get("error"))
