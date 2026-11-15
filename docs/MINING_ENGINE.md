@@ -5,6 +5,11 @@ agent/autonomous.py, gpu/engine.py. Tests:
 tests/test_mining_engine.py, tests/test_adversarial.py. Evidence:
 evidence/regtest/task003-006-evidence.json.
 
+Dating note: the design description below is the Task 005/006
+engine as built on 2026-11-13. The current backend and production
+state is recorded in the 2026-11-15 update at the end of this
+document.
+
 ## How a cycle works
 
 1. getblocktemplate (segwit rules) from the lab node.
@@ -52,3 +57,21 @@ Measured on this VM: about 2.0M H/s through the full engine path
 (backend "c") against about 0.6M H/s for Python hashlib batches;
 the raw library call peaks above 8M H/s. Backend order is CUDA,
 then C, then Python; every candidate is still CPU verified.
+
+## Update, 2026-11-15: current engine state
+
+The ComputeEngine dispatch order is now CUDA (no device on this
+VM, never selected), v512dual, v512, the C batch backend, then
+Python hashlib. v512dual (mining/cpu/bal_avx512_dual.c, the
+DualMask kernel from EXP-026) is the production search backend;
+v512 (mining/cpu/bal_avx512_mb.c) is preserved behind it. The
+EXP-022 flags batch (bal_v_batchf2 in mining/cpu/bal_avx512_flags.c)
+serves batch consumers only and is not in the live search path.
+MiningEngine carries the EXP-025 template cache (layered dsha256
+identity, bounded at 128 entries, uncached construction preserved
+as fallback) and opt-in EXP-038 work checkpoints
+(mining/work_checkpoint.py). Candidates on both the pool and solo
+paths are verified exactly by mining/candidate_verify.py
+(EXP-036: hashlib and pure-Python agreement plus the integer
+consensus target test) before submission, and a submission counts
+as accepted only on chain confirmation.
