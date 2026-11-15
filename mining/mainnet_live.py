@@ -126,13 +126,23 @@ def main():
 
     engine = ComputeEngine()
     desc = engine.describe()
+    if desc["backend"] == "v512dual":
+        reason_label = "AVX-512 DualMask"
+        reason = desc.get("v512dual_reason")
+    elif desc["backend"] == "v512":
+        reason_label = "AVX-512 MB"
+        reason = desc["v512_reason"]
+    else:
+        reason_label = "AVX-512 MB"
+        reason = desc["v512_reason"]
     backend_line = (f"compute backend: {desc['backend']} "
                     f"(native impl: {desc['native_impl']}; "
-                    f"AVX-512 MB: {desc['v512_reason']})")
+                    f"{reason_label}: {reason})")
     print(backend_line, flush=True)
     ev.log("backend_selected", backend=desc["backend"],
            native_impl=desc["native_impl"],
-           v512_reason=desc["v512_reason"])
+           v512_reason=desc["v512_reason"],
+           v512dual_reason=desc.get("v512dual_reason"))
     # Scan chunks sized to about one second of this machine's
     # measured rate, so a fresher template preempts the search
     # within about a second instead of after a long fixed chunk.
