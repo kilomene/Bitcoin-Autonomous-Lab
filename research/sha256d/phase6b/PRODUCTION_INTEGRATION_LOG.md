@@ -384,10 +384,19 @@ State carried in at phase open, for continuity:
   flagged batch wrapper with want_all=False: it
   consumes only the flagged (nonce, digest) pairs,
   CPU-verifies each one, and fails closed to a
-  trusted rescan on any bad pair. Its callers include
-  gpu/benchmark.py (benchmark_report), the dashboard
-  and agent engines built on ComputeEngine, and the
-  test suites. For the AVX-512 backends those pairs
+  trusted rescan on any bad pair. Its direct callers
+  are gpu/benchmark.py (benchmark_report) and the
+  test suites. The dashboard and the agent reach
+  batch_search only through ComputeEngine.benchmark(),
+  which calls it to produce a benchmark figure;
+  neither mines through it: production mining reaches
+  the kernels through search_first_counted and
+  search_first (mining/engine.py), not batch_search.
+  (Correction, 2026-11-15: the original sentence
+  listed the dashboard and agent engines as callers
+  without this distinction and read broader than the
+  current call graph; the entry's scope claim, batch
+  consumers only, was and remains exact.) For the AVX-512 backends those pairs
   previously came from a digest-materialising kernel:
   bal_v_batch2 (v512) or bal_vd_batch2 (v512dual)
   write all 32 digest bytes per hash plus a flag byte
