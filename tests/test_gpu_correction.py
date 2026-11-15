@@ -171,7 +171,7 @@ def main():
 
     # --- Honest fallback and CUDA-only failure (Phases 7, 8) ---
     if not have_device:
-        assert eng.backend in ("c", "cpu", "v512"), eng.describe()
+        assert eng.backend in ("c", "cpu", "v512", "v512dual"), eng.describe()
         assert eng.describe()["cuda_context"] is False
         _, stats = eng.batch_search(header, REGTEST_TARGET, 0, 1024)
         assert stats["backend"] == eng.backend != "cuda", stats
