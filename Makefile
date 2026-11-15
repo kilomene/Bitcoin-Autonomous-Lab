@@ -71,10 +71,13 @@ test-task0039:
 test-avx512:
 	python3 tests/test_avx512_integration.py
 
+test-avx512dual:
+	python3 tests/test_avx512_dual_integration.py
+
 test-mainnet-live:
 	python3 tests/test_mainnet_live_accounting.py
 
-test-all: test test-regtest test-engine test-pow test-gpu test-gpu-correction test-mining test-adversarial test-deepening test-cpu test-cpu-correction test-rtl test-solo test-solo-cutover test-research test-autopilot test-judgement test-installer test-task003 test-task0038 test-task0039 test-avx512 test-mainnet-live
+test-all: test test-regtest test-engine test-pow test-gpu test-gpu-correction test-mining test-adversarial test-deepening test-cpu test-cpu-correction test-rtl test-solo test-solo-cutover test-research test-autopilot test-judgement test-installer test-task003 test-task0038 test-task0039 test-avx512 test-avx512dual test-mainnet-live
 
 cuda-build:
 	python3 gpu/cuda/build.py
