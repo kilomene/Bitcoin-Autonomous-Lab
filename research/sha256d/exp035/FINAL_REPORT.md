@@ -64,3 +64,39 @@ The production integration path, ending in a measured
 overhead study before any fleet decision, is design
 section 13; the fleet activation decision remains the
 owner's.
+
+## Addendum (2026-11-15): EXP-043 overhead study
+
+EXP-043 (Phase 002 step 6) measured the coordination
+overhead this report left unmeasured, on this VM only,
+with simulated local workers. Full record:
+../exp043/EXP043_REPORT.md.
+
+Closed by EXP-043: in-process per-operation overhead
+of the prototype components (core verbs 0.2 to 5 us
+and flat; journalled candidate submit 18.4 us;
+checkpoint snapshot 13.3 ms at 512 chunks rising to
+420 ms at 8,192, because it deep-copies all retained
+history); campaign overhead per completed position at
+2, 8 and 32 simulated workers under this report's
+fault mix (1,214, 13,764 and 1,525,761 ns per
+position) and at 2, 8, 32 and 128 without faults; and
+loopback round-trip latency of the prototype's
+message shapes between separate processes (33 to
+54 us at 1 worker process). The 128-worker fault
+trial did not complete inside a 600 s cap (10.89
+percent coverage) and is recorded in EXP-043 as a
+failed run; the dominant mechanism is the lease()
+starvation path scanning every lease record ever
+issued, a prototype implementation defect recorded
+as a finding for the production build.
+
+Still open, unchanged: multi-machine coordination
+overhead, propagation latency over any real network,
+and linear scaling across machines remain UNVERIFIED;
+the wire protocol and persistent coordinator remain
+specified, not built (the EXP-043 loopback shim is a
+measurement shim, not the protocol); and the roughly
+25 fleet agents were again not activated, contacted
+or measured. The fleet activation decision remains
+the owner's.
