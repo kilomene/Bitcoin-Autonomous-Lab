@@ -1,0 +1,42 @@
+EXP-034 full-suite state, 2026-11-15, after both production
+changes (mining/engine.py extranonce_space, mining/solo_server.py
+coinbase split fix). Targets run individually (make stops at the
+first failure in test-all; every target was run and accounted).
+
+Host at run time: Intel Xeon Platinum 8321HC (the VM was
+replaced during the programme; earlier phases ran on an AMD
+EPYC 9D25). This host's cpuinfo flags include avx512f, bw, cd,
+dq, vl and do NOT include any SHA extension flag or AVX-512
+VBMI.
+
+PASSED (25 of 28 test-all targets):
+test, test-regtest, test-engine, test-pow, test-gpu,
+test-gpu-correction, test-mining, test-adversarial,
+test-deepening, test-cpu, test-solo, test-solo-cutover,
+test-research, test-autopilot, test-judgement, test-installer,
+test-task0038, test-task0039, test-avx512, test-avx512dual,
+test-mainnet-live, test-template-cache, test-avx512flags,
+test-exp036, test-exp034 (new).
+
+FAILED, environment only (3):
+- test-rtl: iverilog is not installed on this VM. Pre-existing
+  environment failure, acknowledged before this phase.
+- test-cpu-correction: killed by SIGILL (Illegal
+  instruction). The test builds and runs the SHA intrinsics
+  library (mining/cpu/build.py build_intrin, -msha code in
+  mining/cpu/bal_sha_intrin.c); this host has no SHA
+  extension, so the instructions fault. The test does not
+  import mining/engine.py or mining/solo_server.py. On the
+  AMD host used earlier in the programme (SHA-NI present)
+  the full suite passed with only test-rtl failing.
+- test-task003: killed by SIGILL, same cause: the test
+  compiles bal_sha_intrin.c with -msha under sanitizers and
+  loads libbal_intrin.so (tests/test_task003_corrections.py
+  lines 49, 102, 143, 150). Python-level changes cannot
+  produce an illegal instruction in native code; the failure
+  is the host's missing SHA extension, not the EXP-034 diff.
+
+No other target failed. Every suite that exercises the two
+changed files directly (test-template-cache, test-mining,
+test-solo, test-exp036, test-exp034, test-autopilot,
+test-mainnet-live, test-solo-cutover) passes.
