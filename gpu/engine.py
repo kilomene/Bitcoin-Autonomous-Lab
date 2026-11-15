@@ -6,6 +6,27 @@ Backends:
   candidate-path self-test (cuda_production_selftest), whose
   results are re-verified on the CPU. A diagnostic or legacy batch
   success alone never selects CUDA (Task 003.6).
+- v512dual: the AVX-512 DualMask CPU kernel
+  (mining/cpu/bal_avx512_dual.c, built as
+  .local/cpu/libbal_v512dual.so), integrated 2026-11-14
+  under the owner's explicit decision after EXP-026
+  candidate C2 returned a VERIFIED IMPROVEMENT (pooled
+  1.718x vs the v512 search, CI entirely above 0 in every
+  session, and 1.444x vs its strongest single
+  ingredient). It is the EXP-018 register-resident
+  dual-batch kernel plus the EXP-024 opmask target
+  compare: two 16-lane batches advance together, digest
+  staging happens only for a batch whose compare mask
+  is nonzero. Selection follows the v512 discipline
+  exactly: the same flag-free probe
+  (bal_v512_supported, linked into the dual library)
+  must confirm AVX-512F and AVX-512BW, every library
+  symbol is checked for completeness before any is
+  called, and a self-test spanning the dual-batch shape
+  (both batches and a 32-lane boundary) must reproduce
+  hashlib digests exactly. Any failure at any step
+  degrades loudly to v512, which is preserved untouched
+  as the next fallback, and from there to C.
 - v512: the AVX-512 16-way multi-buffer CPU kernel
   (mining/cpu/bal_avx512_mb.c, built as .local/cpu/libbal_v512.so),
   integrated 2026-11-14 under the owner's adopted EXP-017 decision
@@ -19,8 +40,23 @@ Backends:
   machines without AVX-512 behave exactly as before. Requesting
   "c" explicitly still selects the C backend alone.
 - c: the OpenSSL midstate C library (.local/cpu/libbal_batch.so).
-- cpu: hashlib batch search (this machine also has the C SHA-NI
-  engine in mining/cpu for the Stratum path).
+- cpu: hashlib batch search. (The C SHA-NI engine in
+  mining/cpu is a research and legacy engine; it does not
+  serve the live Stratum path, which searches through this
+  ComputeEngine and whichever backend it selects.)
+
+DualMask accounting note: the v512dual search is
+dual-atomic over 32 lanes. A started dual group always
+completes, so on an early exit attempted counts the real
+nonces of every completed dual group, while
+backend_hashes counts 32 lane computations per dual
+group, dummy lanes included, and is never below
+attempted. A span remainder under 17 nonces uses the
+single-group path, whose backend granularity is 16
+lanes. Batch enumeration covers the full range, so
+unique_coverage equals the requested count while
+backend_hashes may exceed it by the dummy lanes of the
+final partial group of each span.
 
 AVX-512 accounting note: the v512 kernel works in 16-lane waves.
 A started wave always completes, so on an early exit the counted
@@ -96,6 +132,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LIB_PATH = os.path.join(ROOT, ".local", "cuda", "libbal_cuda.so")
 C_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_batch.so")
 V_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_v512.so")
+VD_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_v512dual.so")
 import os as _os
 # Full-workforce thread count for the C search. An explicit
 # BAL_C_THREADS always wins. Otherwise the engine measures the
@@ -193,6 +230,54 @@ def tune_v512_threads(engine):
         LAST_PROBE_RATE = best_rate
         print(f"full-workforce: AVX-512 search threads auto-tuned "
               f"to {best_n} on this machine "
+              f"(probe {best_rate:,.0f} H/s)", flush=True)
+    except Exception:
+        pass
+    return C_THREADS
+
+
+def tune_v512dual_threads(engine):
+    """Measure this machine for the AVX-512 DualMask backend
+    and set C_THREADS to its peak, mirroring
+    tune_v512_threads: probes several thread counts with the
+    real counted DualMask search over a fixed nonce range
+    and keeps the fastest. Runs once per process; any
+    failure leaves the safe default in place. Also records
+    LAST_PROBE_RATE so span sizing in the live miner
+    reflects the selected backend's real rate."""
+    global C_THREADS, C_THREADS_TUNED, LAST_PROBE_RATE
+    if C_THREADS_TUNED:
+        return C_THREADS
+    C_THREADS_TUNED = True
+    if getattr(engine, "backend", None) != "v512dual" or not hasattr(
+            engine._vd_lib, "bal_vd_search2"):
+        return C_THREADS
+    try:
+        header = bytes(range(80))
+        target_le = (1).to_bytes(32, "little")
+        probe = 1 << 20
+        cpus = os.cpu_count() or 2
+        best_n, best_rate = C_THREADS, 0.0
+        for n in sorted({1, 2, 4, cpus, cpus * 2}):
+            if n < 1 or n > 32:
+                continue
+            out_nonce = ctypes.c_uint32(0)
+            out_attempted = ctypes.c_uint64(0)
+            out_backend = ctypes.c_uint64(0)
+            out_digest = ctypes.create_string_buffer(32)
+            t0 = time.time()
+            rc = engine._vd_lib.bal_vd_search2(
+                header, 0, probe, n, target_le,
+                ctypes.byref(out_nonce), out_digest,
+                ctypes.byref(out_attempted),
+                ctypes.byref(out_backend))
+            dt = time.time() - t0
+            if rc in (0, 1) and dt > 0 and probe / dt > best_rate:
+                best_n, best_rate = n, probe / dt
+        C_THREADS = best_n
+        LAST_PROBE_RATE = best_rate
+        print(f"full-workforce: AVX-512 DualMask search threads "
+              f"auto-tuned to {best_n} on this machine "
               f"(probe {best_rate:,.0f} H/s)", flush=True)
     except Exception:
         pass
@@ -719,7 +804,8 @@ class CudaContext:
 
 class ComputeEngine:
     def __init__(self, lib_path=LIB_PATH, requested="auto",
-                 c_lib_path=C_LIB_PATH, v_lib_path=V_LIB_PATH):
+                 c_lib_path=C_LIB_PATH, v_lib_path=V_LIB_PATH,
+                 vd_lib_path=VD_LIB_PATH):
         self.requested = requested
         self.backend = "cpu"
         self.fallback_reason = None
@@ -729,6 +815,9 @@ class ComputeEngine:
         self._v_lib = None
         self.v512_reason = None
         self._v_last_counts = None
+        self._vd_lib = None
+        self.v512dual_reason = None
+        self._vd_last_counts = None
         self._cuda_ctx = None
         self.cuda_ctx_reason = None
         self.cuda_fallback_reason = None
@@ -737,10 +826,14 @@ class ComputeEngine:
         if requested in ("auto", "cuda", "cuda-only"):
             self._try_cuda(lib_path)
             self.cuda_fallback_reason = self.fallback_reason
-        if self.backend != "cuda" and requested in ("auto", "v512"):
+        if self.backend != "cuda" and requested in (
+                "auto", "v512dual"):
+            self._try_v512dual(vd_lib_path)
+        if self.backend not in ("cuda", "v512dual") and requested in (
+                "auto", "v512", "v512dual"):
             self._try_v512(v_lib_path)
-        if self.backend not in ("cuda", "v512") and requested in (
-                "auto", "c", "v512"):
+        if self.backend not in ("cuda", "v512dual", "v512") \
+                and requested in ("auto", "c", "v512", "v512dual"):
             self._try_c(c_lib_path)
         if requested == "cuda-only" and self.backend != "cuda":
             raise RuntimeError(
@@ -748,7 +841,7 @@ class ComputeEngine:
                 f"{self.cuda_fallback_reason or self.fallback_reason}")
         if self.backend == "cuda":
             self.fallback_reason = None
-        elif self.backend in ("c", "v512"):
+        elif self.backend in ("c", "v512", "v512dual"):
             self.fallback_reason = self.cuda_fallback_reason
         if requested == "cuda" and self.backend != "cuda":
             self.fallback_reason = self.fallback_reason or "CUDA requested but unavailable"
@@ -756,6 +849,8 @@ class ComputeEngine:
             tune_c_threads(self)
         elif self.backend == "v512":
             tune_v512_threads(self)
+        elif self.backend == "v512dual":
+            tune_v512dual_threads(self)
 
     def _try_c(self, c_lib_path):
         if not os.path.isfile(c_lib_path):
@@ -957,6 +1052,176 @@ class ComputeEngine:
             pos = i + 1
         return out
 
+    def _try_v512dual(self, vd_lib_path):
+        """Runtime CPUID dispatch for the AVX-512 DualMask
+        backend. Mirrors _try_v512, with the audit D-1 rule
+        applied to every symbol: the library is loaded
+        (loading never executes kernel code), the flag-free
+        probe compiled into it must confirm AVX-512F and
+        AVX-512BW, library completeness is checked with
+        hasattr BEFORE any argtypes assignment, and only
+        then are kernel entry points called: a dual batch
+        checked digest by digest against the CPU, plus a
+        counted search self-test spanning the dual-batch
+        shape (64 nonces: both 16-lane batches of a dual
+        group and the 32-lane boundary between groups).
+        Any failure leaves the engine unselected with the
+        reason recorded on v512dual_reason; selection
+        failure is never fatal, the v512 backend is tried
+        next."""
+        if not os.path.isfile(vd_lib_path):
+            self.v512dual_reason = (f"AVX-512 DualMask library "
+                                    f"not built ({vd_lib_path})")
+            return
+        try:
+            lib = ctypes.CDLL(vd_lib_path)
+        except OSError as exc:
+            self.v512dual_reason = (f"AVX-512 DualMask library "
+                                    f"failed to load: {exc}")
+            return
+        if not hasattr(lib, "bal_v512_supported"):
+            self.v512dual_reason = ("AVX-512 DualMask library "
+                                    "has no CPUID probe; "
+                                    "refusing to call the kernel")
+            return
+        lib.bal_v512_supported.restype = ctypes.c_int
+        try:
+            supported = lib.bal_v512_supported()
+        except Exception as exc:
+            self.v512dual_reason = f"AVX-512 CPUID probe failed: {exc}"
+            return
+        if not supported:
+            bits = None
+            if hasattr(lib, "bal_v512_feature_bits"):
+                lib.bal_v512_feature_bits.restype = ctypes.c_uint
+                bits = lib.bal_v512_feature_bits()
+            self.v512dual_reason = (
+                "CPUID dispatch: this CPU cannot execute the "
+                "AVX-512 DualMask kernel (requires AVX-512F "
+                f"and AVX-512BW; feature bits {bits})")
+            return
+        missing = [name for name in
+                   ("bal_vd_batch2", "bal_vd_search2")
+                   if not hasattr(lib, name)]
+        if missing:
+            self.v512dual_reason = (
+                "AVX-512 DualMask library is incomplete: "
+                "missing kernel entry point(s) "
+                + ", ".join(missing)
+                + "; rejecting the library as a whole and "
+                "falling back")
+            return
+        lib.bal_vd_batch2.restype = ctypes.c_int
+        lib.bal_vd_batch2.argtypes = [
+            ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+            ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint64),
+            ctypes.POINTER(ctypes.c_uint64)]
+        lib.bal_vd_search2.restype = ctypes.c_int
+        lib.bal_vd_search2.argtypes = [
+            ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+            ctypes.c_uint, ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_uint32), ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_uint64),
+            ctypes.POINTER(ctypes.c_uint64)]
+        header = bytes(range(80))
+        got = self._vd_batch(lib, header, 1 << 255, 0, 256)
+        if got is None:
+            self.v512dual_reason = "AVX-512 DualMask self-test batch failed"
+            return
+        for nonce in range(256):
+            if got[nonce] != cpu_digest(header, nonce):
+                self.v512dual_reason = ("AVX-512 DualMask self-test "
+                                        "digest mismatch")
+                return
+        # Dual-shape search self-test: 64 nonces cover both
+        # batches of the first dual group and cross the
+        # 32-lane group boundary into the second. It runs
+        # single-threaded on purpose: the counted context
+        # publishes the first winner across spans, so with
+        # several spans and an all-meet target the reported
+        # nonce would be a race outcome, not a checkable
+        # value. At one thread the first nonce must be
+        # reported with its exact digest; with a target of
+        # 1 the same span must be a clean miss with exact
+        # accounting.
+        out_nonce = ctypes.c_uint32(0)
+        out_attempted = ctypes.c_uint64(0)
+        out_backend = ctypes.c_uint64(0)
+        out_digest = ctypes.create_string_buffer(32)
+        rc = lib.bal_vd_search2(
+            header, 0, 64, 1, ((1 << 256) - 1).to_bytes(32, "little"),
+            ctypes.byref(out_nonce), out_digest,
+            ctypes.byref(out_attempted), ctypes.byref(out_backend))
+        if rc != 1 or out_nonce.value != 0 or \
+                out_digest.raw != cpu_digest(header, 0):
+            self.v512dual_reason = ("AVX-512 DualMask dual-shape "
+                                    "search self-test failed")
+            return
+        rc = lib.bal_vd_search2(
+            header, 0, 64, 1, (1).to_bytes(32, "little"),
+            ctypes.byref(out_nonce), out_digest,
+            ctypes.byref(out_attempted), ctypes.byref(out_backend))
+        if rc != 0 or out_attempted.value != 64:
+            self.v512dual_reason = ("AVX-512 DualMask dual-shape "
+                                    "search self-test miss "
+                                    "accounting failed")
+            return
+        self._vd_lib = lib
+        self.backend = "v512dual"
+        self.v512dual_reason = ("selected: CPUID probe confirms "
+                                "AVX-512F and AVX-512BW, the "
+                                "batch reproduces hashlib "
+                                "digests, and the dual-shape "
+                                "search self-test passes")
+
+    def _vd_batch(self, lib, header, target, start, count):
+        pairs = self._vd_batch_flagged(lib, header, target, start,
+                                       count, want_all=True)
+        if pairs is None:
+            return None
+        digests = [b""] * count
+        for nonce, digest in pairs:
+            digests[nonce - start] = digest
+        return digests
+
+    def _vd_batch_flagged(self, lib, header, target, start, count,
+                          want_all=False):
+        """Run an AVX-512 DualMask batch and return (nonce,
+        digest) pairs (all of them, or only the
+        target-flagged ones), located through the kernel's
+        flags array. The counted ABI's actuals (real nonces
+        covered, lane computations including dummy lanes)
+        are stashed on self._vd_last_counts for the
+        caller's accounting."""
+        hashes = ctypes.create_string_buffer(32 * count)
+        flags = ctypes.create_string_buffer(count)
+        target_le = target.to_bytes(32, "little")
+        out_attempted = ctypes.c_uint64(0)
+        out_backend = ctypes.c_uint64(0)
+        rc = lib.bal_vd_batch2(header, start, count, C_THREADS,
+                               target_le, hashes, flags,
+                               ctypes.byref(out_attempted),
+                               ctypes.byref(out_backend))
+        if rc != 0:
+            return None
+        self._vd_last_counts = (out_attempted.value,
+                                out_backend.value)
+        raw = hashes.raw
+        flag_bytes = flags.raw
+        if want_all:
+            return [(start + i, raw[32 * i:32 * i + 32])
+                    for i in range(count)]
+        out = []
+        pos = 0
+        while True:
+            i = flag_bytes.find(b"\x01", pos)
+            if i < 0:
+                break
+            out.append((start + i, raw[32 * i:32 * i + 32]))
+            pos = i + 1
+        return out
+
     def _recover_bad_candidate(self, header, target, start, count,
                                native_attempted, source):
         """Task 003.4: a native backend reported a candidate that
@@ -1041,7 +1306,55 @@ class ComputeEngine:
                 "unique_coverage_note": None,
                 "candidate_count": 0, "researched_hashes": 0,
                 "overflow_splits": 0}
-        if self.backend == "v512":
+        if self.backend == "v512dual":
+            out_nonce = ctypes.c_uint32(0)
+            out_attempted = ctypes.c_uint64(0)
+            out_backend = ctypes.c_uint64(0)
+            out_digest = ctypes.create_string_buffer(32)
+            target_le = target.to_bytes(32, "little")
+            rc = self._vd_lib.bal_vd_search2(
+                header, start, count, C_THREADS, target_le,
+                ctypes.byref(out_nonce), out_digest,
+                ctypes.byref(out_attempted),
+                ctypes.byref(out_backend))
+            if rc not in (0, 1):
+                raise RuntimeError(f"bal_vd_search2 returned {rc}")
+            # Dual-atomic accounting (EXP-026 semantics):
+            # attempted is the real nonces of every completed
+            # 32-lane dual group (plus single-group tails);
+            # backend_hashes is the lane computations behind
+            # them, dummy lanes included, so backend_hashes
+            # >= attempted always and is a whole number of
+            # 16-lane groups.
+            attempted = out_attempted.value
+            acct["backend_hashes"] = out_backend.value
+            acct["unique_coverage"] = attempted
+            if rc == 1:
+                nonce = out_nonce.value
+                digest = out_digest.raw
+                acct["candidate_count"] = 1
+                acct["verification_hashes"] += 1
+                if verify_candidate(header, target, nonce, digest):
+                    hit = (nonce, digest)
+                else:
+                    # Task 003.4 discipline, applied to the
+                    # DualMask backend identically: never a
+                    # silent miss.
+                    native_att = attempted
+                    hit, attempted = self._recover_bad_candidate(
+                        header, target, start, count, attempted,
+                        "native AVX-512 DualMask (bal_vd_search2)")
+                    rescan_attempted = attempted - native_att
+                    rescanned = True
+                    backend_used = "cpu-rescan"
+                    acct["verification_hashes"] += rescan_attempted
+                    acct["unique_coverage"] = None
+                    acct["unique_coverage_note"] = (
+                        "backend examined "
+                        f"{native_att} distinct nonces and the "
+                        "verification rescan re-examined a prefix; "
+                        "their exact union is not measurable")
+        elif self.backend == "v512":
             out_nonce = ctypes.c_uint32(0)
             out_attempted = ctypes.c_uint64(0)
             out_backend = ctypes.c_uint64(0)
@@ -1200,7 +1513,8 @@ class ComputeEngine:
         backend_hashes = acct["backend_hashes"]
         self.last_search_stats = {
             "backend": backend_used,
-            "threads": C_THREADS if backend_used in ("c", "v512")
+            "threads": C_THREADS if backend_used in (
+                "c", "v512", "v512dual")
             else 1,
             "start": start, "requested": count,
             "requested_hashes": count,
@@ -1419,9 +1733,13 @@ class ComputeEngine:
         t0 = time.perf_counter()
         candidates = []
         used = self.backend
-        if self.backend in ("c", "v512"):
+        if self.backend in ("c", "v512", "v512dual"):
             is_v = self.backend == "v512"
-            if is_v:
+            is_vd = self.backend == "v512dual"
+            if is_vd:
+                pairs = self._vd_batch_flagged(
+                    self._vd_lib, header, target, start, count)
+            elif is_v:
                 pairs = self._v_batch_flagged(
                     self._v_lib, header, target, start, count)
             else:
@@ -1443,7 +1761,8 @@ class ComputeEngine:
                         rescan_verification = \
                         self._rescan_all_candidates(
                             header, target, start, count,
-                            "native AVX-512 MB batch" if is_v
+                            "native AVX-512 DualMask batch" if is_vd
+                            else "native AVX-512 MB batch" if is_v
                             else "native C batch", bad)
                     used = "cpu-rescan"
                 else:
@@ -1460,7 +1779,8 @@ class ComputeEngine:
                 # Verification computations and any rescan work
                 # are verification-layer work, reported only under
                 # verification_hashes, never inside backend_hashes.
-                backend_hashes = (self._v_last_counts[1] if is_v
+                backend_hashes = (self._vd_last_counts[1] if is_vd
+                                  else self._v_last_counts[1] if is_v
                                   else count)
                 verification_hashes = verify_count + rescan_verification
                 return candidates, {
@@ -1786,7 +2106,10 @@ class ComputeEngine:
             "c_backend": bool(self._c_lib),
             "v512_backend": bool(self._v_lib),
             "v512_reason": self.v512_reason,
+            "v512dual_backend": bool(self._vd_lib),
+            "v512dual_reason": self.v512dual_reason,
             "native_impl": (
+                "avx512-dual" if self.backend == "v512dual" else
                 "avx512-mb" if self.backend == "v512" else
                 "openssl-c" if self.backend == "c" else None),
             "c_threads": C_THREADS,
