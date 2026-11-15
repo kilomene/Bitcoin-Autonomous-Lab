@@ -1234,14 +1234,14 @@ instructions given the produced word and arbitrary
 independent side values (CEGIS UNSAT at iteration 0;
 4-instruction incumbents z3-proven exact), so a round
 cone costs 6 by the 1 + 4 + 1 accounting, matching
-the incumbent, except for two named shapes
-(exploiting the s = T1 + T2 correlation inside the
-Sigma sub-DAG: EXCLUDED for the e-cone by
-cone-conditioned synthesis UNSAT, still open for the
-a-cone, where the conditioned query timed out at
-900 s and is INCONCLUSIVE, not negative; and routing
+the incumbent, except for one named shape (routing
 Sigma through the Maj or Ch value: open for both
-cones). Scope 2 (header
+cones). The other candidate shape, exploiting the
+s = T1 + T2 correlation inside the Sigma sub-DAG, is
+EXCLUDED for both cones by cone-conditioned synthesis
+UNSAT (16 cone-realizable examples each; two earlier
+Sigma0 attempts timed out at 900 s under heavier
+contention before the successful run). Scope 2 (header
 mathematics re-derived): W18 is the first
 nonce-dependent expanded schedule word (W16 and W17
 nonce-free; 46 of 48 expanded words nonce-dependent);
