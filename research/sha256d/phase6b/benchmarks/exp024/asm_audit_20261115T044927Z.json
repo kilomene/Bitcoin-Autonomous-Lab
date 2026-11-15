@@ -1,0 +1,43 @@
+{
+  "experiment": "EXP-024",
+  "audit_utc": "2026-11-15T04:49:26.608789+00:00",
+  "functions": {
+    "libbal_m512.so:vm_group": {
+      "instructions": 576,
+      "vpcmp_opmask": 2,
+      "zmm_stack_stores": 51,
+      "scalar_byte_stores": 0,
+      "library": "libbal_m512.so",
+      "note": "EXP-024 mask group"
+    },
+    "libbal_m512.so:vm_worker": {
+      "instructions": 125,
+      "vpcmp_opmask": 0,
+      "zmm_stack_stores": 1,
+      "scalar_byte_stores": 0,
+      "library": "libbal_m512.so",
+      "note": "EXP-024 mask search walker"
+    },
+    "libbal_m512.so:vs_worker": {
+      "instructions": 82,
+      "vpcmp_opmask": 0,
+      "zmm_stack_stores": 1,
+      "scalar_byte_stores": 0,
+      "library": "libbal_m512.so",
+      "note": "EXP-024 scan walker"
+    },
+    "libbal_v512_exp022base.so:v_walk.constprop.0": {
+      "instructions": 3948,
+      "vpcmp_opmask": 0,
+      "zmm_stack_stores": 70,
+      "scalar_byte_stores": 0,
+      "library": "libbal_v512_exp022base.so",
+      "note": "production group and walker (v_group inlined into v_walk by the compiler in this build)"
+    }
+  },
+  "vm_group_mask_branch": {
+    "conditional_branch_after_compare_loop": "7810:\t74 0d                \tje     781f <vm_group+0x68f>",
+    "zmm_stores_at_or_after_branch": 16,
+    "interpretation": "the digest staging stores of vm_group sit behind a mask-dependent conditional branch; on a zero mask they are not executed. The eight inner-state (inn) staging stores before the compare are unconditional in both kernels and feed the outer compression."
+  }
+}
