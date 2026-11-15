@@ -15,6 +15,7 @@ mining/stratum_client.py.)
 """
 
 import logging
+import os
 import time
 
 from blockchain.store import BlockStore
@@ -22,6 +23,16 @@ from gpu.engine import ComputeEngine
 from mining.engine import MiningEngine
 
 log = logging.getLogger("bal.agent.autonomous")
+
+# EXP-038: the GBT path's work-state checkpoint. The engine
+# records its completed search frontier per template identity
+# here, so an agent restarted mid-template resumes instead of
+# rescanning from nonce 0 and extranonce 0, and its cycle
+# results carry the checkpoint decision. See
+# mining/work_checkpoint.py for the honesty rules.
+WORK_CHECKPOINT_PATH = os.path.join(
+    os.path.dirname(__file__), "..", ".local",
+    "work-checkpoint.json")
 
 MIN_BATCH = 4096
 MAX_BATCH = 1 << 20
@@ -34,7 +45,9 @@ class AutonomousMiner:
         self.rpc = rpc
         self.store = store or BlockStore()
         self.compute = compute or ComputeEngine()
-        self.engine = MiningEngine(rpc, payout_address, self.compute)
+        self.engine = MiningEngine(
+            rpc, payout_address, self.compute,
+            checkpoint_path=WORK_CHECKPOINT_PATH)
         self.allow_mainnet = allow_mainnet
         self.decisions = []
 
