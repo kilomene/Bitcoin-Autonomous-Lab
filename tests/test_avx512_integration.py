@@ -7,12 +7,16 @@ under the owner's adopted EXP-017 decision rule. This suite is
 the standing gate for that integration. It proves, through the
 PRODUCTION engine path (never the research harness):
 
-- Runtime CPUID dispatch: the auto engine selects "v512" only
-  when the flag-free probe in libbal_v512.so confirms AVX-512F
-  and AVX-512BW (the exact feature set of the kernel's
-  restricted-flag build); requesting "c" still selects the C
-  backend alone; on a CPU without the features the engine
-  falls back cleanly and records why. A symbol-incomplete
+- Runtime CPUID dispatch: an engine requesting "v512"
+  selects it only when the flag-free probe in
+  libbal_v512.so confirms AVX-512F and AVX-512BW (the
+  exact feature set of the kernel's restricted-flag
+  build); requesting "c" still selects the C backend
+  alone; on a CPU without the features the engine falls
+  back cleanly and records why. (The auto engine has
+  preferred the v512dual backend since its integration
+  on 2026-11-14; v512 remains the pinned and fallback
+  backend this suite gates.) A symbol-incomplete
   library (probe present, kernel entry points missing) is
   rejected as a whole with the same clean fallback (audit
   defect D-1 regression gate).
@@ -70,13 +74,18 @@ def recount(header, target, start, count):
 def test_dispatch(supported):
     eng_c = ComputeEngine(requested="c")
     assert eng_c.backend == "c", eng_c.describe()
-    eng = ComputeEngine()
+    # Since the DualMask integration (2026-11-14) the auto
+    # engine prefers v512dual; this suite gates the v512
+    # backend itself, so it pins requested="v512" exactly
+    # as production callers that pin it do.
+    eng = ComputeEngine(requested="v512")
     if supported:
         assert eng.backend == "v512", eng.describe()
         assert eng.describe()["native_impl"] == "avx512-mb"
         assert eng.describe()["v512_backend"] is True
-        print("ok dispatch: auto engine selects v512 via the "
-              "CPUID probe; requested='c' still selects C alone")
+        print("ok dispatch: requested='v512' engine selects "
+              "v512 via the CPUID probe; requested='c' still "
+              "selects C alone")
     else:
         assert eng.backend in ("c", "cpu"), eng.describe()
         assert eng.v512_reason and "CPUID" in eng.v512_reason, \
@@ -140,7 +149,7 @@ def test_incomplete_library_fallback():
         (real_probe_only, ()),
     ]
     for path, missing in cases:
-        eng = ComputeEngine(v_lib_path=path)
+        eng = ComputeEngine(requested="v512", v_lib_path=path)
         assert eng.backend == "c", (path, eng.describe())
         assert eng.v512_reason, (path, eng.describe())
         for name in missing:
@@ -264,7 +273,7 @@ def test_regtest_block():
             rpc.call("createwallet", "bal-regtest")
     wallet = BitcoinRPC(wallet="bal-regtest")
     payout = wallet.call("getnewaddress", "", "bech32")
-    compute = ComputeEngine()
+    compute = ComputeEngine(requested="v512")
     assert compute.backend == "v512", compute.describe()
     eng = MiningEngine(rpc, payout, compute=compute,
                        batch_size=100_000)
