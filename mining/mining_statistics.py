@@ -51,6 +51,26 @@ shares over the whole log) lives in mining/autopilot.py's
 EvidenceCounter, whose counts feed pool_shares_accepted and
 pool_shares_rejected when a consumer builds a snapshot from
 the log.
+
+Production wiring (EXP-037 closure, Phase 002 step 4): the
+live paths now record as the work happens, through the two
+helpers at the bottom of this module. SafeRecorder is the
+failure-isolated front end every production caller uses: a
+statistics defect must never stop mining, so record()
+exceptions are swallowed and counted there instead of
+propagating into a search loop (the autopilot EvidenceCounter
+sets the precedent: its corrupt-state fallback keeps the
+supervisor alive on bad input). FrontierAccountant splits one
+process's search examinations into the separated counters
+exactly: backend_hashes and actual_computations count every
+examination, unique_nonces and unique_headers count only
+positions and headers this process had not examined,
+repeated_work counts re-examinations, and unique_coverage
+advances only over chunks that completed without a hit, the
+EXP-035 completed-chunks rule and the same rule the EXP-038
+checkpoint frontier follows across restarts. The counters a
+process records are that process's session scope; the
+evidence census remains the lifetime source for pool shares.
 """
 
 CATEGORIES = (
@@ -186,3 +206,104 @@ class WindowedRate:
         if span <= 0:
             return 0.0
         return (end[1] - baseline[1]) / span
+
+
+class SafeRecorder:
+    """Failure-isolated record() front end for production
+    callers (EXP-037 wiring).
+
+    Mining must never stop because statistics broke: every
+    exception from the wrapped MiningStatistics is swallowed
+    here and counted in self.errors, so a caller can see that
+    recording degraded without the search loop ever seeing the
+    failure. The wrapped object is exposed as .stats so
+    consumers and tests can snapshot it. The separation rule
+    is unchanged: each call still names exactly one category,
+    and no call ever sums categories.
+    """
+
+    def __init__(self, stats=None):
+        self.stats = stats if stats is not None \
+            else MiningStatistics()
+        self.errors = 0
+
+    def record(self, category, count=1, worker=None,
+               backend=None):
+        try:
+            self.stats.record(category, count, worker=worker,
+                              backend=backend)
+        except Exception:
+            self.errors += 1
+
+    def snapshot(self):
+        return self.stats.snapshot()
+
+
+class FrontierAccountant:
+    """Per-process search accounting with exact separation
+    (EXP-037 wiring, EXP-035 rules).
+
+    Tracks, per header, the next unexamined nonce for this
+    process. record_search(header, start, attempted, completed)
+    splits one search call's examined interval
+    [start, start + attempted) against that frontier:
+
+    - backend_hashes and actual_computations grow by every
+      examination, repeats included;
+    - unique_nonces grows only by positions at or beyond the
+      frontier (never examined for this header by this
+      process), and unique_headers by 1 the first time a
+      header is searched;
+    - repeated_work grows by the positions below the frontier
+      (already examined for this header);
+    - unique_coverage grows by the unique positions only when
+      completed is true, that is when the chunk ran to its end
+      without a hit: EXP-035 counts completed chunk sizes
+      only, and a hit chunk's coverage is credited through
+      the candidate counters, not here. This is the same rule
+      the EXP-038 checkpoint applies before advancing its
+      persistent frontier.
+
+    All recording goes through a SafeRecorder, so accounting
+    can never raise into a search loop. Returns the
+    (unique, repeated) split for callers and tests.
+    """
+
+    def __init__(self, stats=None):
+        self.recorder = SafeRecorder(stats)
+        self.stats = self.recorder.stats
+        self._frontier = {}
+
+    @property
+    def errors(self):
+        return self.recorder.errors
+
+    def record_search(self, header, start, attempted, completed,
+                      worker=None, backend=None):
+        if header not in self._frontier:
+            self._frontier[header] = 0
+            self.recorder.record("unique_headers", 1,
+                                 worker=worker, backend=backend)
+        frontier = self._frontier[header]
+        end = start + attempted
+        unique = max(0, end - max(frontier, start))
+        repeated = attempted - unique
+        self._frontier[header] = max(frontier, end)
+        self.recorder.record("backend_hashes", attempted,
+                             worker=worker, backend=backend)
+        self.recorder.record("actual_computations", attempted,
+                             worker=worker, backend=backend)
+        if unique:
+            self.recorder.record("unique_nonces", unique,
+                                 worker=worker, backend=backend)
+            if completed:
+                self.recorder.record("unique_coverage", unique,
+                                     worker=worker,
+                                     backend=backend)
+        if repeated:
+            self.recorder.record("repeated_work", repeated,
+                                 worker=worker, backend=backend)
+        return unique, repeated
+
+    def snapshot(self):
+        return self.stats.snapshot()
