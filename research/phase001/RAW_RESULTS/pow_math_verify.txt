@@ -1,0 +1,34 @@
+nBits      | 0.1.3 signed (CBigNum)       | 0.1.3 getuint256             | modern value                 | modern flags
+1d00ffff | 0xffff000000000000..000000   | 0xffff000000000000..000000   | 0xffff000000000000..000000   | neg=False ovf=False
+1b0404cb | 0x404cb00000000000..000000   | 0x404cb00000000000..000000   | 0x404cb00000000000..000000   | neg=False ovf=False
+1e0fffff | 0xfffff00000000000..000000   | 0xfffff00000000000..000000   | 0xfffff00000000000..000000   | neg=False ovf=False
+0300ffff | 0xffff                       | 0xffff                       | 0xffff                       | neg=False ovf=False
+0200ffff | 0xff                         | 0xff                         | 0xff                         | neg=False ovf=False
+0100ffff | 0x0                          | 0x0                          | 0x0                          | neg=False ovf=False
+01800000 | 0x0                          | 0x0                          | 0x0                          | neg=False ovf=False
+1e80ffff | -0xffff00000000000..000000   | 0xffff000000000000..000000   | 0xffff000000000000..000000   | neg=True ovf=False
+1d80ffff | -0xffff00000000000..000000   | 0xffff000000000000..000000   | 0xffff000000000000..000000   | neg=True ovf=False
+2200ffff | 0xffff000000000000..000000   | 0xff00000000000000..000000   | 0xff00000000000000..000000   | neg=False ovf=True
+2300ffff | 0xffff000000000000..000000   | 0x0                          | 0x0                          | neg=False ovf=True
+2100ffff | 0xffff000000000000..000000   | 0xffff000000000000..000000   | 0xffff000000000000..000000   | neg=False ovf=False
+00000000 | 0x0                          | 0x0                          | 0x0                          | neg=False ovf=False
+1d00fffe | 0xfffe000000000000..000000   | 0xfffe000000000000..000000   | 0xfffe000000000000..000000   | neg=False ovf=False
+
+genesis nBits 0x1d00ffff target: 0xffff0000000000000000000000000000000000000000000000000000
+== 0xffff * 2^208: True
+modern agrees: True
+bnProofOfWorkLimit = 2^224 - 1 >= genesis target: True
+limit / target = 1.0000152590218967
+genesis hash <= target: True
+
+difficulty-1 target T1 = 0xffff * 2^208 = 26959535291011309493156476344723991336010898738574164086137773096960
+p(T1) = (T1+1)/2^256 = 2.3282709094019083e-10
+E[hashes at T1] = 2^256/(T1+1) = 115792089237316195423570985008687907853269984665640564039457584007913129639936/26959535291011309493156476344723991336010898738574164086137773096961 = 4295032833.000015
+E / 2^32 = 1.0000152590218967  (the textbook 2^32 is the approximation T1 -> 2^224;
+   exactly, E = 2^32 * 2^224/(2^224 - 2^208 + 1))
+E[hashes at bnProofOfWorkLimit] = 2^256/2^224 = 2^32 exactly: True
+geometric: P(first success at trial k) = (1-p)^(k-1) p;
+P(at least one in N) = 1 - (1-p)^N; median trials = ceil(ln(1/2)/ln(1-p))
+median trials at T1 ~ 2977089899  (~ ln2 * E = 2977089898.6063547 )
+nonce space per template in 0.1.3 loop: 2^32 values, loop starts at 1
+P(success within one full nonce space at T1) = 1-(1-p)^(2^32) = 0.6321149454337636
