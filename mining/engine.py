@@ -20,6 +20,7 @@ import time
 from blockchain.transactions import btc_to_sats
 from gpu.engine import ComputeEngine
 from mining.pow import coinbase_subsidy, merkle_root, dsha256
+from mining.work_checkpoint import WorkCheckpoint
 
 log = logging.getLogger("bal.mining.engine")
 
@@ -460,11 +461,31 @@ class TemplateCache:
 
 class MiningEngine:
     def __init__(self, rpc, payout_address, compute=None, batch_size=65536,
-                 use_template_cache=True):
+                 use_template_cache=True, extranonce_space=(0, 64),
+                 checkpoint_path=None):
         self.rpc = rpc
         self.payout = payout_address
         self.compute = compute or ComputeEngine()
         self.batch_size = batch_size
+        # EXP-034: the extranonce rounds mine_cycle steps, as
+        # (first_round, round_count) over the 32-bit coinbase
+        # extranonce. The default (0, 64) is the historical
+        # behaviour exactly. Two engines mining the same template
+        # for the same payout address build byte-identical
+        # candidates over the same rounds (proven in
+        # tests/test_exp034_job_template.py), so engines that
+        # must not duplicate each other's work are constructed
+        # with disjoint spaces; assigning those spaces to
+        # workers is the coordinator's job (EXP-035).
+        # build_candidate itself is unchanged: it still takes an
+        # absolute extranonce value.
+        en_first, en_count = extranonce_space
+        if not (0 <= en_first and 1 <= en_count
+                and en_first + en_count <= (1 << 32)):
+            raise ValueError(
+                f"extranonce_space {extranonce_space} outside the "
+                f"32-bit extranonce range")
+        self.extranonce_space = (en_first, en_count)
         # EXP-025 repaired template cache (see the cache section
         # above). Enabled by default; use_template_cache=False (or
         # a direct build_candidate_uncached call) is the preserved
@@ -473,6 +494,19 @@ class MiningEngine:
         self.use_template_cache = use_template_cache
         self.template_cache = TemplateCache()
         self._cache_family = None
+        # EXP-038 work-state checkpoint (opt-in): when a path is
+        # given, mine_cycle records its completed search
+        # frontier per template identity and a restarted engine
+        # resumes there instead of rescanning from nonce 0 and
+        # extranonce 0. Default None is exactly the historical
+        # behaviour; every checkpoint touch below is behind
+        # `self._work_checkpoint is not None`. See
+        # mining/work_checkpoint.py for the honesty rules
+        # (only completed batches advance the frontier, and any
+        # identity, space or time-basis mismatch starts fresh).
+        self.checkpoint_path = checkpoint_path
+        self._work_checkpoint = (WorkCheckpoint(checkpoint_path)
+                                 if checkpoint_path else None)
 
     def cache_family(self):
         """The engine's TemplateFamily, built lazily on the
@@ -638,16 +672,50 @@ class MiningEngine:
                 and type(self).build_candidate
                 is MiningEngine.build_candidate):
             prep, _was_hit = self.prepare_template(template)
-        for extranonce in range(64):
+        en_first, en_count = self.extranonce_space
+        # EXP-038 checkpoint resume: with a checkpoint enabled,
+        # a previous process may already have examined part of
+        # this exact template's space. The checkpoint decides
+        # (fresh / resume / exhausted) under the identity,
+        # space and time-basis match rules in
+        # mining/work_checkpoint.py; the decision and its reason
+        # ride in the result dicts as "checkpoint" so repeated
+        # work across restarts is visible, never silent.
+        ckpt = self._work_checkpoint
+        ckpt_identity = None
+        ckpt_note = None
+        start_extranonce = en_first
+        start_nonce = 0
+        if ckpt is not None:
+            ckpt_identity = (
+                prep.identity if prep is not None
+                else template_identity(self.cache_family(),
+                                       template)[0])
+            status, ck_en, ck_nonce, ckpt_note = ckpt.resume(
+                ckpt_identity, self.extranonce_space,
+                template.get("curtime"))
+            if status == "exhausted":
+                return {"accepted": False,
+                        "reason": "nonce space exhausted",
+                        "checkpoint": ckpt_note,
+                        "height": template["height"], "hashes": 0,
+                        "batches": 0,
+                        "backend": self.compute.backend}
+            if status == "resume":
+                start_extranonce, start_nonce = ck_en, ck_nonce
+        for extranonce in range(start_extranonce, en_first + en_count):
             cand = (prep.build(extranonce) if prep is not None
                     else self.build_candidate(template, extranonce))
-            start = 0
+            start = start_nonce if extranonce == start_extranonce else 0
             while start < (1 << 32):
                 if time.perf_counter() - started > deadline_seconds or batches >= max_batches:
-                    return {"accepted": False, "reason": "budget exhausted",
-                            "height": cand["height"], "hashes": total_hashes,
-                            "batches": batches,
-                            "backend": self.compute.backend}
+                    result = {"accepted": False, "reason": "budget exhausted",
+                              "height": cand["height"], "hashes": total_hashes,
+                              "batches": batches,
+                              "backend": self.compute.backend}
+                    if ckpt is not None:
+                        result["checkpoint"] = ckpt_note
+                    return result
                 count = self.batch_count(self.batch_size, start)
                 if hasattr(self.compute, "search_first_counted"):
                     hit, attempted, _secs = self.compute.search_first_counted(
@@ -667,18 +735,55 @@ class MiningEngine:
                     submit = self.rpc.call("submitblock", block.hex())
                     best = self.rpc.get_best_block_hash()
                     accepted = (submit is None and best == block_hash)
-                    return {
+                    result = {
                         "accepted": accepted,
                         "submit_result": submit,
                         "height": cand["height"], "hash": block_hash,
                         "nonce": sol["nonce"], "hashes": total_hashes,
-                        "batches": batches, "extranonce_rounds": extranonce + 1,
+                        "batches": batches,
+                        # Rounds searched in THIS cycle: with no
+                        # checkpoint start_extranonce == en_first
+                        # and this is the historical value; with
+                        # a resume it honestly excludes the
+                        # rounds a previous process examined.
+                        "extranonce_rounds":
+                            extranonce - start_extranonce + 1,
                         "backend": self.compute.backend,
                         "seconds": time.perf_counter() - started,
                         "hashrate": total_hashes / max(time.perf_counter() - started, 1e-9),
                         "tx_count": cand["tx_count"], "fees": cand["fees"],
                     }
+                    if ckpt is not None:
+                        result["checkpoint"] = ckpt_note
+                    return result
                 start += count
-        return {"accepted": False, "reason": "nonce space exhausted",
-                "height": template["height"], "hashes": total_hashes,
-                "batches": batches, "backend": self.compute.backend}
+                if ckpt is not None:
+                    # The batch above has returned without a
+                    # hit, so its whole range is examined: the
+                    # frontier may advance over it. A hit batch
+                    # never reaches this line (the hit return
+                    # above leaves the frontier at the last
+                    # completed batch), so unfinished work is
+                    # never recorded as completed.
+                    if start >= (1 << 32):
+                        f_en, f_nonce = extranonce + 1, 0
+                    else:
+                        f_en, f_nonce = extranonce, start
+                    ckpt.record(
+                        ckpt_identity, template["height"],
+                        template["previousblockhash"],
+                        template.get("curtime"),
+                        self.extranonce_space, f_en, f_nonce)
+        result = {"accepted": False, "reason": "nonce space exhausted",
+                  "height": template["height"], "hashes": total_hashes,
+                  "batches": batches, "backend": self.compute.backend}
+        if ckpt is not None:
+            ckpt.record(
+                ckpt_identity, template["height"],
+                template["previousblockhash"],
+                template.get("curtime"), self.extranonce_space,
+                en_first + en_count, 0, complete=True)
+            result["checkpoint"] = (
+                (ckpt_note + "; " if ckpt_note else "")
+                + "space completed and checkpointed")
+        return result
