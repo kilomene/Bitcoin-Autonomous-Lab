@@ -35,7 +35,20 @@ Task 001 build correction: a failed build is a failed build.
   failure is likewise reported loudly and separately and
   never fails the production C build: the engine treats a
   missing or unusable libbal_v512dual.so as "kernel not
-  built" and falls back to the single-batch v512 backend. Its failure is reported loudly and
+  built" and falls back to the single-batch v512 backend.
+- The AVX-512 flags batch library (bal_avx512_flags.c,
+  the EXP-022 Y-084 flags-only batch integrated on
+  2026-11-15 under the owner's explicit decision) is
+  built exactly the same way again, as
+  libbal_v512flags.so: its own translation unit, the
+  same restricted flag set, the same flag-free probe.
+  It exports only bal_v_batchf2 (a batch entry point,
+  not a search entry point). Its failure is reported
+  loudly and separately and never fails the production
+  C build: the engine treats a missing or unusable
+  libbal_v512flags.so as "flags batch not built" and
+  the batch consumers stay on the preserved
+  digest-materialising batch. Its failure is reported loudly and
   separately and never fails the production C build: the
   engine simply finds no libbal_v512.so (or a probe answer of
   unsupported) and stays on the OpenSSL C backend. When the
@@ -62,6 +75,7 @@ LIB = os.path.join(OUT, "libbal_batch.so")
 ILIB = os.path.join(OUT, "libbal_intrin.so")
 VLIB = os.path.join(OUT, "libbal_v512.so")
 VDLIB = os.path.join(OUT, "libbal_v512dual.so")
+VFLIB = os.path.join(OUT, "libbal_v512flags.so")
 # The exact CPU features the AVX-512 multi-buffer kernel
 # requires, and the restricted compiler flags that keep the
 # kernel object inside exactly that set. Determined from the
@@ -521,11 +535,196 @@ def build_v512dual(log=print):
             "supported": supported, "error": None}
 
 
+def _smoke_v512flags(lib_path):
+    """Verify the freshly built AVX-512 flags batch
+    library before anyone is told it exists. Same
+    discipline as _smoke_v512dual, with the audit D-1
+    rule applied to every symbol: existence is checked
+    with hasattr BEFORE any argtypes assignment. The
+    flag-free probe answers first; only when it reports
+    the kernel can execute here is the flags entry
+    called, and then, on the genesis header: at the
+    all-ones target every one of 256 flag bits must be
+    set and every extracted digest must equal hashlib;
+    at a difficulty-1-style target the flag bits must
+    equal an independent hashlib recount bit for bit,
+    the extracted digests must equal hashlib on the
+    flagged lanes, the counted accounting must be
+    exact, and the pure flags mode (digests NULL) must
+    produce identical bits. Returns (error, supported)
+    where error is None on success."""
+    try:
+        lib = ctypes.CDLL(lib_path)
+    except OSError as exc:
+        return f"built library failed to load: {exc}", None
+    if not hasattr(lib, "bal_v512_supported"):
+        return "library lacks the bal_v512_supported probe", None
+    lib.bal_v512_supported.restype = ctypes.c_int
+    supported = lib.bal_v512_supported()
+    if not supported:
+        return None, 0
+    if not hasattr(lib, "bal_v_batchf2"):
+        return "library lacks the bal_v_batchf2 entry point", 1
+    lib.bal_v_batchf2.restype = ctypes.c_int
+    lib.bal_v_batchf2.argtypes = [
+        ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+        ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p,
+        ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint64),
+        ctypes.POINTER(ctypes.c_uint64)]
+    count = 256
+    flagbytes = (count + 7) // 8
+
+    def want_digest(n):
+        return hashlib.sha256(hashlib.sha256(
+            GENESIS_HEADER[:76] + n.to_bytes(4, "little")
+        ).digest()).digest()
+
+    def run(target_int, extract=True):
+        flagbits = ctypes.create_string_buffer(flagbytes)
+        digests = (ctypes.create_string_buffer(32 * count)
+                   if extract else None)
+        attempted = ctypes.c_uint64(0)
+        backend = ctypes.c_uint64(0)
+        rc = lib.bal_v_batchf2(
+            GENESIS_HEADER, 0, count, 2,
+            target_int.to_bytes(32, "little"), flagbits, digests,
+            ctypes.byref(attempted), ctypes.byref(backend))
+        return rc, flagbits, digests, attempted.value, backend.value
+
+    rc, flagbits, digests, attempted, backend = run((1 << 256) - 1)
+    if rc != 0:
+        return f"smoke v512flags batch returned {rc}", 1
+    if flagbits.raw != b"\xff" * flagbytes:
+        return "smoke v512flags all-ones target flag bits wrong", 1
+    for n in range(count):
+        if digests.raw[32 * n:32 * n + 32] != want_digest(n):
+            return f"smoke v512flags digest mismatch at nonce {n}", 1
+    if attempted != count or backend != count:
+        return (f"smoke v512flags batch accounting off: attempted "
+                f"{attempted} backend {backend} count {count}", 1)
+    diff1 = 0xFFFF << 208
+    rc, flagbits, digests, attempted, backend = run(diff1)
+    if rc != 0:
+        return f"smoke v512flags diff1 batch returned {rc}", 1
+    if attempted != count or backend != count:
+        return (f"smoke v512flags diff1 accounting off: attempted "
+                f"{attempted} backend {backend} count {count}", 1)
+    bits = flagbits.raw
+    for n in range(count):
+        want = want_digest(n)
+        flagged = (bits[n >> 3] >> (n & 7)) & 1
+        meets = int.from_bytes(want, "little") <= diff1
+        if flagged != (1 if meets else 0):
+            return (f"smoke v512flags flag bit mismatch at nonce "
+                    f"{n}", 1)
+        if meets and digests.raw[32 * n:32 * n + 32] != want:
+            return (f"smoke v512flags extracted digest mismatch "
+                    f"at nonce {n}", 1)
+    rc, pure_bits, _d, _a, _b = run(diff1, extract=False)
+    if rc != 0 or pure_bits.raw != bits:
+        return "smoke v512flags pure mode bits differ", 1
+    return None, 1
+
+
+def build_v512flags(log=print):
+    """Build the AVX-512 flags batch production library.
+
+    Mirrors build_v512dual exactly: the kernel
+    translation unit is compiled with the restricted
+    V512_FLAGS set (never -march=native), the probe
+    translation unit with no vector flags at all, and a
+    build failure is loud but NEVER fails the production
+    C build: the engine treats a missing or unusable
+    libbal_v512flags.so as "flags batch not built" and
+    the batch consumers stay on the preserved
+    digest-materialising batch.
+    """
+    os.makedirs(OUT, exist_ok=True)
+    cc = shutil.which("gcc") or shutil.which("cc")
+    if not cc:
+        log("AVX-512 flags batch build FAILED: no C compiler "
+            "found (gcc/cc); the batch consumers will use "
+            "the preserved digest-materialising batch")
+        return {"cc": None, "lib": None, "ok": False,
+                "supported": None, "error": "no C compiler found"}
+    tmpdir = os.path.join(OUT, ".v512flags-build")
+    os.makedirs(tmpdir, exist_ok=True)
+    kernel_obj = os.path.join(tmpdir, "bal_avx512_flags.o")
+    probe_obj = os.path.join(tmpdir, "bal_avx512_probe.o")
+    base = ["-O3", "-shared", "-fPIC", "-I", HERE]
+    cmd = [cc] + base + V512_FLAGS + [
+        "-c", os.path.join(HERE, "bal_avx512_flags.c"),
+        "-o", kernel_obj]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        log(f"AVX-512 flags batch build FAILED for "
+            f"bal_avx512_flags.c: compiler exited "
+            f"{proc.returncode}; the batch consumers will "
+            f"use the preserved digest-materialising batch")
+        if proc.stderr.strip():
+            log("compiler output: " + proc.stderr.strip()[-1200:])
+        return {"cc": cc, "lib": None, "ok": False,
+                "supported": None,
+                "error": proc.stderr.strip()[-1200:]
+                or f"compiler exited {proc.returncode}"}
+    cmd = [cc] + base + [
+        "-c", os.path.join(HERE, "bal_avx512_probe.c"),
+        "-o", probe_obj]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        log(f"AVX-512 flags batch build FAILED for "
+            f"bal_avx512_probe.c: compiler exited "
+            f"{proc.returncode}; the batch consumers will "
+            f"use the preserved digest-materialising batch")
+        if proc.stderr.strip():
+            log("compiler output: " + proc.stderr.strip()[-1200:])
+        return {"cc": cc, "lib": None, "ok": False,
+                "supported": None,
+                "error": proc.stderr.strip()[-1200:]
+                or f"compiler exited {proc.returncode}"}
+    cmd = [cc, "-shared", kernel_obj, probe_obj, "-o", VFLIB,
+           "-lpthread"]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        log(f"AVX-512 flags batch build FAILED at link: "
+            f"compiler exited {proc.returncode}; the batch "
+            f"consumers will use the preserved "
+            f"digest-materialising batch")
+        if proc.stderr.strip():
+            log("compiler output: " + proc.stderr.strip()[-1200:])
+        return {"cc": cc, "lib": None, "ok": False,
+                "supported": None,
+                "error": proc.stderr.strip()[-1200:]
+                or f"compiler exited {proc.returncode}"}
+    smoke_err, supported = _smoke_v512flags(VFLIB)
+    if smoke_err is not None:
+        log(f"AVX-512 flags batch build: compiled but SMOKE "
+            f"TEST FAILED: {smoke_err}; the batch consumers "
+            f"will use the preserved digest-materialising "
+            f"batch")
+        return {"cc": cc, "lib": None, "ok": False,
+                "supported": supported,
+                "error": f"smoke test failed: {smoke_err}"}
+    if supported:
+        log("AVX-512 flags batch build: ok (compiled with "
+            "restricted flags, CPUID probe confirms AVX-512F "
+            "and AVX-512BW, smoke-tested against hashlib)")
+    else:
+        log("AVX-512 flags batch build: ok (compiled and "
+            "loadable; CPUID probe reports this CPU cannot "
+            "execute it, so the batch consumers will use "
+            "the preserved digest-materialising batch here)")
+    return {"cc": cc, "lib": VFLIB, "ok": True,
+            "supported": supported, "error": None}
+
+
 if __name__ == "__main__":
     result = build()
     intrin = build_intrin()
     v512 = build_v512()
     v512dual = build_v512dual()
+    v512flags = build_v512flags()
     print({"batch": result, "intrin_ok": intrin["ok"],
-           "v512": v512, "v512dual": v512dual})
+           "v512": v512, "v512dual": v512dual,
+           "v512flags": v512flags})
     sys.exit(0 if result["ok"] else 1)
