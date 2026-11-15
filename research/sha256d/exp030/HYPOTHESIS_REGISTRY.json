@@ -1,0 +1,155 @@
+{
+  "date_utc": "2026-11-15",
+  "experiment": "EXP-030",
+  "hypotheses": [
+    {
+      "evidence": "EXP-017 protocol, pooled 1.409x [1.340, 1.480] vs production C batch, significant in every session; 274,925 batch digests byte-identical vs hashlib. exp032/EXP032_REPORT.md section 5.1. Not integrated; 0.371x of v512dual batch.",
+      "id": "H-030-032-01",
+      "phase": "EXP-032",
+      "statement": "An AVX2 multi-buffer kernel beats the production C batch on an AVX-512 host (fallback-tier claim only).",
+      "status": "VERIFIED IMPROVEMENT"
+    },
+    {
+      "evidence": "Pooled 2.861x [2.671, 3.089] vs C batch, significant in every session; 0.726x of v512dual batch; search 0.349x of dual search. exp032/EXP032_REPORT.md section 5.2. Not integrated; cross-host rates unverified.",
+      "id": "H-030-032-02",
+      "phase": "EXP-032",
+      "statement": "A SHA-NI multi-stream kernel with the MSG1/MSG2 schedule (H-01, streams 4) beats the production C batch and is the strongest fallback for SHA-NI hosts without AVX-512.",
+      "status": "VERIFIED IMPROVEMENT"
+    },
+    {
+      "evidence": "Pooled 0.517x [0.497, 0.536] vs the production C batch, significantly slower in every session; the C batch runs OpenSSL MSG-schedule SHA-NI code. Never dispatched in production. exp032/EXP032_REPORT.md section 5.2.",
+      "id": "H-030-032-03",
+      "phase": "EXP-032",
+      "statement": "The production single-stream SHA-NI intrinsics kernel (bal_sha_intrin.c, scalar schedule) is a viable batch backend.",
+      "status": "ESTABLISHED NEGATIVE"
+    },
+    {
+      "evidence": "Three ways: flags batch_search loses to native dual search by 2.565x [2.320, 2.836]; dedicated flags search entry vs v512 search 0.967x [0.885, 1.059], not significant, gain bounded at about 1.06x; vs dual search 0.493x. Mechanism: search-scope digests are L1-resident, so there is no buffer traffic to save. exp032/EXP032_REPORT.md section 6. No integration.",
+      "id": "H-030-032-04",
+      "phase": "EXP-032",
+      "statement": "The EXP-022 flags output shape improves the real production search path, not merely the batch API.",
+      "status": "ESTABLISHED NEGATIVE"
+    },
+    {
+      "evidence": "E-graph saturation: rounds-only case converged at round 8 (2,388 enodes, 336 classes) with extraction costs identical; joint case capped at 35,615 enodes with costs identical. Soundness: 380,520 enode evaluations, 0 mismatches. exp033/MATHEMATICAL_INVESTIGATION.md section 2.1.",
+      "id": "H-033-01",
+      "phase": "EXP-033",
+      "statement": "A cheaper graph for the two-round SHA-256 round function exists within the word-level rewrite system R1 to R6.",
+      "status": "ESTABLISHED NEGATIVE"
+    },
+    {
+      "evidence": "Full-cone CEGIS at L = 5 returned synth unknown at the 600 s solver timeout: INCONCLUSIVE, not a refutation. Narrowed by H-033-03, H-033-04, H-033-13, H-033-14; the only unrefuted shape is E2 (H-033-05). exp033/MATHEMATICAL_INVESTIGATION.md sections 2.2 and 2.3.",
+      "id": "H-033-02",
+      "phase": "EXP-033",
+      "statement": "A straight-line program of 5 instructions over V = {ADD, LUT(any imm), ROTR(any k), SHR(any k)} computes a full round cone, against the proven 6-instruction incumbents.",
+      "status": "UNPROVEN BREAKTHROUGH"
+    },
+    {
+      "evidence": "CEGIS at L = 3 UNSAT at iteration 0 on a 34-example seed; the 4-instruction incumbent is z3-proven exact and matches on 200,000 differentials, 0 mismatches. Sigma0 minimum is exactly 4. exp033/MATHEMATICAL_INVESTIGATION.md section 2.3.",
+      "id": "H-033-03",
+      "phase": "EXP-033",
+      "statement": "Sigma0 is computable in 3 instructions over V given the produced word and arbitrary independent side values.",
+      "status": "ESTABLISHED NEGATIVE"
+    },
+    {
+      "evidence": "CEGIS at L = 3 UNSAT at iteration 0 on a 34-example seed; 4-instruction incumbent z3-proven exact, 200,000 differentials, 0 mismatches. Sigma1 minimum is exactly 4. exp033/MATHEMATICAL_INVESTIGATION.md section 2.3.",
+      "id": "H-033-04",
+      "phase": "EXP-033",
+      "statement": "Sigma1 is computable in 3 instructions over V given the produced word and arbitrary independent side values.",
+      "status": "ESTABLISHED NEGATIVE"
+    },
+    {
+      "evidence": "E1 excluded for both cones by H-033-13 and H-033-14. E2 remains open for both cones: no program of that shape is known or was found, and its impossibility is not claimed. exp033/MATHEMATICAL_INVESTIGATION.md section 2.3.",
+      "id": "H-033-05",
+      "phase": "EXP-033",
+      "statement": "A 5-instruction cone exists via shape E1 (correlation exploitation) or shape E2 (Sigma output routed through the Maj or Ch value).",
+      "status": "UNPROVEN BREAKTHROUGH"
+    },
+    {
+      "evidence": "Re-derived from the taint boundary (nonce enters at W3, first consumed in round 3; W18 is the first expanded word it touches). Stated as conventional accounting, explicitly NOT a proven lower bound. exp033/MATHEMATICAL_INVESTIGATION.md section 3.2.",
+      "id": "H-033-06",
+      "phase": "EXP-033",
+      "statement": "The conventional accounting is 67 of 192 rounds reusable per template and 125 rounds per nonce.",
+      "status": "VERIFIED"
+    },
+    {
+      "evidence": "100,000 of 100,000 random samples and z3 UNSAT on the negation with fully symbolic template words, for both identities. exp033/MATHEMATICAL_INVESTIGATION.md section 3.1.",
+      "id": "H-033-07",
+      "phase": "EXP-033",
+      "statement": "The schedule delta identities D(W18) = sigma0(nonce) and D(W19) = nonce are exact.",
+      "status": "VERIFIED"
+    },
+    {
+      "evidence": "z3 UNSAT on the negation for both words. exp033/MATHEMATICAL_INVESTIGATION.md section 3.1.",
+      "id": "H-033-08",
+      "phase": "EXP-033",
+      "statement": "After 3 rounds, state words a and e are integer-affine in the nonce with slope 1.",
+      "status": "VERIFIED"
+    },
+    {
+      "evidence": "Refuted by a z3 counterexample (n1 = 539234578, n2 = 1283462784; D(n1 xor n2) = 43171369 vs D(n1) xor D(n2) = 3724592575), numerically re-verified. No linear schedule representation past W19. exp033/MATHEMATICAL_INVESTIGATION.md section 3.1.",
+      "id": "H-033-09",
+      "phase": "EXP-033",
+      "statement": "The W20 schedule delta is GF(2)-linear in the nonce delta.",
+      "status": "ESTABLISHED NEGATIVE"
+    },
+    {
+      "evidence": "Digest taint: 48 of 48 computed schedule words and 64 of 64 rounds are digest-dependent; 0 digest-independent rounds. Comparison early exit also saves no rounds. exp033/MATHEMATICAL_INVESTIGATION.md sections 3.3 and 3.4.",
+      "id": "H-033-10",
+      "phase": "EXP-033",
+      "statement": "Part of the outer compression is digest-independent and can be precomputed.",
+      "status": "ESTABLISHED NEGATIVE"
+    },
+    {
+      "evidence": "Consumption census: every produced word is bitwise-consumed in the very next round and arithmetically consumed 3 rounds later; no bitwise-free window exists. exp033/MATHEMATICAL_INVESTIGATION.md section 2.4.",
+      "id": "H-033-11",
+      "phase": "EXP-033",
+      "statement": "A redundant or carry-save representation defers resolution of produced words across the round boundary.",
+      "status": "ESTABLISHED NEGATIVE"
+    },
+    {
+      "evidence": "Every digest word depends on all 64 outer rounds; no proper prefix of the outer rounds determines any digest word, so no partial verdict exists before the full outer compression. exp033/MATHEMATICAL_INVESTIGATION.md section 3.4.",
+      "id": "H-033-12",
+      "phase": "EXP-033",
+      "statement": "Comparison early exit saves rounds in the outer hash.",
+      "status": "ESTABLISHED NEGATIVE"
+    },
+    {
+      "evidence": "Cone-conditioned CEGIS UNSAT at iteration 0 on a 16-example seed, all examples cone-realizable, every sub-DAG instruction counted. exp033/MATHEMATICAL_INVESTIGATION.md section 2.3.",
+      "id": "H-033-13",
+      "phase": "EXP-033",
+      "statement": "Sigma1 is computable in 3 instructions even exploiting the cone correlation s = d + T1.",
+      "status": "ESTABLISHED NEGATIVE"
+    },
+    {
+      "evidence": "Cone-conditioned CEGIS UNSAT at iteration 0 on a 16-example seed (two earlier attempts under heavier contention timed out at 900 s and are preserved as raw history). exp033/MATHEMATICAL_INVESTIGATION.md section 2.3.",
+      "id": "H-033-14",
+      "phase": "EXP-033",
+      "statement": "Sigma0 is computable in 3 instructions even exploiting the cone correlation s = T1 + T2.",
+      "status": "ESTABLISHED NEGATIVE"
+    },
+    {
+      "evidence": "10 targeted fault tests pass; randomised campaign 60 of 60 trials: 609,280 declared positions completed exactly, pairwise disjoint; 257,020 repeated computations accounted separately; all stale, duplicate and not-holder reports rejected and counted; 892 duplicate candidate submissions detected, verifier invoked once per unique candidate. exp035/PROOFS/PROOF_OBLIGATIONS.md and exp035/RAW_RESULTS/campaign_20261115T101733Z.json. Multi-machine overhead, latency and scaling UNVERIFIED; no production integration; fleet not activated.",
+      "id": "H-030-035-P",
+      "phase": "EXP-035",
+      "statement": "The lease, coordinator and candidate-queue design (proof obligations P1 to P6) keeps declared search coverage exact under worker death, restart, expiry, stealing and coordinator restart, with repeated work never counted as unique coverage.",
+      "status": "VERIFIED IN LOCAL SIMULATION ONLY"
+    },
+    {
+      "evidence": "Production implementation in mining/candidate_verify.py; independent audit PASS WITH NOTES, zero defects; submitblock-None-without-chain now records accepted False; overflow, zero and negative targets rejected with zero submitblock calls; auditor regtest blocks 1070 and 1123 chain_status tip. exp036/BLOCK_SUBMISSION_DESIGN.md and exp036/EXP036_POST_INTEGRATION_AUDIT.md.",
+      "id": "H-030-036-V",
+      "phase": "EXP-036",
+      "statement": "Routing every production candidate through exact verification (dual independent SHA-256d plus check_pow integer verdict) and chain-confirmed acceptance removes the false-block and float-judgement failure modes without letting an invalid candidate through.",
+      "status": "VERIFIED"
+    },
+    {
+      "evidence": "11 new adversarial cases (height-only change, same-count tx replacement, mintime as unkeyed per-build input, cache bound 128 over 330 prepares, held-object survival) plus the pre-existing gates; 3 safe over-keying findings, output bytes never change. Independent audit PASS, zero defects. exp034/JOB_TEMPLATE_ENGINE.md section 1.",
+      "id": "H-030-034-C",
+      "phase": "EXP-034",
+      "statement": "The EXP-025 template cache identity never serves one template's prepared work under another template's identity, and cached output is byte-identical to uncached construction.",
+      "status": "VERIFIED"
+    }
+  ],
+  "tier_note": "Statuses use the programme's three-tier discipline: VERIFIED or VERIFIED IMPROVEMENT only with reproduced measurement or proof; ESTABLISHED NEGATIVE for closures and refutations at stated bounds; UNPROVEN BREAKTHROUGH for plausible or merely unrefuted shapes with no measured rate. EXP-033's own HYPOTHESIS_REGISTRY.json is authoritative for H-033 entries.",
+  "title": "EXP-030 programme hypothesis registry (roll-up; per-phase registries remain authoritative)"
+}
