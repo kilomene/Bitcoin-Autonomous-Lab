@@ -2,9 +2,18 @@
 
 The full solo stack, ours end to end: Bitcoin Core supplies
 getblocktemplate; this server turns templates into Stratum jobs,
-validates shares with the lab's own PoW engine, and when a share
-meets the NETWORK target it assembles the complete block and
-submits it via submitblock. No third-party pool anywhere.
+validates shares, and when a share meets the NETWORK target it
+assembles the complete block and submits it via submitblock.
+No third-party pool anywhere.
+
+Candidate handling follows the EXP-036 pipeline: any share
+that meets the share target or claims the network target is
+re-verified exactly in mining/candidate_verify.py (independent
+pure-Python SHA-256d plus the strict check_pow target rules)
+before anything is submitted, and a submitted block counts as
+accepted only when the node's own chain state confirms it
+(best block hash, or the block in the active chain). A bare
+submitblock None no longer counts as success on its own.
 
 Conventions match Stratum V1 as implemented by the lab's client
 (mining/stratum_client.py), whose header builder is reused by the
@@ -33,8 +42,13 @@ import struct
 import threading
 import time
 
+from mining.candidate_verify import (classify_submit_result,
+                                       pow_limit_for_chain,
+                                       verify_candidate,
+                                       verify_chain_acceptance)
 from mining.pow import dsha256 as double_sha256
 from mining.pow import merkle_root, target_from_nbits
+from mining.pow_engine import POW_LIMIT_MAINNET
 
 
 class SoloNotReady(Exception):
@@ -92,12 +106,16 @@ def merkle_branch(txids):
 class SoloServer:
     def __init__(self, rpc, payout_address, share_difficulty=0.01,
                  tag=b"/BAL-solo/", expected_chain=None,
-                 allow_ibd=False):
+                 allow_ibd=False, pow_limit=None):
         self.rpc = rpc
         self.payout = payout_address
         self.share_difficulty = share_difficulty
         self.expected_chain = expected_chain
         self.allow_ibd = allow_ibd
+        # Explicit proof-of-work limit for exact verification;
+        # when None it is derived from the expected or reported
+        # chain (see _pow_limit).
+        self.pow_limit = pow_limit
         # Stratum difficulty 1 target: 0x00000000FFFF followed by
         # 26 zero bytes; share target = DIFF1 / difficulty.
         diff1 = int("00000000ffff" + "00" * 26, 16)
@@ -108,6 +126,10 @@ class SoloServer:
         self.job_seq = 0
         self.lock = threading.Lock()
         self.blocks_found = []
+        # Candidates that met a target on the fast compare but
+        # failed exact verification (EXP-036): recorded, never
+        # submitted.
+        self.candidates_rejected = []
         self.shares_accepted = 0
         self.shares_rejected = 0
         self.workers = {}
@@ -149,6 +171,21 @@ class SoloServer:
                 f"{info.get('headers')}); refusing to serve work")
         return info
 
+    def _pow_limit(self):
+        """The proof-of-work limit exact verification judges
+        against: the explicit constructor value when given,
+        else the expected chain's limit, else the limit of the
+        chain the node reports, else mainnet's (the strictest,
+        so an unreadable chain never widens the target)."""
+        if self.pow_limit is not None:
+            return self.pow_limit
+        if self.expected_chain:
+            return pow_limit_for_chain(self.expected_chain)
+        info = self.node_info()
+        if info:
+            return pow_limit_for_chain(info.get("chain"))
+        return POW_LIMIT_MAINNET
+
     # -- worker accounting ----------------------------------------------------
     def _worker_rec(self, worker):
         """Per-worker counters, created on first sight. Caller
@@ -177,6 +214,7 @@ class SoloServer:
                 "shares_rejected": self.shares_rejected,
                 "blocks_found": len(self.blocks_found),
                 "blocks": list(self.blocks_found),
+                "candidates_rejected": list(self.candidates_rejected),
                 "workers": {k: dict(v)
                             for k, v in self.workers.items()},
                 "current_job": None if cur is None else {
@@ -215,15 +253,21 @@ class SoloServer:
             t["height"], t["coinbasevalue"], script, placeholder,
             witness_commitment=commitment)
         marker = b"/BAL/" + placeholder
-        at = coinbase.index(marker) + len(b"/BAL/")
         # Serve the STRIPPED coinbase over Stratum: the worker hashes
         # what it assembles, and that hash must be the coinbase txid
         # (which excludes witness data). The server re-attaches the
         # witness (the fixed 32-byte reserved value) when it
         # assembles a winning block, which is exactly the form the
         # template's witness commitment was computed over.
+        # The split offset MUST be located in the stripped bytes:
+        # the full coinbase carries the 2-byte segwit marker and
+        # flag ahead of the input, so an offset taken from it
+        # lands 2 bytes late in the stripped form, leaving
+        # placeholder bytes in coinb1 and eating the first 2
+        # bytes after the extranonce slot (EXP-034 finding).
         from mining.engine import strip_witness
         stripped, has_witness = strip_witness(coinbase)
+        at = stripped.index(marker) + len(b"/BAL/")
         coinb1 = stripped[:at]
         coinb2 = stripped[at + 8:]
         txids = [bytes.fromhex(tx["txid"])[::-1] for tx in t["transactions"]]
@@ -315,8 +359,37 @@ class SoloServer:
         if err:
             self._count(worker, False)
             return {"accepted": False, "reason": err}
-        is_block = res["value"] <= job["target"]
-        is_share = res["value"] <= self.share_target
+        # Fast integer compare first: a submission meeting
+        # neither target is rejected here, exactly as before,
+        # and costs no verification work.
+        if not (res["value"] <= job["target"]
+                or res["value"] <= self.share_target):
+            self._count(worker, False)
+            return {"accepted": False, "reason": "low difficulty share"}
+        # EXP-036 exact verification gate. Only candidate hits
+        # reach this point, so the independent pure-Python
+        # verification never touches the search path. A
+        # candidate that fails here is rejected and is NEVER
+        # submitted, whatever the fast compare said.
+        v = verify_candidate(res["header"], self._pow_limit(),
+                             share_target=self.share_target)
+        if v["target"] != job["target"]:
+            # The reconstructed header's nBits decodes to a
+            # different target than the job it claims to belong
+            # to: the candidate cannot be trusted.
+            v = dict(v, classification="invalid",
+                     reason="header-target-mismatch")
+        if v["classification"] == "invalid":
+            rec = {"height": job["template"]["height"],
+                   "hash": res["digest"][::-1].hex(),
+                   "reason": v["reason"], "worker": worker}
+            with self.lock:
+                self.candidates_rejected.append(rec)
+            self._count(worker, False, candidate=True)
+            return {"accepted": False,
+                    "reason": f"exact verification failed: {v['reason']}"}
+        is_block = v["meets_network_target"]
+        is_share = v["meets_share_target"]
         if is_block:
             t = job["template"]
             txs = b"".join(bytes.fromhex(tx["data"])
@@ -326,21 +399,44 @@ class SoloServer:
                 coinbase = attach_witness(coinbase)
             block = (res["header"] + _varint(1 + len(t["transactions"]))
                      + coinbase + txs)
-            # submitblock returns None on acceptance and a reason
-            # string on rejection; a transport or RPC failure must
-            # not kill the connection handler or lose the record
-            # of a network-target candidate, so it is captured
-            # here and reported as a failed submission.
+            block_hash = res["digest"][::-1].hex()
+            # submitblock returns None when the node accepts the
+            # block for processing and a reason string otherwise;
+            # a transport or RPC failure must not kill the
+            # connection handler or lose the record of a
+            # network-target candidate, so it is captured here
+            # and reported as a failed submission.
+            rpc_error = None
             try:
                 r = self.rpc.call("submitblock", block.hex())
-                ok = r is None
             except Exception as exc:
+                rpc_error = exc
                 r = f"submitblock RPC failed: {exc}"
-                ok = False
-                print(f"solo-server: BLOCK SUBMISSION FAILED at "
-                      f"height {t['height']}: {r}", flush=True)
-            rec = {"height": t["height"], "hash": res["digest"][::-1].hex(),
-                   "submit_result": r, "accepted": ok}
+            classification = ("rpc-error" if rpc_error is not None
+                              else classify_submit_result(r))
+            # Pipeline step 12: the response is a claim, chain
+            # state is the fact. The block counts as accepted
+            # only when the node holds it in its active chain,
+            # the standard mining.engine.mine_cycle applies.
+            if rpc_error is None:
+                chain_status, chain_ok = verify_chain_acceptance(
+                    self.rpc, block_hash)
+            else:
+                chain_status, chain_ok = "unknown", False
+            ok = bool(chain_ok and classification
+                      in ("accepted", "duplicate"))
+            if not ok:
+                print(f"solo-server: BLOCK NOT ACCEPTED at height "
+                      f"{t['height']}: submitblock said {r!r} "
+                      f"({classification}), chain state "
+                      f"{chain_status}", flush=True)
+            rec = {"height": t["height"], "hash": block_hash,
+                   "submit_result": r,
+                   "submit_classification": classification,
+                   "chain_status": chain_status,
+                   "chain_verified": chain_ok,
+                   "verify_reason": v["reason"],
+                   "accepted": ok}
             with self.lock:
                 self.blocks_found.append(rec)
             self._count(worker, True, block=ok, candidate=True)
