@@ -50,7 +50,7 @@ def main():
     wallet = wallet_rpc(rpc)
     payout = wallet.call("getnewaddress", "", "bech32")
     miner = CpuMiner(rpc, payout)
-    assert miner.compute.backend in ("c", "v512"), miner.compute.describe()
+    assert miner.compute.backend in ("c", "v512", "v512dual"), miner.compute.describe()
     tip0 = rpc.get_block_count()
     out = miner.mine(2)
     assert out["accepted"] == 2, out
