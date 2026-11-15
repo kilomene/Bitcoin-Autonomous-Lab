@@ -3,9 +3,16 @@
 Generated from the JSONL session logs in this directory. Every number
 below is read from a log line, not written from memory.
 
-Evidence level reached: E2 (live protocol plus live hashing with a
-measured best hash). No share has been accepted by a pool yet, so no
-E3 claim is made anywhere in this repository.
+Evidence level reached: E3 (pool-accepted shares). The first share
+was accepted by public-pool.io at 2026-11-13 18:59:51 UTC
+(difficulty 41.35). A full-log census of evidence/mainnet-live.jsonl,
+recounted on 2026-11-15 for this correction, counts 347 share_result
+events: 339 accepted and 8 rejected. No block has been found and no
+earnings are claimed: the pool runs in solo payout mode, so the
+balance stays 0 BTC unless a full mainnet block is found. The three
+session sections below are the historical record of the 2026-11-13
+sessions that preceded the first accepted share; their per-session
+figures are unchanged.
 
 Session 1 note: pool difficulty was the default 100000, because the
 client did not yet send mining.suggest_difficulty. Session 2 sent the
