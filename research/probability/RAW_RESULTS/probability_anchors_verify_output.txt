@@ -1,0 +1,91 @@
+=== A. Per-hash probability and expected hashes (exact) ===
+T1                       = 26959535291011309493156476344723991336010898738574164086137773096960
+p(T1) exact              = 26959535291011309493156476344723991336010898738574164086137773096961/115792089237316195423570985008687907853269984665640564039457584007913129639936
+p(T1) decimal            = 2.3282709094019083e-10
+E(T1) exact              = 115792089237316195423570985008687907853269984665640564039457584007913129639936/26959535291011309493156476344723991336010898738574164086137773096961
+E(T1) decimal            = 4295032833.000015
+E(T1) / 2^32             = 1.0000152590218967
+E(T_limit)               = 4294967296  (exactly 2^32: True)
+T_limit / T1             = 1.0000152590218967
+
+=== B. P(at least one success in N trials): Bernoulli vs Poisson ===
+N = 2^32 at T1: Bernoulli form = 0.6321149454, Poisson form = 0.6321149454, abs diff = 4.283e-11
+1 - 1/e = 0.6321205588 (the familiar shape; not exact here)
+
+=== C. Quantile anchors for the exponential waiting time ===
+Waiting time is exponential with mean mu = E/R (rate lambda = R/E).
+CDF F(t) = 1 - exp(-lambda t); quantile t_q = -ln(1-q) / lambda.
+q = 0.5   multiplier -ln(1-q) = 0.6931471806   CDF(multiplier x mean) = 0.5000000000  (must equal q)
+q = 0.9   multiplier -ln(1-q) = 2.3025850930   CDF(multiplier x mean) = 0.9000000000  (must equal q)
+q = 0.95  multiplier -ln(1-q) = 2.9957322736   CDF(multiplier x mean) = 0.9500000000  (must equal q)
+q = 0.99  multiplier -ln(1-q) = 4.6051701860   CDF(multiplier x mean) = 0.9900000000  (must equal q)
+ln2  = 0.6931471806  -> median = ln2 x mean
+ln10 = 2.3025850930  -> p90    = ln10 x mean
+ln20 = 2.9957322736  -> p95    = ln20 x mean
+ln100= 4.6051701860  -> p99    = ln100 x mean
+
+=== D. Difficulty form bridge ===
+Difficulty D(T) = T1 / T. Exact: E(T) = 2^256 / (T + 1).
+Difficulty form: E approx D * 2^32. The two differ by the
+factor (T1 + 1) / (2^256 / 2^32) evaluated at the target:
+T1 (D=1): exact E = 4295032833.000015, D*2^32 = 4294967296.000000, ratio = 1.0000152590218967
+At smaller targets (larger D) the +1 terms vanish relative to T
+and the difficulty form's relative error tends to (T1+1)/2^224 - 1
+= -1.525879e-05 plus a 1/T term.
+
+=== E. Worked tables ===
+--- Genesis target: D = 1, expected hashes (D x 2^32) = 4.294967e+09
+  R = 20.6 MH/s (measured, programme record): mean = 2.084936e+02 s (6.606762e-06 years)
+    median = 1.445167e+02 s, p90 = 4.800742e+02 s, p95 = 6.245909e+02 s, p99 = 9.601483e+02 s
+    P(at least one in              day) = 1.000000e+00 (lambda = 4.144013e+02)
+    P(at least one in             week) = 1.000000e+00 (lambda = 2.900809e+03)
+    P(at least one in month (30.4375 d)) = 1.000000e+00 (lambda = 1.261334e+04)
+    P(at least one in  year (365.25 d)) = 1.000000e+00 (lambda = 1.513601e+05)
+    P(at least one in        ten years) = 1.000000e+00 (lambda = 1.513601e+06)
+
+--- Difficulty 1 (same target as genesis by definition of D): D = 1, expected hashes (D x 2^32) = 4.294967e+09
+  R = 500 GH/s (objective): mean = 8.589935e-03 s (2.721986e-10 years)
+    median = 5.954089e-03 s, p90 = 1.977906e-02 s, p95 = 2.573314e-02 s, p99 = 3.955811e-02 s
+    P(at least one in              day) = 1.000000e+00 (lambda = 1.005828e+07)
+    P(at least one in             week) = 1.000000e+00 (lambda = 7.040799e+07)
+    P(at least one in month (30.4375 d)) = 1.000000e+00 (lambda = 3.061490e+08)
+    P(at least one in  year (365.25 d)) = 1.000000e+00 (lambda = 3.673788e+09)
+    P(at least one in        ten years) = 1.000000e+00 (lambda = 3.673788e+10)
+  R = 140 TH/s (objective): mean = 3.067834e-05 s (9.721379e-13 years)
+    median = 2.126460e-05 s, p90 = 7.063948e-05 s, p95 = 9.190409e-05 s, p99 = 1.412790e-04 s
+    P(at least one in              day) = 1.000000e+00 (lambda = 2.816319e+09)
+    P(at least one in             week) = 1.000000e+00 (lambda = 1.971424e+10)
+    P(at least one in month (30.4375 d)) = 1.000000e+00 (lambda = 8.572172e+10)
+    P(at least one in  year (365.25 d)) = 1.000000e+00 (lambda = 1.028661e+12)
+    P(at least one in        ten years) = 1.000000e+00 (lambda = 1.028661e+13)
+
+--- Current-era example (2026-11-14 retarget): D = 134,823,837,323,272, expected hashes (D x 2^32) = 5.790640e+23
+  R = 20.6 MH/s (measured, programme record): mean = 2.810990e+16 s (8.907490e+08 years)
+    median = 1.948430e+16 s, p90 = 6.472544e+16 s, p95 = 8.420974e+16 s, p99 = 1.294509e+17 s
+    P(at least one in              day) = 3.073652e-12 (lambda = 3.073650e-12)
+    P(at least one in             week) = 2.151557e-11 (lambda = 2.151555e-11)
+    P(at least one in month (30.4375 d)) = 9.355428e-11 (lambda = 9.355422e-11)
+    P(at least one in  year (365.25 d)) = 1.122651e-09 (lambda = 1.122651e-09)
+    P(at least one in        ten years) = 1.122651e-08 (lambda = 1.122651e-08)
+  R = 500 GH/s (objective): mean = 1.158128e+12 s (3.669886e+04 years)
+    median = 8.027531e+11 s, p90 = 2.666688e+12 s, p95 = 3.469441e+12 s, p99 = 5.333376e+12 s
+    P(at least one in              day) = 7.460315e-08 (lambda = 7.460316e-08)
+    P(at least one in             week) = 5.222220e-07 (lambda = 5.222221e-07)
+    P(at least one in month (30.4375 d)) = 2.270731e-06 (lambda = 2.270734e-06)
+    P(at least one in  year (365.25 d)) = 2.724843e-05 (lambda = 2.724880e-05)
+    P(at least one in        ten years) = 2.724509e-04 (lambda = 2.724880e-04)
+  R = 140 TH/s (objective): mean = 4.136171e+09 s (1.310674e+02 years)
+    median = 2.866975e+09 s, p90 = 9.523886e+09 s, p95 = 1.239086e+10 s, p99 = 1.904777e+10 s
+    P(at least one in              day) = 2.088867e-05 (lambda = 2.088888e-05)
+    P(at least one in             week) = 1.462115e-04 (lambda = 1.462222e-04)
+    P(at least one in month (30.4375 d)) = 6.356033e-04 (lambda = 6.358054e-04)
+    P(at least one in  year (365.25 d)) = 7.600633e-03 (lambda = 7.629665e-03)
+    P(at least one in        ten years) = 7.345869e-02 (lambda = 7.629665e-02)
+
+=== F. Genesis-target times at the measured live rate (exact p) ===
+mean   = 208.4967 s
+median = 144.5189 s
+p90    = 480.0815 s
+p95    = 624.6004 s
+p99    = 960.1630 s
+ALL ANCHORS COMPUTED
