@@ -39,10 +39,15 @@ ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, ROOT)
 
 from mining.autopilot import EvidenceCounter, evidence_stats
-from mining.mining_statistics import (CATEGORIES, MiningStatistics,
+from mining.mining_statistics import (CATEGORIES, FrontierAccountant,
+                                      MiningStatistics, SafeRecorder,
                                       WindowedRate)
-from mining.probability import (expected_hashes, expected_seconds,
-                                prob_at_least_one)
+from mining.probability import (expected_hashes, expected_hashes_exact,
+                                expected_seconds, median_seconds,
+                                percentile_seconds, prob_at_least_one,
+                                prob_at_least_one_exact,
+                                prob_at_least_one_hashes,
+                                quantile_seconds)
 
 
 def ev_line(event, ts, **kw):
@@ -306,6 +311,301 @@ def test_probability():
           "and identical to the research originals")
 
 
+def test_probability_percentiles():
+    """BR-011 acceptance anchors, as prescribed by
+    research/probability/BITCOIN_MINING_PROBABILITY_MODEL.md
+    section 8 when the functions were specified. The full
+    battery lives in tests/test_probability_percentiles.py;
+    the anchors are pinned here too because the model names
+    this suite as their home."""
+    from fractions import Fraction
+    t1 = 0xFFFF << 208  # genesis (difficulty-1) target
+    for r, d in ((20.6e6, 8.0e13), (1 << 32, 1.0)):
+        mean = expected_seconds(r, d)
+        assert abs(median_seconds(r, d)
+                   - math.log(2) * mean) <= 1e-12 * mean
+        assert abs(percentile_seconds(r, d, 90)
+                   - math.log(10) * mean) <= 1e-12 * mean
+        assert abs(percentile_seconds(r, d, 95)
+                   - math.log(20) * mean) <= 1e-12 * mean
+        assert abs(percentile_seconds(r, d, 99)
+                   - math.log(100) * mean) <= 1e-12 * mean
+        for q in (0.5, 0.9, 0.95, 0.99):
+            back = prob_at_least_one(
+                r, d, quantile_seconds(r, d, q))
+            assert abs(back - q) < 1e-12, (r, d, q, back)
+    exact = expected_hashes_exact(t1)
+    assert exact == Fraction(1 << 256, t1 + 1)
+    assert abs(float(exact) - 4295032833.000015) < 1e-5
+    p_diff = prob_at_least_one_hashes(1, 1 << 32)
+    p_exact = prob_at_least_one_exact(t1, 1 << 32)
+    assert abs(p_diff - 0.6321205589) < 1e-9, p_diff
+    assert abs(p_exact - 0.6321149454) < 1e-9, p_exact
+    # The anchors differ in the fifth decimal and must stay
+    # separate: each form fails the other's tolerance.
+    assert abs(p_diff - 0.6321149454) > 1e-9
+    assert abs(p_exact - 0.6321205589) > 1e-9
+    print("ok: BR-011 percentile and exact-target anchors hold, "
+          "with the two 63.2 percent anchors pinned separately")
+
+
+def test_frontier_accountant_separation():
+    stats = MiningStatistics()
+    acc = FrontierAccountant(stats)
+    h1, h2 = b"\x01" * 80, b"\x02" * 80
+    unique, repeated = acc.record_search(
+        h1, 0, 100, True, worker="w", backend="b")
+    assert (unique, repeated) == (100, 0)
+    assert stats.total("backend_hashes") == 100
+    assert stats.total("actual_computations") == 100
+    assert stats.total("unique_nonces") == 100
+    assert stats.total("unique_coverage") == 100
+    assert stats.total("unique_headers") == 1
+    assert stats.total("repeated_work") == 0
+    # The identical interval again: real work, all repeated,
+    # and the unique counters do not move.
+    unique, repeated = acc.record_search(
+        h1, 0, 100, True, worker="w", backend="b")
+    assert (unique, repeated) == (0, 100)
+    assert stats.total("backend_hashes") == 200
+    assert stats.total("actual_computations") == 200
+    assert stats.total("unique_nonces") == 100
+    assert stats.total("unique_coverage") == 100
+    assert stats.total("repeated_work") == 100
+    # A hit chunk: its new positions are examined (unique
+    # nonces) but the chunk did not complete, so coverage does
+    # not advance over it (EXP-035 completed chunks only).
+    unique, repeated = acc.record_search(
+        h1, 100, 50, False, worker="w", backend="b")
+    assert (unique, repeated) == (50, 0)
+    assert stats.total("unique_nonces") == 150
+    assert stats.total("unique_coverage") == 100
+    # A second header is a second unique header.
+    acc.record_search(h2, 0, 10, True)
+    assert stats.total("unique_headers") == 2
+    snap = stats.snapshot()
+    assert set(snap["totals"].keys()) == set(CATEGORIES)
+    assert snap["per_worker"]["w"]["backend_hashes"] == 250
+    assert snap["per_backend"]["b"]["repeated_work"] == 100
+    assert acc.errors == 0
+    print("ok: frontier accountant separates unique coverage, "
+          "actual computations and repeated work exactly, "
+          "and a hit chunk earns no coverage")
+
+
+def test_safe_recorder_isolation():
+    class BrokenStats:
+        def record(self, *a, **kw):
+            raise RuntimeError("statistics exploded")
+
+    rec = SafeRecorder(BrokenStats())
+    rec.record("backend_hashes", 5)
+    rec.record("candidates", 1)
+    assert rec.errors == 2, rec.errors
+    # Even a caller-side mistake (unknown category) is
+    # swallowed and counted, never raised into a search loop.
+    stats = MiningStatistics()
+    rec2 = SafeRecorder(stats)
+    rec2.record("no_such_category", 1)
+    assert rec2.errors == 1
+    assert stats.total("backend_hashes") == 0
+    rec2.record("backend_hashes", 7)
+    assert rec2.errors == 1
+    assert stats.total("backend_hashes") == 7
+    print("ok: SafeRecorder swallows and counts every "
+          "recording failure; mining never sees it")
+
+
+_WIRING_SCRIPT = "0014" + "00" * 20
+_WIRING_PAYOUT = "bcrt1qcheckpoint0000000000000000000000000000"
+
+
+def _wiring_template():
+    from mining.pow import target_from_nbits
+    return {
+        "version": 0x20000000,
+        "previousblockhash": "11" * 32,
+        "transactions": [],
+        "coinbaseaux": {"flags": ""},
+        "coinbasevalue": 5_000_000_000,
+        "target": format(target_from_nbits(0x207FFFFF), "064x"),
+        "bits": "207fffff",
+        "height": 100,
+        "mintime": 1,
+        "curtime": 1700000000,
+    }
+
+
+class _WiringRPC:
+    """Fake Core for the engine wiring test: serves one fixed
+    regtest template and confirms submitted blocks in its best
+    chain, computing the block hash the way Core would see
+    it."""
+
+    def __init__(self, template):
+        self.template = template
+        self.best = "00" * 32
+
+    def call(self, method, *args):
+        if method == "getblocktemplate":
+            return dict(self.template)
+        if method == "validateaddress":
+            return {"isvalid": True,
+                    "scriptPubKey": _WIRING_SCRIPT}
+        if method == "submitblock":
+            from mining.pow import dsha256
+            block = bytes.fromhex(args[0])
+            self.best = dsha256(block[:80])[::-1].hex()
+            return None
+        raise AssertionError(f"unexpected RPC call {method}")
+
+    def get_blockchain_info(self):
+        return {"chain": "regtest", "blocks": 99, "headers": 99}
+
+    def get_best_block_hash(self):
+        return self.best
+
+
+class _MissCompute:
+    backend = "fake"
+
+    def search_first_counted(self, header, target, start, count):
+        return None, count, 0.0
+
+
+class _HitCompute:
+    backend = "fake"
+
+    def search_first_counted(self, header, target, start, count):
+        return (start + 7, b"\x00" * 32), 8, 0.0
+
+
+def test_engine_statistics_wiring():
+    from mining.engine import MiningEngine
+    template = _wiring_template()
+    engine = MiningEngine(_WiringRPC(template), _WIRING_PAYOUT,
+                          compute=_MissCompute(),
+                          batch_size=1 << 16,
+                          extranonce_space=(0, 1))
+    result = engine.mine_cycle(max_batches=2,
+                               deadline_seconds=10000)
+    assert result["hashes"] == 2 * (1 << 16), result
+    totals = engine.statistics.snapshot()["totals"]
+    assert totals["backend_hashes"] == 2 * (1 << 16), totals
+    assert totals["actual_computations"] == 2 * (1 << 16), totals
+    assert totals["unique_nonces"] == 2 * (1 << 16), totals
+    assert totals["unique_coverage"] == 2 * (1 << 16), totals
+    assert totals["unique_headers"] == 1, totals
+    assert totals["repeated_work"] == 0, totals
+    assert totals["candidates"] == 0, totals
+    # A second cycle over the same template without a
+    # checkpoint re-examines the same positions: the work is
+    # real (backend and actual grow) but it is repeated, and
+    # the unique counters must not move.
+    engine.mine_cycle(max_batches=2, deadline_seconds=10000)
+    totals = engine.statistics.snapshot()["totals"]
+    assert totals["backend_hashes"] == 4 * (1 << 16), totals
+    assert totals["actual_computations"] == 4 * (1 << 16), totals
+    assert totals["unique_nonces"] == 2 * (1 << 16), totals
+    assert totals["unique_coverage"] == 2 * (1 << 16), totals
+    assert totals["repeated_work"] == 2 * (1 << 16), totals
+    print("ok: MiningEngine.mine_cycle records search "
+          "accounting as it happens, and a checkpoint-less "
+          "rescan lands in repeated_work, not in coverage")
+
+    hit_engine = MiningEngine(_WiringRPC(template),
+                              _WIRING_PAYOUT,
+                              compute=_HitCompute(),
+                              batch_size=1 << 16,
+                              extranonce_space=(0, 1))
+    result = hit_engine.mine_cycle(max_batches=2,
+                                   deadline_seconds=10000)
+    assert result["accepted"] is True, result
+    totals = hit_engine.statistics.snapshot()["totals"]
+    assert totals["candidates"] == 1, totals
+    assert totals["blocks_submitted"] == 1, totals
+    assert totals["blocks_accepted"] == 1, totals
+    assert totals["blocks_rejected"] == 0, totals
+    assert totals["backend_hashes"] == 8, totals
+    assert totals["unique_nonces"] == 8, totals
+    # The hit chunk did not complete: no coverage over it.
+    assert totals["unique_coverage"] == 0, totals
+    # Verifier-defined counters are not claimed by this path.
+    assert totals["valid_candidates"] == 0, totals
+    assert totals["network_target_candidates"] == 0, totals
+    print("ok: a mine_cycle block records candidates, "
+          "blocks_submitted and blocks_accepted separately, "
+          "with no coverage for the unfinished hit chunk")
+
+
+def test_mainnet_live_statistics_wiring():
+    from mining import mainnet_live
+    from mining.stratum_client import StratumClient
+
+    stats = MiningStatistics()
+    rec = SafeRecorder(stats)
+    mainnet_live.record_candidate_event(
+        rec, True, True, "worker1", "v512dual")
+    mainnet_live.record_candidate_event(
+        rec, False, False, "worker1", "v512dual")
+    totals = stats.snapshot()["totals"]
+    assert totals["candidates"] == 2, totals
+    assert totals["verification_hashes"] == 4, totals
+    assert totals["valid_candidates"] == 1, totals
+    assert totals["network_target_candidates"] == 1, totals
+    mainnet_live.record_share_result(rec, True, "worker1",
+                                     "v512dual")
+    mainnet_live.record_share_result(rec, False, "worker1",
+                                     "v512dual")
+    totals = stats.snapshot()["totals"]
+    assert totals["pool_shares_accepted"] == 1, totals
+    assert totals["pool_shares_rejected"] == 1, totals
+    snap = stats.snapshot()
+    assert snap["per_worker"]["worker1"]["candidates"] == 2
+    assert snap["per_backend"]["v512dual"][
+        "pool_shares_accepted"] == 1
+    print("ok: mainnet_live candidate and share-result "
+          "recorders land in separated counters, per worker "
+          "and per backend")
+
+    # The production hook: a StratumClient mining.submit
+    # verdict reaches the recorder through on_share_result,
+    # as it happens, in the reader path.
+    class CollectingEvidence:
+        def __init__(self):
+            self.events = []
+
+        def log(self, event, **fields):
+            self.events.append((event, fields))
+
+    stats2 = MiningStatistics()
+    rec2 = SafeRecorder(stats2)
+    client = StratumClient("127.0.0.1", 1, "u", "x",
+                           CollectingEvidence())
+    assert client.on_share_result is None
+    client.on_share_result = lambda accepted: \
+        mainnet_live.record_share_result(rec2, accepted, "w", "b")
+    client.methods_by_id[7] = "mining.submit"
+    client._handle({"id": 7, "result": True})
+    client.methods_by_id[8] = "mining.submit"
+    client._handle({"id": 8, "result": False})
+    totals2 = stats2.snapshot()["totals"]
+    assert totals2["pool_shares_accepted"] == 1, totals2
+    assert totals2["pool_shares_rejected"] == 1, totals2
+    # A failing hook cannot kill the reader path, and with no
+    # hook set the client behaves exactly as before.
+    client.on_share_result = lambda accepted: 1 / 0
+    client.methods_by_id[9] = "mining.submit"
+    client._handle({"id": 9, "result": True})
+    client.on_share_result = None
+    client.methods_by_id[10] = "mining.submit"
+    client._handle({"id": 10, "result": True})
+    assert totals2["pool_shares_accepted"] == 1, totals2
+    print("ok: StratumClient share verdicts reach the "
+          "statistics through the hook as they happen; a "
+          "failing or absent hook changes nothing")
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         log, state = test_counter_beyond_old_window(tmp)
@@ -315,6 +615,11 @@ def main():
     test_statistics_separation()
     test_windowed_rate()
     test_probability()
+    test_probability_percentiles()
+    test_frontier_accountant_separation()
+    test_safe_recorder_isolation()
+    test_engine_statistics_wiring()
+    test_mainnet_live_statistics_wiring()
     print("ALL EXP-037 STATISTICS TESTS PASSED")
     return 0
 
