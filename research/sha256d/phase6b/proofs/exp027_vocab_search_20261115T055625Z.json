@@ -1,0 +1,138 @@
+{
+  "experiment": "EXP-027",
+  "kind": "extended-vocabulary automated search",
+  "generated_utc": "2026-11-15T05:56:25Z",
+  "harness_extended": "discovery_harness.py (unmodified) + this file",
+  "cpu": "AMD EPYC 9D25 126-Core Processor",
+  "S1_shuffle_search": [
+    {
+      "target": "ROTR13",
+      "patterns_tested": 625,
+      "test_inputs": 10038,
+      "survivors": 0
+    },
+    {
+      "target": "Sigma0",
+      "patterns_tested": 625,
+      "test_inputs": 10038,
+      "survivors": 0
+    }
+  ],
+  "S2_byte_locality": {
+    "Sigma0_output_byte_input_bytes": {
+      "0": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "1": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "2": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "3": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "byte_local": false
+  },
+  "S3_harness_spotcheck": {
+    "Ch_ternlog_imm": 202,
+    "Ch_proof": "z3 UNSAT"
+  },
+  "S3_extraction_table": [
+    {
+      "cone": "Sigma0 / Sigma1 (per round)",
+      "V0_exp020_vocab": 4,
+      "plus_GFNI": {
+        "floor": 11,
+        "constructive": 35,
+        "note": "floor: every output byte depends on all 4 input bytes (S2), so at least 4 partial vectors, each at least a shuffle plus a GFNI, plus 3 XOR combines. Constructive: 4 byte slices x (1 broadcast + 4 GFNI + 3 byte blends) + 3 XOR."
+      },
+      "plus_VPSHUFB": {
+        "best": 10,
+        "note": "3 rotations in shuffle form at 4 ops each would be 12; the best mixed form keeps VPROLD. Pure shuffle rotation measured at 2.00x the VPROLD price."
+      },
+      "plus_carrysave": "not applicable (no addition)",
+      "plus_VPMADD52": "not applicable (no addition)"
+    },
+    {
+      "cone": "sigma0 / sigma1 (per schedule word)",
+      "V0_exp020_vocab": 4,
+      "plus_GFNI": {
+        "floor": 11,
+        "constructive": 35,
+        "note": "same linearity and dependency shape as Sigma0 (L1, L2 method)"
+      },
+      "plus_VPSHUFB": {
+        "best": 10,
+        "note": "as Sigma0"
+      },
+      "plus_carrysave": "not applicable (no addition)",
+      "plus_VPMADD52": "not applicable (no addition)"
+    },
+    {
+      "cone": "ROTR by a non-byte-multiple amount",
+      "V0_exp020_vocab": 1,
+      "plus_GFNI": "refuted (single affine is per-byte; a rotation is not byte-local)",
+      "plus_VPSHUFB": {
+        "best": 4,
+        "note": "shuffle + 2 shifts + OR; measured 2.00x the VPROLD price (exp027 micro)"
+      },
+      "plus_carrysave": "not applicable",
+      "plus_VPMADD52": "not applicable"
+    },
+    {
+      "cone": "Ch / Maj",
+      "V0_exp020_vocab": 1,
+      "plus_GFNI": "refuted for every affine form (non-affinity counterexamples, L1)",
+      "plus_VPSHUFB": "no form (bitwise cone, bytes are not permuted by Ch or Maj)",
+      "plus_carrysave": "not applicable",
+      "plus_VPMADD52": "not applicable"
+    },
+    {
+      "cone": "T1 five-operand sum",
+      "V0_exp020_vocab": 4,
+      "plus_GFNI": "not applicable (arithmetic cone)",
+      "plus_VPSHUFB": "not applicable",
+      "plus_carrysave": {
+        "best": 6,
+        "note": "one carry-save level at the corrected compressor price 3, then 3 VPADDD (EXP-020 pricing table); two levels cost 8"
+      },
+      "plus_VPMADD52": {
+        "best": 5,
+        "note": "4 VPMADD52LUQ accumulations into a 52-bit accumulator plus 1 mask to 32 bits; exactness proven (L6) and differential-tested at 1,000,000 samples"
+      }
+    },
+    {
+      "cone": "schedule four-operand sum",
+      "V0_exp020_vocab": 3,
+      "plus_GFNI": "not applicable (arithmetic cone)",
+      "plus_VPSHUFB": "not applicable",
+      "plus_carrysave": {
+        "best": 5,
+        "note": "EXP-019/EXP-020 pricing; measured loser at every forced-resolution separation"
+      },
+      "plus_VPMADD52": {
+        "best": 4,
+        "note": "3 accumulations + 1 mask; same exactness argument as T1, one fewer operand"
+      }
+    },
+    {
+      "cone": "full round + schedule (joint census)",
+      "V0_exp020_vocab": 28,
+      "extensions_combined": "no extension lowers any cone in the table, so no combined extraction below 28 exists within the searched forms; this is a statement about the stated vocabularies and constructions, not a global lower bound"
+    }
+  ]
+}
