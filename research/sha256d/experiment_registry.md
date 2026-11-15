@@ -1142,7 +1142,7 @@ submission, EXP-037 statistics and probability, EXP-038
 autonomous operations: all RESERVED, not started. This
 supersedes EXP-028's naming of AVX2 as the EXP-030
 candidate; AVX2 multi-buffer work sits inside EXP-032.
-Next unreserved ID: EXP-039.
+Next unreserved ID: EXP-041.
 
 ## EXP-032 record (2026-11-15)
 
@@ -1257,3 +1257,242 @@ rounds digest-dependent), and comparison early exit
 saves no rounds. No VERIFIED IMPROVEMENT is claimed:
 no rate was measured, and a proven identity is a
 mathematical result, not a speedup.
+## EXP-039 record (2026-11-15)
+
+EXP-039 (Phase 002 step 1: fallback tier integration)
+COMPLETE 2026-11-15, with production changes. Record:
+exp039/EXP039_REPORT.md; raw benchmark sessions and
+analysis under exp039/RAW_RESULTS/. The EXP-032
+verified kernels are now production dispatch tiers in
+gpu/engine.py: order CUDA, v512dual, v512, shani
+(SHA-NI H-01 multi-stream at streams 4), avx2 (AVX2
+multi-buffer, 8 lanes), C, hashlib. Kernel sources
+ported from exp032/src/ with byte-identical kernel
+bodies (mining/cpu/bal_avx2_mb.c, bal_shani_streams.c,
+bal_shani_core.h), plus a flag-free runtime probe
+(mining/cpu/bal_fallback_probe.c) gating each tier by
+CPUID in the established pattern; restricted build
+flags only (kernel TUs -mavx2 and -msha -mssse3, probe
+TU no vector flags), D-1 hasattr discipline on every
+new ctypes signature. Both tiers serve batch AND
+search (the EXP-022 flags precedent did not force
+batch-only: both kernel forms carry honest counted
+search entries; the SHA-NI form hashes no dummy lanes,
+so its backend count equals attempted exactly).
+Correctness: 124,351 batch digests per kernel through
+the ComputeEngine seam byte-identical to hashlib,
+candidate sets identical at densities 0, 2^-16, 2^-8
+and 1, planted-hit and no-hit search exactness, one
+fresh regtest block per tier forced active (shani
+height 1293, avx2 height 1294), suite
+tests/test_exp039_fallback_integration.py wired as
+make test-exp039 in test-all. Benchmarks under the
+EXP-017 protocol (3 sessions per comparison, 120
+paired 65,536-hash blocks each, randomised AB or BA,
+adjusted bootstrap CI above 0 in every session and
+pooled): batch scope category D, avx2 vs C pooled
+1.252x [1.185, 1.322] and shani streams 4 vs C pooled
+2.812x [2.573, 3.095], both VERIFIED IMPROVEMENT;
+search scope category E, avx2 vs C pooled 1.300x
+[1.217, 1.390] and shani vs C pooled 2.887x
+[2.646, 3.154], both VERIFIED IMPROVEMENT. Host AMD
+EPYC 9D25 (SHA-NI present); refusal behaviour on a
+SHA-less host is gated by construction and by the
+suite's forced-fallback gates but was not executed on
+the Intel Xeon 8321HC this session. The live mainnet
+miner was not restarted; nothing was pushed.
+
+## EXP-040 record (2026-11-15)
+
+EXP-040 (Phase 002 step 2: category F end-to-end
+pipeline benchmark) COMPLETE 2026-11-15, harness plus
+measurements, no production changes. Record:
+exp040/EXP040_REPORT.md; harness exp040/category_f.py;
+analysis exp040/exp040_analyze.py; raw sessions under
+exp040/RAW_RESULTS/. The harness times the unmodified
+production GBT pipeline (MiningEngine.mine_cycle against
+the regtest Core node, v512dual backend) as one system,
+with stage attribution by wrapping the harness's own
+engine instance at the RPC, prepare/build and compute
+seams, and the EXP-036 exact verifier timed on every
+accepted block. Campaign: 63 timed runs, 0 failed, every
+run one accepted block (heights A 1345 to 1370, C 1372
+to 1388, B 1392 to 1417), every header EXP-036 verified.
+Category F results (medians, contended single VM,
+regtest difficulty; not hash rates): empty template
+0.065 s per block, non-search overhead 43.5 ms per block
+(fraction 0.930); loaded template (501 transactions)
+0.215 s per block, overhead 206.3 ms (fraction 0.992),
+prepare plus construct 147x the empty cost; amplified
+target variant (search target divided by 2^24, about
+2^25 counted hashes per block) overhead fraction 0.015
+at the same fixed overhead (49.5 ms). EXP-036
+verification costs 2.5 to 3.9 ms per candidate. Suite
+tests/test_exp040_category_f.py wired as make
+test-exp040 in test-all. Host AMD EPYC 9D25; the live
+mainnet miner was not restarted; nothing was pushed.
+
+## EXP-041 record (2026-11-15)
+
+EXP-041 (Phase 002 step 3: the 29 vs 28 operation
+codegen gap campaign) COMPLETE 2026-11-15. The
+production AVX-512 MB kernel (mining/cpu/
+bal_avx512_mb.c) emits 29 vector ALU ops per
+steady-state round: gcc fuses every classic Boolean
+cone into a single VPTERNLOGD except Maj, which it
+emits as a chained pair (0x60 then 0x78). EXP-020
+proved the 28-op form optimal in the vocabulary.
+Six research variants of the production kernel were
+built under the restricted flag set and censused by
+objdump of the v_compress16 loop body: source-level
+Maj restructurings (Maj_alt_A, Maj_alt_B, and an OR
+form) all still emit 29 (gcc normalises them to a
+two-ternlog Maj); flag variations (-O2 and
+-mtune=znver3) also emit 29; only the explicit
+VPTERNLOGD intrinsic forms reach 28 (tmaj: Maj
+0xE8 only; tfull: Ch 0xCA plus Maj 0xE8, the
+P6C-007 form). The production DualMask search body
+(v_compress16x2_reg) already emits 28 per round;
+the gap survives in the v512 kernel and in the dual
+library's batch and remainder path (v_compress16).
+Correctness: all six variants pass the standard
+gate set (108,000 differentials vs hashlib each,
+genesis, boundaries, target equality, exact wave
+accounting; 102 checks, 0 failures). Benchmarks
+under the EXP-017 protocol (3 sessions of 160
+pairs each, 65,536-hash blocks, 2 threads): tmaj
+batch vs production v512 batch (category D) pooled
+adjusted log-ratio -0.0006 (CI -0.106 to +0.106);
+tfull batch +0.0301 (CI -0.079 to +0.140); tmaj
+search vs production v512 search (category E)
+-0.0213 (CI -0.123 to +0.080); tmaj search vs
+production v512dual search -0.5900 (CI -0.705 to
+-0.475; the dual remains significantly faster,
+consistent with EXP-026). No comparison is
+significant in the candidate's favour in any
+session or pooled: the 28-op form is an
+ESTABLISHED NULL for rate, replicating EXP-020's
+P6C-007 result on the current production code. An
+equal-pair rebuild control (instruction-identical
+libraries) disagreed with itself across session
+batches (-0.132 pooled over the first three
+sessions; +0.494 to +0.549 per session in three
+later ones) while the same-library self control
+was a clean null (-0.0018, CI -0.117 to +0.108):
+cross-library layout sensitivity on this
+oversubscribed VM sets a noise floor far above
+the 3.4 percent ceiling of the gap. Regtest
+soundness: fresh blocks mined through the
+production ComputeEngine path with each 28-op
+gate library active (logged run: tmaj height
+1428, tfull height 1429). Verdicts: tmaj
+ESTABLISHED NULL (census 28 achieved, no verified
+improvement, NOT integrated); tfull ESTABLISHED
+NULL; alta, altb and altc REJECTED (never reach
+the 28-op census); flag approaches REJECTED for
+this purpose. Full record: exp041/EXP041_REPORT
+.md; raw sessions, census and analysis under
+exp041/RAW_RESULTS/. Host AMD EPYC 9D25; the live
+mainnet miner was not restarted; nothing was
+pushed; production code untouched.
+
+## EXP-042 record (2026-11-15)
+
+EXP-042 (Phase 002 step 5: the time-boxed E2
+synthesis attempt) COMPLETE 2026-11-15. EXP-033
+(H-033-05) left exactly one shape unrefuted in the
+round-cone problem: E2, the Sigma output routed
+through the Maj (resp. Ch) value, so the Boolean
+instruction sits inside the Sigma sub-DAG of a
+5-instruction cone over V = {ADD, LUT(any imm),
+ROTR, SHR}. Reduction: in any 5-instruction cone,
+if the Boolean instruction is outside the Sigma
+dependency DAG, H-033-13 and H-033-14 already
+exclude the cone; if it is inside (E2 proper), the
+DAG minus that instruction is a program of length
+at most 3 over the 6-value pool (s, p, q, x, y, m),
+with m the Boolean value given free per
+cone-realizable example (a superset of the real
+interleavings, so UNSAT refutes and SAT would
+construct). Result: synthesis UNSAT at iteration 0
+for both cones (a-cone Sigma0 through Maj: 540.3 s,
+16-example seed; e-cone Sigma1 through Ch: 214.0 s,
+16-example seed; z3 5.4.1). E2 is REFUTED at the
+stated bounds (straight-line over V, cone length 5,
+sum by a single ADD, Boolean output by a single
+LUT): ESTABLISHED NEGATIVE at those bounds.
+H-033-05 is closed (E1 by EXP-033, E2 here); the
+cone minimum over V is exactly 6 under the stated
+bounds. Soundness discipline: gates on both cones
+(4-instruction incumbent, 200,000 plain-Python
+differentials each with 0 mismatches, exact z3
+verification over symbolic cone inputs) and a
+control synthesis that found a known 3-instruction
+program over the same pool (SAT, 219.6 s, passed
+its differential), all before any E2 result was
+read. Catch-all with the remaining budget: the
+EXP-033 full-cone CEGIS at L = 5 rerun per cone
+(22-example seed) returned synth unknown at 1,500 s
+(a-cone) and 1,400 s (e-cone): INCONCLUSIVE,
+recorded as such; it remains the only instrument
+covering the out-of-bounds shapes (sum or Boolean
+output produced by two or more instructions), so
+H-033-02 stays open in that residual generality
+only. Solver budget: about 3,904 s of the 5,400 s
+box, all runs strictly sequential. No construction
+was found, nothing was benchmarked, no rate is
+claimed. Full record: exp042/EXP042_REPORT.md;
+scripts under exp042/src/; run JSONs and logs under
+exp042/PROOFS/ and exp042/RAW_RESULTS/. Host AMD
+EPYC 9D25; the live mainnet miner was not
+restarted; nothing was pushed; production code
+untouched.
+
+## EXP-043 record (2026-11-15)
+
+EXP-043 (Phase 002 step 6: the EXP-035 coordination
+overhead study, this VM only; no fleet agent
+activated, contacted or measured). In-process
+operation costs for the EXP-035 prototype:
+heartbeat 220 ns, registration 0.73 us, candidate
+submit and dedup check 0.77 to 0.80 us flat to
+20,000 seen, lease grant 3.1 to 4.7 us, complete
+2.6 to 4.4 us, steal 2.8 us; journalled submit
+18.4 us (about 24x the in-memory submit). Costs
+that grow: declare_job about 0.36 us per chunk;
+expire idle scan 0.20 ms at 2,048 active leases to
+1.62 ms at 8,192; per-reclaim cost about 6 us at a
+2,048-chunk state to about 45 us at 8,192; snapshot
+13.3 ms at 512 chunks to 420 ms at 8,192 (deepcopy
+of all retained history, event log included).
+Campaigns at a fixed 131,072 positions under the
+EXP-035 fault mix, accounting asserted exact at the
+end of every completed trial: 1,214 ns per
+completed position at 2 workers, 13,764 at 8,
+1,525,761 at 32; the 128-worker fault trial was
+capped at 600 s and FAILED to complete (10.89
+percent coverage, accounting open, recorded as a
+failed run, never averaged). No-fault campaigns:
+10, 131, 8,513 and 584,481 ns per position at 2, 8,
+32 and 128 workers. Profile of a 32-worker fault
+trial: 67 percent of CPU in _holds_lease scanning
+every lease record ever issued (the lease table is
+never pruned; about 9,700 records retained for
+1,024 chunks), 25 percent in snapshot deepcopy.
+Loopback wire shim (thin JSON framing over the
+prototype's message shapes; NOT the production
+wire protocol, which remains unbuilt): round trips
+33 to 54 us at 1 worker process, medians about 1 ms
+at 16 worker processes under heavy contention;
+accounting closed exactly over the shim at 1
+worker. Still UNVERIFIED: all multi-machine
+coordination overhead, propagation latency over any
+real network, linear scaling across machines, the
+production wire protocol, and every property of
+the roughly 25 fleet agents. Full record:
+exp043/EXP043_REPORT.md; raw sessions, profile and
+run logs under exp043/RAW_RESULTS/. Host AMD EPYC
+9D25; the live mainnet miner was not restarted;
+nothing was pushed; production code untouched.
+
+Next unreserved ID: EXP-044.
