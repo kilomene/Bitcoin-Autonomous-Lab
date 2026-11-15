@@ -1,0 +1,5524 @@
+{
+  "experiment": "EXP-032 (EXP-017 protocol)",
+  "session_id": "20261115T094350Z_batch_shani_i_vs_c",
+  "comparison": "batch_shani_i_vs_c",
+  "scope": "batch",
+  "arm_a_reference": "c_batch",
+  "arm_b_candidate": "shani_i_batch",
+  "started_utc": "2026-11-15T09:43:50.768926+00:00",
+  "block_size": 65536,
+  "threads": 2,
+  "pairs_planned": 120,
+  "warmup_pairs": 8,
+  "order_seed": 18292635217472874976,
+  "environment_at_start": {
+    "cpu_total_jiffies": 2247103,
+    "cpu_steal_jiffies": 40160,
+    "load1": 14.52,
+    "runnable": 20
+  },
+  "load_average_at_start": [
+    "14.52",
+    "10.75",
+    "9.97"
+  ],
+  "host": {
+    "hostname": "htch-runtime",
+    "cpu_model": "AMD EPYC 9D25 126-Core Processor",
+    "platform": "Linux-7.0.0-44-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3",
+    "os_cpu_count": 4
+  },
+  "manifest": {
+    "production_c_source": {
+      "path": "mining/cpu/bal_batch.c",
+      "sha256": "c0feb9897b113f9721601f86919d7dde5d9dcee010f5b133126aaaf61d0020e4"
+    },
+    "production_c_binary": {
+      "path": ".local/cpu/libbal_batch.so",
+      "sha256": "8794238ce48c561dfb338c5524dace6cecd500497a9e4523cb8855fb3aa036f9"
+    },
+    "production_intrin_source": {
+      "path": "mining/cpu/bal_sha_intrin.c",
+      "sha256": "f15f0b94e39d6cd5f7df55d52e49fba39567a596fb3c1eb130103f76d7ed6c80"
+    },
+    "production_intrin_binary": {
+      "path": ".local/cpu/libbal_intrin.so",
+      "sha256": "4501ac377d159f99be24add3257ea309764a07025bcf378b89a08bdb6e488625"
+    },
+    "production_dual_source": {
+      "path": "mining/cpu/bal_avx512_dual.c",
+      "sha256": "fb3075d1cb5de70520866775a4a69ccb53952b46e1ab4c1924b1df74d0590da7"
+    },
+    "production_dual_binary": {
+      "path": ".local/cpu/libbal_v512dual.so",
+      "sha256": "15e226145b9ff3bd62c9b0e52bb41090fab641e67b11f945f0866fcbd3a33d62"
+    },
+    "production_flags_source": {
+      "path": "mining/cpu/bal_avx512_flags.c",
+      "sha256": "8bc647bcdbff11fed9b94c797b28a7e117e8093da50d251f81bbe10203a37366"
+    },
+    "production_flags_binary": {
+      "path": ".local/cpu/libbal_v512flags.so",
+      "sha256": "74663cbc1f7b12c0f4e6879c35dc04d628e422b6b5bae1eff61abfc972d5c0b9"
+    },
+    "engine_source": {
+      "path": "gpu/engine.py",
+      "sha256": "8b76377abc21ea2777078dd1f1f66158e38518bdee65927f256e2c46ee230489"
+    },
+    "avx2_source": {
+      "path": "research/sha256d/exp032/src/avx2_mb.c",
+      "sha256": "49671ecbfe8daa1c450594ac31ffd9c27010b1406c076fcfffc5e708c6de48e8"
+    },
+    "avx2_binary": {
+      "path": "research/sha256d/exp032/libbal_avx2.so",
+      "sha256": "91d0a1b8bf490b1810bac6f856ac28e50934868bc2b39bfda34af2c274b4b2b0"
+    },
+    "h01_source": {
+      "path": "research/sha256d/exp032/src/h01_multistream.c",
+      "sha256": "d2794662de9fefc063dc7a525895f3e99fc06762e6b46b0713b35cef43327322"
+    },
+    "h01_binary": {
+      "path": "research/sha256d/exp032/libbal_h01.so",
+      "sha256": "fc99a50aa96937ff4cf8d5a524642a3307bcffa398b2a1066ea3ef0667c59826"
+    },
+    "fsearch_source": {
+      "path": "research/sha256d/exp032/src/avx512_flags_search.c",
+      "sha256": "a78f677460953aede3d4a8780c74fc54c8d1f246f253afc4ed784a62f520a5a4"
+    },
+    "fsearch_binary": {
+      "path": "research/sha256d/exp032/libbal_v512fsearch.so",
+      "sha256": "c12b17cde095088c96eb896703c186632bdf71b2d1a1d7af7e1b24081ea66f07"
+    },
+    "driver": {
+      "path": "research/sha256d/exp032/exp032_paired_bench.py",
+      "sha256": "fe21a7426499a123141b90cfe140081be73f0e4b7bae163dc5f23fab11e45d99"
+    },
+    "build_commands": {
+      "avx2": "gcc -O3 -mavx2 -shared -fPIC src/avx2_mb.c",
+      "h01": "gcc -O3 -msha -mssse3 -shared -fPIC src/h01_multistream.c",
+      "fsearch": "gcc -O3 -mavx512f -mavx512bw -shared -fPIC src/avx512_flags_search.c",
+      "production": "prebuilt gated libraries, source and binary hashes recorded above"
+    }
+  },
+  "correctness_basis": "every arm passed the EXP-032 gates (exp032_gates.py): batch digests byte-identical to hashlib over genesis, random headers and the 2^32 boundary; search entries find the genesis nonce and planted targets and report exact attempted counts on no-hit ranges; the driver additionally asserts attempted == block size on every timed call",
+  "pairs": [
+    {
+      "pair_index": 0,
+      "start": 524288,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 524288,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08857692800029326,
+        "rate_hs": 739876.6414633732,
+        "env": {
+          "steal_fraction": -61329.0,
+          "steal_jiffies_delta": -2207844,
+          "total_jiffies_delta": 36,
+          "runnable_mean": 20.0,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.08857692800029326
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 524288,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10786733699933393,
+        "rate_hs": 607561.1192700964,
+        "env": {
+          "steal_fraction": -50177.295454545456,
+          "steal_jiffies_delta": -2207801,
+          "total_jiffies_delta": 44,
+          "runnable_mean": 14.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.10786733699933393
+        }
+      },
+      "log_ratio_b_over_a": -0.19703069357085032
+    },
+    {
+      "pair_index": 1,
+      "start": 589824,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 589824,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.0826365729999452,
+        "rate_hs": 793062.8972240107,
+        "env": {
+          "steal_fraction": -66905.42424242424,
+          "steal_jiffies_delta": -2207879,
+          "total_jiffies_delta": 33,
+          "runnable_mean": 17.0,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.0826365729999452
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 589824,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.13625496900021972,
+        "rate_hs": 480980.6239058652,
+        "env": {
+          "steal_fraction": -40887.166666666664,
+          "steal_jiffies_delta": -2207907,
+          "total_jiffies_delta": 54,
+          "runnable_mean": 12.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.13625496900021972
+        }
+      },
+      "log_ratio_b_over_a": -0.5000755476761413
+    },
+    {
+      "pair_index": 2,
+      "start": 655360,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 655360,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11758566099979362,
+        "rate_hs": 557346.8690210027,
+        "env": {
+          "steal_fraction": -47999.80434782609,
+          "steal_jiffies_delta": -2207991,
+          "total_jiffies_delta": 46,
+          "runnable_mean": 12.0,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.11758566099979362
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 655360,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.07827227399957337,
+        "rate_hs": 837282.4328619507,
+        "env": {
+          "steal_fraction": -71224.54838709677,
+          "steal_jiffies_delta": -2207961,
+          "total_jiffies_delta": 31,
+          "runnable_mean": 14.0,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.07827227399957337
+        }
+      },
+      "log_ratio_b_over_a": 0.4069736570901871
+    },
+    {
+      "pair_index": 3,
+      "start": 720896,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 720896,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08990398999958416,
+        "rate_hs": 728955.4112148207,
+        "env": {
+          "steal_fraction": -59676.64864864865,
+          "steal_jiffies_delta": -2208036,
+          "total_jiffies_delta": 37,
+          "runnable_mean": 11.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.08990398999958416
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 720896,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.21995850300027087,
+        "rate_hs": 297947.1086867658,
+        "env": {
+          "steal_fraction": -25675.24418604651,
+          "steal_jiffies_delta": -2208071,
+          "total_jiffies_delta": 86,
+          "runnable_mean": 9.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.21995850300027087
+        }
+      },
+      "log_ratio_b_over_a": -0.8946965826993617
+    },
+    {
+      "pair_index": 4,
+      "start": 786432,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 786432,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08799951099990722,
+        "rate_hs": 744731.4110651035,
+        "env": {
+          "steal_fraction": -66915.93939393939,
+          "steal_jiffies_delta": -2208226,
+          "total_jiffies_delta": 33,
+          "runnable_mean": 13.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.08799951099990722
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 786432,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.17291459399984888,
+        "rate_hs": 379007.9164749812,
+        "env": {
+          "steal_fraction": -31545.085714285713,
+          "steal_jiffies_delta": -2208156,
+          "total_jiffies_delta": 70,
+          "runnable_mean": 10.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.17291459399984888
+        }
+      },
+      "log_ratio_b_over_a": -0.6754665386545304
+    },
+    {
+      "pair_index": 5,
+      "start": 851968,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 851968,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09596723899994686,
+        "rate_hs": 682899.7133077496,
+        "env": {
+          "steal_fraction": -56622.0,
+          "steal_jiffies_delta": -2208258,
+          "total_jiffies_delta": 39,
+          "runnable_mean": 14.0,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.09596723899994686
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 851968,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.13054294699941238,
+        "rate_hs": 502026.3561255056,
+        "env": {
+          "steal_fraction": -42467.25,
+          "steal_jiffies_delta": -2208297,
+          "total_jiffies_delta": 52,
+          "runnable_mean": 17.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.13054294699941238
+        }
+      },
+      "log_ratio_b_over_a": -0.3076953955955183
+    },
+    {
+      "pair_index": 6,
+      "start": 917504,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 917504,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10029273000054673,
+        "rate_hs": 653447.1641129197,
+        "env": {
+          "steal_fraction": -52579.71428571428,
+          "steal_jiffies_delta": -2208348,
+          "total_jiffies_delta": 42,
+          "runnable_mean": 20.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.10029273000054673
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 917504,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.21315843799948198,
+        "rate_hs": 307452.0559217049,
+        "env": {
+          "steal_fraction": -26607.048192771083,
+          "steal_jiffies_delta": -2208385,
+          "total_jiffies_delta": 83,
+          "runnable_mean": 18.0,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.21315843799948198
+        }
+      },
+      "log_ratio_b_over_a": -0.7539425197764307
+    },
+    {
+      "pair_index": 7,
+      "start": 983040,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 983040,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.07079595400045946,
+        "rate_hs": 925702.6185362892,
+        "env": {
+          "steal_fraction": -76154.06896551725,
+          "steal_jiffies_delta": -2208468,
+          "total_jiffies_delta": 29,
+          "runnable_mean": 13.0,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.07079595400045946
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 983040,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.19573087399930955,
+        "rate_hs": 334827.095291217,
+        "env": {
+          "steal_fraction": -27955.645569620254,
+          "steal_jiffies_delta": -2208496,
+          "total_jiffies_delta": 79,
+          "runnable_mean": 16.0,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.19573087399930955
+        }
+      },
+      "log_ratio_b_over_a": -1.0169387716552727
+    },
+    {
+      "pair_index": 8,
+      "start": 1048576,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1048576,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.035357560999727866,
+        "rate_hs": 1853521.5141254908,
+        "env": {
+          "steal_fraction": -157757.5,
+          "steal_jiffies_delta": -2208605,
+          "total_jiffies_delta": 14,
+          "runnable_mean": 12.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.035357560999727866
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1048576,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.07485985299990716,
+        "rate_hs": 875449.2210942663,
+        "env": {
+          "steal_fraction": -76157.8275862069,
+          "steal_jiffies_delta": -2208577,
+          "total_jiffies_delta": 29,
+          "runnable_mean": 14.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.07485985299990716
+        }
+      },
+      "log_ratio_b_over_a": -0.7501054796691742
+    },
+    {
+      "pair_index": 9,
+      "start": 1114112,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1114112,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.07286643099996581,
+        "rate_hs": 899399.066217896,
+        "env": {
+          "steal_fraction": -73621.96666666666,
+          "steal_jiffies_delta": -2208659,
+          "total_jiffies_delta": 30,
+          "runnable_mean": 16.0,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.07286643099996581
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1114112,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09989266999946267,
+        "rate_hs": 656064.1536596481,
+        "env": {
+          "steal_fraction": -55215.475,
+          "steal_jiffies_delta": -2208619,
+          "total_jiffies_delta": 40,
+          "runnable_mean": 13.0,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.09989266999946267
+        }
+      },
+      "log_ratio_b_over_a": -0.3154682567329178
+    },
+    {
+      "pair_index": 10,
+      "start": 1179648,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1179648,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08771131899993634,
+        "rate_hs": 747178.3658851096,
+        "env": {
+          "steal_fraction": -66929.9696969697,
+          "steal_jiffies_delta": -2208689,
+          "total_jiffies_delta": 33,
+          "runnable_mean": 15.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.08771131899993634
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1179648,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.12789885899928777,
+        "rate_hs": 512404.88392758026,
+        "env": {
+          "steal_fraction": -41673.981132075474,
+          "steal_jiffies_delta": -2208721,
+          "total_jiffies_delta": 53,
+          "runnable_mean": 15.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.12789885899928777
+        }
+      },
+      "log_ratio_b_over_a": -0.37718883146383886
+    },
+    {
+      "pair_index": 11,
+      "start": 1245184,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1245184,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.17813440800000535,
+        "rate_hs": 367901.97208839084,
+        "env": {
+          "steal_fraction": -31109.478873239437,
+          "steal_jiffies_delta": -2208773,
+          "total_jiffies_delta": 71,
+          "runnable_mean": 16.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.17813440800000535
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1245184,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11622475900003337,
+        "rate_hs": 563872.9696138254,
+        "env": {
+          "steal_fraction": -49085.42222222222,
+          "steal_jiffies_delta": -2208844,
+          "total_jiffies_delta": 45,
+          "runnable_mean": 16.0,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.11622475900003337
+        }
+      },
+      "log_ratio_b_over_a": 0.42701247245971174
+    },
+    {
+      "pair_index": 12,
+      "start": 1310720,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1310720,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.16941021499951603,
+        "rate_hs": 386847.98316434,
+        "env": {
+          "steal_fraction": -33468.72727272727,
+          "steal_jiffies_delta": -2208936,
+          "total_jiffies_delta": 66,
+          "runnable_mean": 16.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.16941021499951603
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1310720,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11689439400015544,
+        "rate_hs": 560642.796949808,
+        "env": {
+          "steal_fraction": -45079.34693877551,
+          "steal_jiffies_delta": -2208888,
+          "total_jiffies_delta": 49,
+          "runnable_mean": 16.0,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.11689439400015544
+        }
+      },
+      "log_ratio_b_over_a": 0.3710521696477216
+    },
+    {
+      "pair_index": 13,
+      "start": 1376256,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1376256,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.12810706100026437,
+        "rate_hs": 511572.11388890387,
+        "env": {
+          "steal_fraction": -42480.78846153846,
+          "steal_jiffies_delta": -2209001,
+          "total_jiffies_delta": 52,
+          "runnable_mean": 16.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.12810706100026437
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1376256,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.18474080200030585,
+        "rate_hs": 354745.6722629769,
+        "env": {
+          "steal_fraction": -30261.0,
+          "steal_jiffies_delta": -2209053,
+          "total_jiffies_delta": 73,
+          "runnable_mean": 15.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.18474080200030585
+        }
+      },
+      "log_ratio_b_over_a": -0.36608744400816345
+    },
+    {
+      "pair_index": 14,
+      "start": 1441792,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1441792,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10271987299984175,
+        "rate_hs": 638007.0193437735,
+        "env": {
+          "steal_fraction": -50207.34090909091,
+          "steal_jiffies_delta": -2209123,
+          "total_jiffies_delta": 44,
+          "runnable_mean": 17.0,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.10271987299984175
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1441792,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.31039912800042657,
+        "rate_hs": 211134.613754166,
+        "env": {
+          "steal_fraction": -18257.528925619834,
+          "steal_jiffies_delta": -2209161,
+          "total_jiffies_delta": 121,
+          "runnable_mean": 20.5,
+          "load1_mean": 14.88,
+          "elapsed_s": 0.31039912800042657
+        }
+      },
+      "log_ratio_b_over_a": -1.1058533754595117
+    },
+    {
+      "pair_index": 15,
+      "start": 1507328,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1507328,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09706012799961172,
+        "rate_hs": 675210.3191154061,
+        "env": {
+          "steal_fraction": -56648.256410256414,
+          "steal_jiffies_delta": -2209282,
+          "total_jiffies_delta": 39,
+          "runnable_mean": 20.5,
+          "load1_mean": 15.405000000000001,
+          "elapsed_s": 0.09706012799961172
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1507328,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09387554899967654,
+        "rate_hs": 698115.7574932085,
+        "env": {
+          "steal_fraction": -59711.37837837838,
+          "steal_jiffies_delta": -2209321,
+          "total_jiffies_delta": 37,
+          "runnable_mean": 16.5,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.09387554899967654
+        }
+      },
+      "log_ratio_b_over_a": 0.033360704477944605
+    },
+    {
+      "pair_index": 16,
+      "start": 1572864,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1572864,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09963179800070066,
+        "rate_hs": 657781.9663511354,
+        "env": {
+          "steal_fraction": -56650.179487179485,
+          "steal_jiffies_delta": -2209357,
+          "total_jiffies_delta": 39,
+          "runnable_mean": 19.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.09963179800070066
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1572864,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.2822007900003882,
+        "rate_hs": 232231.80913104405,
+        "env": {
+          "steal_fraction": -19904.45945945946,
+          "steal_jiffies_delta": -2209395,
+          "total_jiffies_delta": 111,
+          "runnable_mean": 19.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.2822007900003882
+        }
+      },
+      "log_ratio_b_over_a": -1.0411374681751804
+    },
+    {
+      "pair_index": 17,
+      "start": 1638400,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1638400,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.16234396000072593,
+        "rate_hs": 403686.0995611229,
+        "env": {
+          "steal_fraction": -33478.681818181816,
+          "steal_jiffies_delta": -2209593,
+          "total_jiffies_delta": 66,
+          "runnable_mean": 19.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.16234396000072593
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1638400,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.2224158509998233,
+        "rate_hs": 294655.25818145066,
+        "env": {
+          "steal_fraction": -24825.898876404495,
+          "steal_jiffies_delta": -2209505,
+          "total_jiffies_delta": 89,
+          "runnable_mean": 19.5,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.2224158509998233
+        }
+      },
+      "log_ratio_b_over_a": -0.31483153802915664
+    },
+    {
+      "pair_index": 18,
+      "start": 1703936,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1703936,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.0438393909998922,
+        "rate_hs": 1494911.2773980175,
+        "env": {
+          "steal_fraction": -122758.77777777778,
+          "steal_jiffies_delta": -2209658,
+          "total_jiffies_delta": 18,
+          "runnable_mean": 17.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.0438393909998922
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1703936,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09892327500074316,
+        "rate_hs": 662493.2302282518,
+        "env": {
+          "steal_fraction": -56658.333333333336,
+          "steal_jiffies_delta": -2209675,
+          "total_jiffies_delta": 39,
+          "runnable_mean": 18.5,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.09892327500074316
+        }
+      },
+      "log_ratio_b_over_a": -0.8138117985568939
+    },
+    {
+      "pair_index": 19,
+      "start": 1769472,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1769472,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09764905200063367,
+        "rate_hs": 671138.1079211575,
+        "env": {
+          "steal_fraction": -56659.307692307695,
+          "steal_jiffies_delta": -2209713,
+          "total_jiffies_delta": 39,
+          "runnable_mean": 17.5,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.09764905200063367
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1769472,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.2805375739999363,
+        "rate_hs": 233608.63596836722,
+        "env": {
+          "steal_fraction": -19383.78947368421,
+          "steal_jiffies_delta": -2209752,
+          "total_jiffies_delta": 114,
+          "runnable_mean": 17.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.2805375739999363
+        }
+      },
+      "log_ratio_b_over_a": -1.0553277205049914
+    },
+    {
+      "pair_index": 20,
+      "start": 1835008,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1835008,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.036710752000544744,
+        "rate_hs": 1785199.0610006442,
+        "env": {
+          "steal_fraction": -147329.0,
+          "steal_jiffies_delta": -2209935,
+          "total_jiffies_delta": 15,
+          "runnable_mean": 16.5,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.036710752000544744
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1835008,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.17458491999968828,
+        "rate_hs": 375381.7912802378,
+        "env": {
+          "steal_fraction": -31569.5,
+          "steal_jiffies_delta": -2209865,
+          "total_jiffies_delta": 70,
+          "runnable_mean": 17.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.17458491999968828
+        }
+      },
+      "log_ratio_b_over_a": -1.55934158863537
+    },
+    {
+      "pair_index": 21,
+      "start": 1900544,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1900544,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08984274799968262,
+        "rate_hs": 729452.3092752185,
+        "env": {
+          "steal_fraction": -65000.617647058825,
+          "steal_jiffies_delta": -2210021,
+          "total_jiffies_delta": 34,
+          "runnable_mean": 17.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.08984274799968262
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1900544,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.17656743599945912,
+        "rate_hs": 371166.96875068604,
+        "env": {
+          "steal_fraction": -30693.73611111111,
+          "steal_jiffies_delta": -2209949,
+          "total_jiffies_delta": 72,
+          "runnable_mean": 16.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.17656743599945912
+        }
+      },
+      "log_ratio_b_over_a": -0.6756419793827793
+    },
+    {
+      "pair_index": 22,
+      "start": 1966080,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 1966080,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10472883700003877,
+        "rate_hs": 625768.4309048112,
+        "env": {
+          "steal_fraction": -51398.348837209305,
+          "steal_jiffies_delta": -2210129,
+          "total_jiffies_delta": 43,
+          "runnable_mean": 18.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.10472883700003877
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 1966080,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.19297965500027203,
+        "rate_hs": 339600.5656653683,
+        "env": {
+          "steal_fraction": -29079.657894736843,
+          "steal_jiffies_delta": -2210054,
+          "total_jiffies_delta": 76,
+          "runnable_mean": 19.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.19297965500027203
+        }
+      },
+      "log_ratio_b_over_a": -0.6112102638637931
+    },
+    {
+      "pair_index": 23,
+      "start": 2031616,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2031616,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10535590800009231,
+        "rate_hs": 622043.9009451902,
+        "env": {
+          "steal_fraction": -52623.142857142855,
+          "steal_jiffies_delta": -2210172,
+          "total_jiffies_delta": 42,
+          "runnable_mean": 15.5,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.10535590800009231
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2031616,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.20293014799972298,
+        "rate_hs": 322948.56454788306,
+        "env": {
+          "steal_fraction": -27627.6625,
+          "steal_jiffies_delta": -2210213,
+          "total_jiffies_delta": 80,
+          "runnable_mean": 14.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.20293014799972298
+        }
+      },
+      "log_ratio_b_over_a": -0.6555176028898898
+    },
+    {
+      "pair_index": 24,
+      "start": 2097152,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2097152,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.1073533460003091,
+        "rate_hs": 610470.0267079826,
+        "env": {
+          "steal_fraction": -51404.0,
+          "steal_jiffies_delta": -2210372,
+          "total_jiffies_delta": 43,
+          "runnable_mean": 19.5,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.1073533460003091
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2097152,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.20507254299991473,
+        "rate_hs": 319574.7175185088,
+        "env": {
+          "steal_fraction": -26630.0,
+          "steal_jiffies_delta": -2210290,
+          "total_jiffies_delta": 83,
+          "runnable_mean": 17.5,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.20507254299991473
+        }
+      },
+      "log_ratio_b_over_a": -0.6472380919190088
+    },
+    {
+      "pair_index": 25,
+      "start": 2162688,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2162688,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08241110400012985,
+        "rate_hs": 795232.6424348925,
+        "env": {
+          "steal_fraction": -69075.46875,
+          "steal_jiffies_delta": -2210415,
+          "total_jiffies_delta": 32,
+          "runnable_mean": 19.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.08241110400012985
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2162688,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.2115152919996035,
+        "rate_hs": 309840.48188876506,
+        "env": {
+          "steal_fraction": -26314.845238095237,
+          "steal_jiffies_delta": -2210447,
+          "total_jiffies_delta": 84,
+          "runnable_mean": 21.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.2115152919996035
+        }
+      },
+      "log_ratio_b_over_a": -0.9425771133516156
+    },
+    {
+      "pair_index": 26,
+      "start": 2228224,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2228224,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.07375944100022025,
+        "rate_hs": 888509.9874849147,
+        "env": {
+          "steal_fraction": -73685.73333333334,
+          "steal_jiffies_delta": -2210572,
+          "total_jiffies_delta": 30,
+          "runnable_mean": 19.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.07375944100022025
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2228224,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10979793400019844,
+        "rate_hs": 596878.2618430831,
+        "env": {
+          "steal_fraction": -48054.913043478264,
+          "steal_jiffies_delta": -2210526,
+          "total_jiffies_delta": 46,
+          "runnable_mean": 20.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.10979793400019844
+        }
+      },
+      "log_ratio_b_over_a": -0.3978327122818692
+    },
+    {
+      "pair_index": 27,
+      "start": 2293760,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2293760,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10243188000004011,
+        "rate_hs": 639800.8120125721,
+        "env": {
+          "steal_fraction": -52633.333333333336,
+          "steal_jiffies_delta": -2210600,
+          "total_jiffies_delta": 42,
+          "runnable_mean": 20.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.10243188000004011
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2293760,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.18681484399985493,
+        "rate_hs": 350807.2409923212,
+        "env": {
+          "steal_fraction": -29873.54054054054,
+          "steal_jiffies_delta": -2210642,
+          "total_jiffies_delta": 74,
+          "runnable_mean": 18.5,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.18681484399985493
+        }
+      },
+      "log_ratio_b_over_a": -0.600919995026656
+    },
+    {
+      "pair_index": 28,
+      "start": 2359296,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2359296,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10135542399984843,
+        "rate_hs": 646595.8842034739,
+        "env": {
+          "steal_fraction": -58176.73684210526,
+          "steal_jiffies_delta": -2210716,
+          "total_jiffies_delta": 38,
+          "runnable_mean": 19.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.10135542399984843
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2359296,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.3102768749995448,
+        "rate_hs": 211217.80345407999,
+        "env": {
+          "steal_fraction": -17828.637096774193,
+          "steal_jiffies_delta": -2210751,
+          "total_jiffies_delta": 124,
+          "runnable_mean": 19.5,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.3102768749995448
+        }
+      },
+      "log_ratio_b_over_a": -1.1188316550441368
+    },
+    {
+      "pair_index": 29,
+      "start": 2424832,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2424832,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11018362300001172,
+        "rate_hs": 594788.9370092053,
+        "env": {
+          "steal_fraction": -52641.666666666664,
+          "steal_jiffies_delta": -2210950,
+          "total_jiffies_delta": 42,
+          "runnable_mean": 20.5,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.11018362300001172
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2424832,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.18871845099965867,
+        "rate_hs": 347268.6409455456,
+        "env": {
+          "steal_fraction": -29478.32,
+          "steal_jiffies_delta": -2210874,
+          "total_jiffies_delta": 75,
+          "runnable_mean": 20.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.18871845099965867
+        }
+      },
+      "log_ratio_b_over_a": -0.5381079530769627
+    },
+    {
+      "pair_index": 30,
+      "start": 2490368,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2490368,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11518130300009943,
+        "rate_hs": 568981.2347403591,
+        "env": {
+          "steal_fraction": -48064.891304347824,
+          "steal_jiffies_delta": -2210985,
+          "total_jiffies_delta": 46,
+          "runnable_mean": 21.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.11518130300009943
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2490368,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.28017263600031583,
+        "rate_hs": 233912.9221739061,
+        "env": {
+          "steal_fraction": -19060.543103448275,
+          "steal_jiffies_delta": -2211023,
+          "total_jiffies_delta": 116,
+          "runnable_mean": 19.5,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.28017263600031583
+        }
+      },
+      "log_ratio_b_over_a": -0.8888985355766641
+    },
+    {
+      "pair_index": 31,
+      "start": 2555904,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2555904,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09364072799962742,
+        "rate_hs": 699866.40855954,
+        "env": {
+          "steal_fraction": -59761.64864864865,
+          "steal_jiffies_delta": -2211181,
+          "total_jiffies_delta": 37,
+          "runnable_mean": 16.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.09364072799962742
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2555904,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.1088071679996574,
+        "rate_hs": 602313.2593636326,
+        "env": {
+          "steal_fraction": -51421.813953488374,
+          "steal_jiffies_delta": -2211138,
+          "total_jiffies_delta": 43,
+          "runnable_mean": 16.0,
+          "load1_mean": 15.93,
+          "elapsed_s": 0.1088071679996574
+        }
+      },
+      "log_ratio_b_over_a": -0.1501117975576167
+    },
+    {
+      "pair_index": 32,
+      "start": 2621440,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2621440,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.07861197399961384,
+        "rate_hs": 833664.3473718384,
+        "env": {
+          "steal_fraction": -73711.5,
+          "steal_jiffies_delta": -2211345,
+          "total_jiffies_delta": 30,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.07861197399961384
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2621440,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.3257198889996289,
+        "rate_hs": 201203.5562251916,
+        "env": {
+          "steal_fraction": -16879.503816793895,
+          "steal_jiffies_delta": -2211215,
+          "total_jiffies_delta": 131,
+          "runnable_mean": 21.5,
+          "load1_mean": 16.095,
+          "elapsed_s": 0.3257198889996289
+        }
+      },
+      "log_ratio_b_over_a": -1.4215137470197752
+    },
+    {
+      "pair_index": 33,
+      "start": 2686976,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2686976,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08849361299962766,
+        "rate_hs": 740573.2208071982,
+        "env": {
+          "steal_fraction": -61427.083333333336,
+          "steal_jiffies_delta": -2211375,
+          "total_jiffies_delta": 36,
+          "runnable_mean": 16.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.08849361299962766
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2686976,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.19844566800020402,
+        "rate_hs": 330246.5640113274,
+        "env": {
+          "steal_fraction": -27992.53164556962,
+          "steal_jiffies_delta": -2211410,
+          "total_jiffies_delta": 79,
+          "runnable_mean": 19.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.19844566800020402
+        }
+      },
+      "log_ratio_b_over_a": -0.8075849699019199
+    },
+    {
+      "pair_index": 34,
+      "start": 2752512,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2752512,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.031519921999461076,
+        "rate_hs": 2079192.9625054442,
+        "env": {
+          "steal_fraction": -170114.53846153847,
+          "steal_jiffies_delta": -2211489,
+          "total_jiffies_delta": 13,
+          "runnable_mean": 19.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.031519921999461076
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2752512,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.2126865700001872,
+        "rate_hs": 308134.17132986966,
+        "env": {
+          "steal_fraction": -26327.39285714286,
+          "steal_jiffies_delta": -2211501,
+          "total_jiffies_delta": 84,
+          "runnable_mean": 21.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.2126865700001872
+        }
+      },
+      "log_ratio_b_over_a": -1.9091997892898147
+    },
+    {
+      "pair_index": 35,
+      "start": 2818048,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2818048,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08306094999989,
+        "rate_hs": 789010.9612289143,
+        "env": {
+          "steal_fraction": -67017.69696969698,
+          "steal_jiffies_delta": -2211584,
+          "total_jiffies_delta": 33,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.08306094999989
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2818048,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.19133843300005537,
+        "rate_hs": 342513.5189644886,
+        "env": {
+          "steal_fraction": -28354.05128205128,
+          "steal_jiffies_delta": -2211616,
+          "total_jiffies_delta": 78,
+          "runnable_mean": 16.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.19133843300005537
+        }
+      },
+      "log_ratio_b_over_a": -0.8344690849557329
+    },
+    {
+      "pair_index": 36,
+      "start": 2883584,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2883584,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.34936525499961135,
+        "rate_hs": 187585.91205663225,
+        "env": {
+          "steal_fraction": -15685.7304964539,
+          "steal_jiffies_delta": -2211688,
+          "total_jiffies_delta": 141,
+          "runnable_mean": 15.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.34936525499961135
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2883584,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.0657839920004335,
+        "rate_hs": 996230.2074882919,
+        "env": {
+          "steal_fraction": -85070.30769230769,
+          "steal_jiffies_delta": -2211828,
+          "total_jiffies_delta": 26,
+          "runnable_mean": 14.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.0657839920004335
+        }
+      },
+      "log_ratio_b_over_a": 1.6697414247887108
+    },
+    {
+      "pair_index": 37,
+      "start": 2949120,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 2949120,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.061117429000660195,
+        "rate_hs": 1072296.4148130654,
+        "env": {
+          "steal_fraction": -100540.68181818182,
+          "steal_jiffies_delta": -2211895,
+          "total_jiffies_delta": 22,
+          "runnable_mean": 18.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.061117429000660195
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 2949120,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10238075300003402,
+        "rate_hs": 640120.316364329,
+        "env": {
+          "steal_fraction": -53947.634146341465,
+          "steal_jiffies_delta": -2211853,
+          "total_jiffies_delta": 41,
+          "runnable_mean": 15.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.10238075300003402
+        }
+      },
+      "log_ratio_b_over_a": -0.5159016567611181
+    },
+    {
+      "pair_index": 38,
+      "start": 3014656,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3014656,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.0879222049998134,
+        "rate_hs": 745386.2195578362,
+        "env": {
+          "steal_fraction": -63197.6,
+          "steal_jiffies_delta": -2211916,
+          "total_jiffies_delta": 35,
+          "runnable_mean": 19.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.0879222049998134
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3014656,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.14934373000050982,
+        "rate_hs": 438826.5915132579,
+        "env": {
+          "steal_fraction": -36865.833333333336,
+          "steal_jiffies_delta": -2211950,
+          "total_jiffies_delta": 60,
+          "runnable_mean": 17.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.14934373000050982
+        }
+      },
+      "log_ratio_b_over_a": -0.5297981724660167
+    },
+    {
+      "pair_index": 39,
+      "start": 3080192,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3080192,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.138726146999943,
+        "rate_hs": 472412.7456666617,
+        "env": {
+          "steal_fraction": -40221.163636363635,
+          "steal_jiffies_delta": -2212164,
+          "total_jiffies_delta": 55,
+          "runnable_mean": 17.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.138726146999943
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3080192,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.4064123260004635,
+        "rate_hs": 161254.95170125636,
+        "env": {
+          "steal_fraction": -13654.345679012345,
+          "steal_jiffies_delta": -2212004,
+          "total_jiffies_delta": 162,
+          "runnable_mean": 14.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.4064123260004635
+        }
+      },
+      "log_ratio_b_over_a": -1.0748664011960878
+    },
+    {
+      "pair_index": 40,
+      "start": 3145728,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3145728,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.058834663999732584,
+        "rate_hs": 1113901.1518838261,
+        "env": {
+          "steal_fraction": -92175.75,
+          "steal_jiffies_delta": -2212218,
+          "total_jiffies_delta": 24,
+          "runnable_mean": 19.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.058834663999732584
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3145728,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.0734844990001875,
+        "rate_hs": 891834.3445443206,
+        "env": {
+          "steal_fraction": -73741.4,
+          "steal_jiffies_delta": -2212242,
+          "total_jiffies_delta": 30,
+          "runnable_mean": 19.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.0734844990001875
+        }
+      },
+      "log_ratio_b_over_a": -0.22234328101139436
+    },
+    {
+      "pair_index": 41,
+      "start": 3211264,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3211264,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.02453638199949637,
+        "rate_hs": 2670972.4360072804,
+        "env": {
+          "steal_fraction": -201118.27272727274,
+          "steal_jiffies_delta": -2212301,
+          "total_jiffies_delta": 11,
+          "runnable_mean": 18.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.02453638199949637
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3211264,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.0806534470002589,
+        "rate_hs": 812562.9150083273,
+        "env": {
+          "steal_fraction": -73742.4,
+          "steal_jiffies_delta": -2212272,
+          "total_jiffies_delta": 30,
+          "runnable_mean": 16.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.0806534470002589
+        }
+      },
+      "log_ratio_b_over_a": -1.1900045482665507
+    },
+    {
+      "pair_index": 42,
+      "start": 3276800,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3276800,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.06473723199997039,
+        "rate_hs": 1012338.6183708005,
+        "env": {
+          "steal_fraction": -85088.92307692308,
+          "steal_jiffies_delta": -2212312,
+          "total_jiffies_delta": 26,
+          "runnable_mean": 20.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.06473723199997039
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3276800,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.03724852900086262,
+        "rate_hs": 1759425.184239686,
+        "env": {
+          "steal_fraction": -158024.14285714287,
+          "steal_jiffies_delta": -2212338,
+          "total_jiffies_delta": 14,
+          "runnable_mean": 17.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.03724852900086262
+        }
+      },
+      "log_ratio_b_over_a": 0.552724037809563
+    },
+    {
+      "pair_index": 43,
+      "start": 3342336,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3342336,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.04490927500046382,
+        "rate_hs": 1459297.661770829,
+        "env": {
+          "steal_fraction": -122911.77777777778,
+          "steal_jiffies_delta": -2212412,
+          "total_jiffies_delta": 18,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.04490927500046382
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3342336,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.15355102500052453,
+        "rate_hs": 426802.75172227685,
+        "env": {
+          "steal_fraction": -36268.065573770495,
+          "steal_jiffies_delta": -2212352,
+          "total_jiffies_delta": 61,
+          "runnable_mean": 19.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.15355102500052453
+        }
+      },
+      "log_ratio_b_over_a": -1.2293885786362544
+    },
+    {
+      "pair_index": 44,
+      "start": 3407872,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3407872,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.056755923999844526,
+        "rate_hs": 1154698.8469464355,
+        "env": {
+          "steal_fraction": -96196.39130434782,
+          "steal_jiffies_delta": -2212517,
+          "total_jiffies_delta": 23,
+          "runnable_mean": 17.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.056755923999844526
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3407872,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.21839356399959797,
+        "rate_hs": 300082.1031526398,
+        "env": {
+          "steal_fraction": -25141.25,
+          "steal_jiffies_delta": -2212430,
+          "total_jiffies_delta": 88,
+          "runnable_mean": 18.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.21839356399959797
+        }
+      },
+      "log_ratio_b_over_a": -1.347538735994267
+    },
+    {
+      "pair_index": 45,
+      "start": 3473408,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3473408,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.07789676999982476,
+        "rate_hs": 841318.5809905524,
+        "env": {
+          "steal_fraction": -71374.7741935484,
+          "steal_jiffies_delta": -2212618,
+          "total_jiffies_delta": 31,
+          "runnable_mean": 16.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.07789676999982476
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3473408,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.20229284199922404,
+        "rate_hs": 323965.9859059738,
+        "env": {
+          "steal_fraction": -27315.283950617282,
+          "steal_jiffies_delta": -2212538,
+          "total_jiffies_delta": 81,
+          "runnable_mean": 15.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.20229284199922404
+        }
+      },
+      "log_ratio_b_over_a": -0.9543318718492656
+    },
+    {
+      "pair_index": 46,
+      "start": 3538944,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3538944,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.024105794999741192,
+        "rate_hs": 2718682.374951899,
+        "env": {
+          "steal_fraction": -221264.9,
+          "steal_jiffies_delta": -2212649,
+          "total_jiffies_delta": 10,
+          "runnable_mean": 14.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.024105794999741192
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3538944,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09910686999955942,
+        "rate_hs": 661265.9647135596,
+        "env": {
+          "steal_fraction": -58227.86842105263,
+          "steal_jiffies_delta": -2212659,
+          "total_jiffies_delta": 38,
+          "runnable_mean": 14.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.09910686999955942
+        }
+      },
+      "log_ratio_b_over_a": -1.4137464948315484
+    },
+    {
+      "pair_index": 47,
+      "start": 3604480,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3604480,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.07778358999985358,
+        "rate_hs": 842542.7522710557,
+        "env": {
+          "steal_fraction": -76301.37931034483,
+          "steal_jiffies_delta": -2212740,
+          "total_jiffies_delta": 29,
+          "runnable_mean": 13.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.07778358999985358
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3604480,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10891995699967083,
+        "rate_hs": 601689.5507973627,
+        "env": {
+          "steal_fraction": -50288.545454545456,
+          "steal_jiffies_delta": -2212696,
+          "total_jiffies_delta": 44,
+          "runnable_mean": 14.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.10891995699967083
+        }
+      },
+      "log_ratio_b_over_a": -0.3366827895326045
+    },
+    {
+      "pair_index": 48,
+      "start": 3670016,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3670016,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08313299800011009,
+        "rate_hs": 788327.1574052124,
+        "env": {
+          "steal_fraction": -67053.60606060606,
+          "steal_jiffies_delta": -2212769,
+          "total_jiffies_delta": 33,
+          "runnable_mean": 14.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.08313299800011009
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3670016,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.20287393399939901,
+        "rate_hs": 323038.0498275059,
+        "env": {
+          "steal_fraction": -27318.51851851852,
+          "steal_jiffies_delta": -2212800,
+          "total_jiffies_delta": 81,
+          "runnable_mean": 18.5,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.20287393399939901
+        }
+      },
+      "log_ratio_b_over_a": -0.8921430604607704
+    },
+    {
+      "pair_index": 49,
+      "start": 3735552,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3735552,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10131849900062662,
+        "rate_hs": 646831.5327055396,
+        "env": {
+          "steal_fraction": -53974.46341463415,
+          "steal_jiffies_delta": -2212953,
+          "total_jiffies_delta": 41,
+          "runnable_mean": 21.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.10131849900062662
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3735552,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.19585650299995905,
+        "rate_hs": 334612.325841505,
+        "env": {
+          "steal_fraction": -28738.64935064935,
+          "steal_jiffies_delta": -2212876,
+          "total_jiffies_delta": 77,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.19585650299995905
+        }
+      },
+      "log_ratio_b_over_a": -0.6591132529623764
+    },
+    {
+      "pair_index": 50,
+      "start": 3801088,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3801088,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.1143653990002349,
+        "rate_hs": 573040.4525573805,
+        "env": {
+          "steal_fraction": -49178.77777777778,
+          "steal_jiffies_delta": -2213045,
+          "total_jiffies_delta": 45,
+          "runnable_mean": 18.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.1143653990002349
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3801088,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.12844801199935318,
+        "rate_hs": 510214.2024613819,
+        "env": {
+          "steal_fraction": -42557.557692307695,
+          "steal_jiffies_delta": -2212993,
+          "total_jiffies_delta": 52,
+          "runnable_mean": 18.0,
+          "load1_mean": 16.26,
+          "elapsed_s": 0.12844801199935318
+        }
+      },
+      "log_ratio_b_over_a": -0.11612566968693713
+    },
+    {
+      "pair_index": 51,
+      "start": 3866624,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3866624,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.1384816600002523,
+        "rate_hs": 473246.78228063264,
+        "env": {
+          "steal_fraction": -40985.03703703704,
+          "steal_jiffies_delta": -2213192,
+          "total_jiffies_delta": 54,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.1384816600002523
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3866624,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.25716010099949926,
+        "rate_hs": 254845.13244971703,
+        "env": {
+          "steal_fraction": -21279.701923076922,
+          "steal_jiffies_delta": -2213089,
+          "total_jiffies_delta": 104,
+          "runnable_mean": 19.5,
+          "load1_mean": 16.53,
+          "elapsed_s": 0.25716010099949926
+        }
+      },
+      "log_ratio_b_over_a": -0.6189609539345436
+    },
+    {
+      "pair_index": 52,
+      "start": 3932160,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3932160,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10200195500055997,
+        "rate_hs": 642497.4893828282,
+        "env": {
+          "steal_fraction": -53981.60975609756,
+          "steal_jiffies_delta": -2213246,
+          "total_jiffies_delta": 41,
+          "runnable_mean": 15.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.10200195500055997
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3932160,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.17234301600001345,
+        "rate_hs": 380264.90147993516,
+        "env": {
+          "steal_fraction": -32076.608695652172,
+          "steal_jiffies_delta": -2213286,
+          "total_jiffies_delta": 69,
+          "runnable_mean": 14.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.17234301600001345
+        }
+      },
+      "log_ratio_b_over_a": -0.5244947901759454
+    },
+    {
+      "pair_index": 53,
+      "start": 3997696,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 3997696,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08307804499963822,
+        "rate_hs": 788848.6061544345,
+        "env": {
+          "steal_fraction": -65098.67647058824,
+          "steal_jiffies_delta": -2213355,
+          "total_jiffies_delta": 34,
+          "runnable_mean": 18.5,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.08307804499963822
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 3997696,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11835150999922917,
+        "rate_hs": 553740.2944873862,
+        "env": {
+          "steal_fraction": -47093.36170212766,
+          "steal_jiffies_delta": -2213388,
+          "total_jiffies_delta": 47,
+          "runnable_mean": 18.5,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.11835150999922917
+        }
+      },
+      "log_ratio_b_over_a": -0.35387862744764154
+    },
+    {
+      "pair_index": 54,
+      "start": 4063232,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4063232,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.014601431999835768,
+        "rate_hs": 4488326.898398535,
+        "env": {
+          "steal_fraction": -442687.0,
+          "steal_jiffies_delta": -2213435,
+          "total_jiffies_delta": 5,
+          "runnable_mean": 14.5,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.014601431999835768
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4063232,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.2671365030000743,
+        "rate_hs": 245327.7603921534,
+        "env": {
+          "steal_fraction": -21080.371428571427,
+          "steal_jiffies_delta": -2213439,
+          "total_jiffies_delta": 105,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.2671365030000743
+        }
+      },
+      "log_ratio_b_over_a": -2.9066401688641386
+    },
+    {
+      "pair_index": 55,
+      "start": 4128768,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4128768,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.03736004700022022,
+        "rate_hs": 1754173.3820520542,
+        "env": {
+          "steal_fraction": -147569.6,
+          "steal_jiffies_delta": -2213544,
+          "total_jiffies_delta": 15,
+          "runnable_mean": 17.5,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.03736004700022022
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4128768,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09424464399944554,
+        "rate_hs": 695381.6919334489,
+        "env": {
+          "steal_fraction": -59825.89189189189,
+          "steal_jiffies_delta": -2213558,
+          "total_jiffies_delta": 37,
+          "runnable_mean": 17.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.09424464399944554
+        }
+      },
+      "log_ratio_b_over_a": -0.925292125725558
+    },
+    {
+      "pair_index": 56,
+      "start": 4194304,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4194304,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10949531999995088,
+        "rate_hs": 598527.8640222194,
+        "env": {
+          "steal_fraction": -50309.97727272727,
+          "steal_jiffies_delta": -2213639,
+          "total_jiffies_delta": 44,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.10949531999995088
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4194304,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11054198100009671,
+        "rate_hs": 592860.7340585173,
+        "env": {
+          "steal_fraction": -50308.97727272727,
+          "steal_jiffies_delta": -2213595,
+          "total_jiffies_delta": 44,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.11054198100009671
+        }
+      },
+      "log_ratio_b_over_a": -0.009513558743227776
+    },
+    {
+      "pair_index": 57,
+      "start": 4259840,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4259840,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.147744031000002,
+        "rate_hs": 443577.9879323796,
+        "env": {
+          "steal_fraction": -36894.61666666667,
+          "steal_jiffies_delta": -2213677,
+          "total_jiffies_delta": 60,
+          "runnable_mean": 17.5,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.147744031000002
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4259840,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.30125596699963353,
+        "rate_hs": 217542.5789992061,
+        "env": {
+          "steal_fraction": -18447.791666666668,
+          "steal_jiffies_delta": -2213735,
+          "total_jiffies_delta": 120,
+          "runnable_mean": 18.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.30125596699963353
+        }
+      },
+      "log_ratio_b_over_a": -0.7124790359293971
+    },
+    {
+      "pair_index": 58,
+      "start": 4325376,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4325376,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.045828595000784844,
+        "rate_hs": 1430024.2021139346,
+        "env": {
+          "steal_fraction": -138365.9375,
+          "steal_jiffies_delta": -2213855,
+          "total_jiffies_delta": 16,
+          "runnable_mean": 14.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.045828595000784844
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4325376,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09721572200032824,
+        "rate_hs": 674129.6433490328,
+        "env": {
+          "steal_fraction": -56765.89743589744,
+          "steal_jiffies_delta": -2213870,
+          "total_jiffies_delta": 39,
+          "runnable_mean": 10.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.09721572200032824
+        }
+      },
+      "log_ratio_b_over_a": -0.7520242060678171
+    },
+    {
+      "pair_index": 59,
+      "start": 4390912,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4390912,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.07721823199972278,
+        "rate_hs": 848711.4804730997,
+        "env": {
+          "steal_fraction": -73796.96666666666,
+          "steal_jiffies_delta": -2213909,
+          "total_jiffies_delta": 30,
+          "runnable_mean": 9.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.07721823199972278
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4390912,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11259722500017233,
+        "rate_hs": 582039.211000979,
+        "env": {
+          "steal_fraction": -47105.063829787236,
+          "steal_jiffies_delta": -2213938,
+          "total_jiffies_delta": 47,
+          "runnable_mean": 10.5,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.11259722500017233
+        }
+      },
+      "log_ratio_b_over_a": -0.3771814756957245
+    },
+    {
+      "pair_index": 60,
+      "start": 4456448,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4456448,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08370073100013542,
+        "rate_hs": 782980.019611704,
+        "env": {
+          "steal_fraction": -69187.03125,
+          "steal_jiffies_delta": -2213985,
+          "total_jiffies_delta": 32,
+          "runnable_mean": 13.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.08370073100013542
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4456448,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.17779052199966827,
+        "rate_hs": 368613.5754757629,
+        "env": {
+          "steal_fraction": -32087.202898550724,
+          "steal_jiffies_delta": -2214017,
+          "total_jiffies_delta": 69,
+          "runnable_mean": 16.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.17779052199966827
+        }
+      },
+      "log_ratio_b_over_a": -0.7533583035392588
+    },
+    {
+      "pair_index": 61,
+      "start": 4521984,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4521984,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09689399900071294,
+        "rate_hs": 676367.9967375254,
+        "env": {
+          "steal_fraction": -56773.794871794875,
+          "steal_jiffies_delta": -2214178,
+          "total_jiffies_delta": 39,
+          "runnable_mean": 16.5,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.09689399900071294
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4521984,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.23138482000013028,
+        "rate_hs": 283233.7920869792,
+        "env": {
+          "steal_fraction": -23554.09574468085,
+          "steal_jiffies_delta": -2214085,
+          "total_jiffies_delta": 94,
+          "runnable_mean": 17.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.23138482000013028
+        }
+      },
+      "log_ratio_b_over_a": -0.87046462475509
+    },
+    {
+      "pair_index": 62,
+      "start": 4587520,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4587520,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.025446397000450816,
+        "rate_hs": 2575453.0198848564,
+        "env": {
+          "steal_fraction": -201298.81818181818,
+          "steal_jiffies_delta": -2214287,
+          "total_jiffies_delta": 11,
+          "runnable_mean": 17.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.025446397000450816
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4587520,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.1822351709997747,
+        "rate_hs": 359623.22553027386,
+        "env": {
+          "steal_fraction": -31186.154929577464,
+          "steal_jiffies_delta": -2214217,
+          "total_jiffies_delta": 71,
+          "runnable_mean": 17.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.1822351709997747
+        }
+      },
+      "log_ratio_b_over_a": -1.96872384003918
+    },
+    {
+      "pair_index": 63,
+      "start": 4653056,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4653056,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.0904035899993687,
+        "rate_hs": 724926.9636355995,
+        "env": {
+          "steal_fraction": -61511.25,
+          "steal_jiffies_delta": -2214405,
+          "total_jiffies_delta": 36,
+          "runnable_mean": 15.5,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.0904035899993687
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4653056,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.2721831970002313,
+        "rate_hs": 240779.00738282644,
+        "env": {
+          "steal_fraction": -20314.65137614679,
+          "steal_jiffies_delta": -2214297,
+          "total_jiffies_delta": 109,
+          "runnable_mean": 16.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.2721831970002313
+        }
+      },
+      "log_ratio_b_over_a": -1.1021913789754727
+    },
+    {
+      "pair_index": 64,
+      "start": 4718592,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4718592,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09689837600035389,
+        "rate_hs": 676337.4444971157,
+        "env": {
+          "steal_fraction": -61512.27777777778,
+          "steal_jiffies_delta": -2214442,
+          "total_jiffies_delta": 36,
+          "runnable_mean": 16.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.09689837600035389
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4718592,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.23230925799998658,
+        "rate_hs": 282106.70794705814,
+        "env": {
+          "steal_fraction": -23558.244680851065,
+          "steal_jiffies_delta": -2214475,
+          "total_jiffies_delta": 94,
+          "runnable_mean": 17.5,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.23230925799998658
+        }
+      },
+      "log_ratio_b_over_a": -0.8744067334057019
+    },
+    {
+      "pair_index": 65,
+      "start": 4784128,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4784128,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09361242500017397,
+        "rate_hs": 700078.0078058891,
+        "env": {
+          "steal_fraction": -61515.833333333336,
+          "steal_jiffies_delta": -2214570,
+          "total_jiffies_delta": 36,
+          "runnable_mean": 16.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.09361242500017397
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4784128,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.180795821999709,
+        "rate_hs": 362486.25258666364,
+        "env": {
+          "steal_fraction": -31191.6338028169,
+          "steal_jiffies_delta": -2214606,
+          "total_jiffies_delta": 71,
+          "runnable_mean": 13.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.180795821999709
+        }
+      },
+      "log_ratio_b_over_a": -0.6582052188804175
+    },
+    {
+      "pair_index": 66,
+      "start": 4849664,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4849664,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11232962400026736,
+        "rate_hs": 583425.7933583399,
+        "env": {
+          "steal_fraction": -48146.80434782609,
+          "steal_jiffies_delta": -2214753,
+          "total_jiffies_delta": 46,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.11232962400026736
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4849664,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.19661066500066227,
+        "rate_hs": 333328.8150964712,
+        "env": {
+          "steal_fraction": -28393.28205128205,
+          "steal_jiffies_delta": -2214676,
+          "total_jiffies_delta": 78,
+          "runnable_mean": 17.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.19661066500066227
+        }
+      },
+      "log_ratio_b_over_a": -0.5597878330776288
+    },
+    {
+      "pair_index": 67,
+      "start": 4915200,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4915200,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.12642056000004231,
+        "rate_hs": 518396.6911709461,
+        "env": {
+          "steal_fraction": -45201.510204081635,
+          "steal_jiffies_delta": -2214874,
+          "total_jiffies_delta": 49,
+          "runnable_mean": 21.5,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.12642056000004231
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4915200,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.1899784119996184,
+        "rate_hs": 344965.51113466325,
+        "env": {
+          "steal_fraction": -28763.61038961039,
+          "steal_jiffies_delta": -2214798,
+          "total_jiffies_delta": 77,
+          "runnable_mean": 18.5,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.1899784119996184
+        }
+      },
+      "log_ratio_b_over_a": -0.4072963179369605
+    },
+    {
+      "pair_index": 68,
+      "start": 4980736,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 4980736,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10726987999987614,
+        "rate_hs": 610945.0294908102,
+        "env": {
+          "steal_fraction": -51509.83720930233,
+          "steal_jiffies_delta": -2214923,
+          "total_jiffies_delta": 43,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.10726987999987614
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 4980736,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.1921610370000053,
+        "rate_hs": 341047.2852516829,
+        "env": {
+          "steal_fraction": -28765.77922077922,
+          "steal_jiffies_delta": -2214965,
+          "total_jiffies_delta": 77,
+          "runnable_mean": 16.5,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.1921610370000053
+        }
+      },
+      "log_ratio_b_over_a": -0.5829858529266371
+    },
+    {
+      "pair_index": 69,
+      "start": 5046272,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5046272,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08422397600043041,
+        "rate_hs": 778115.7232432851,
+        "env": {
+          "steal_fraction": -71453.03225806452,
+          "steal_jiffies_delta": -2215044,
+          "total_jiffies_delta": 31,
+          "runnable_mean": 15.5,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.08422397600043041
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5046272,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09334688699982507,
+        "rate_hs": 702069.4755479399,
+        "env": {
+          "steal_fraction": -58291.42105263158,
+          "steal_jiffies_delta": -2215074,
+          "total_jiffies_delta": 38,
+          "runnable_mean": 17.5,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.09334688699982507
+        }
+      },
+      "log_ratio_b_over_a": -0.10284289049985672
+    },
+    {
+      "pair_index": 70,
+      "start": 5111808,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5111808,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.01947323399963352,
+        "rate_hs": 3365439.9675592333,
+        "env": {
+          "steal_fraction": -276889.0,
+          "steal_jiffies_delta": -2215112,
+          "total_jiffies_delta": 8,
+          "runnable_mean": 13.0,
+          "load1_mean": 16.8,
+          "elapsed_s": 0.01947323399963352
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5111808,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10701337599948602,
+        "rate_hs": 612409.4244098492,
+        "env": {
+          "steal_fraction": -55378.0,
+          "steal_jiffies_delta": -2215120,
+          "total_jiffies_delta": 40,
+          "runnable_mean": 12.5,
+          "load1_mean": 16.884999999999998,
+          "elapsed_s": 0.10701337599948602
+        }
+      },
+      "log_ratio_b_over_a": -1.7039129287230357
+    },
+    {
+      "pair_index": 71,
+      "start": 5177344,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5177344,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08687662600004842,
+        "rate_hs": 754357.1040611485,
+        "env": {
+          "steal_fraction": -65152.794117647056,
+          "steal_jiffies_delta": -2215195,
+          "total_jiffies_delta": 34,
+          "runnable_mean": 20.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.08687662600004842
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5177344,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08904518100007408,
+        "rate_hs": 735985.9260653923,
+        "env": {
+          "steal_fraction": -63290.28571428572,
+          "steal_jiffies_delta": -2215160,
+          "total_jiffies_delta": 35,
+          "runnable_mean": 14.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.08904518100007408
+        }
+      },
+      "log_ratio_b_over_a": -0.024654872349716937
+    },
+    {
+      "pair_index": 72,
+      "start": 5242880,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5242880,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09404203899975982,
+        "rate_hs": 696879.8283942713,
+        "env": {
+          "steal_fraction": -59872.35135135135,
+          "steal_jiffies_delta": -2215277,
+          "total_jiffies_delta": 37,
+          "runnable_mean": 14.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.09404203899975982
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5242880,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.12361343700013094,
+        "rate_hs": 530168.9006505868,
+        "env": {
+          "steal_fraction": -44304.56,
+          "steal_jiffies_delta": -2215228,
+          "total_jiffies_delta": 50,
+          "runnable_mean": 16.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.12361343700013094
+        }
+      },
+      "log_ratio_b_over_a": -0.27341734701086357
+    },
+    {
+      "pair_index": 73,
+      "start": 5308416,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5308416,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10517611799969018,
+        "rate_hs": 623107.2342886153,
+        "env": {
+          "steal_fraction": -52745.57142857143,
+          "steal_jiffies_delta": -2215314,
+          "total_jiffies_delta": 42,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.10517611799969018
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5308416,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.2768721230004303,
+        "rate_hs": 236701.33088804374,
+        "env": {
+          "steal_fraction": -20324.366972477063,
+          "steal_jiffies_delta": -2215356,
+          "total_jiffies_delta": 109,
+          "runnable_mean": 13.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.2768721230004303
+        }
+      },
+      "log_ratio_b_over_a": -0.967919490456628
+    },
+    {
+      "pair_index": 74,
+      "start": 5373952,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5373952,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.1852597400002196,
+        "rate_hs": 353751.98086709133,
+        "env": {
+          "steal_fraction": -29539.533333333333,
+          "steal_jiffies_delta": -2215465,
+          "total_jiffies_delta": 75,
+          "runnable_mean": 20.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.1852597400002196
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5373952,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.13278263800020795,
+        "rate_hs": 493558.50273058563,
+        "env": {
+          "steal_fraction": -41028.5,
+          "steal_jiffies_delta": -2215539,
+          "total_jiffies_delta": 54,
+          "runnable_mean": 19.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.13278263800020795
+        }
+      },
+      "log_ratio_b_over_a": 0.3330453498479275
+    },
+    {
+      "pair_index": 75,
+      "start": 5439488,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5439488,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.030236925999815867,
+        "rate_hs": 2167416.0925088446,
+        "env": {
+          "steal_fraction": -201423.63636363635,
+          "steal_jiffies_delta": -2215660,
+          "total_jiffies_delta": 11,
+          "runnable_mean": 20.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.030236925999815867
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5439488,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.16588205999960337,
+        "rate_hs": 395075.8749930927,
+        "env": {
+          "steal_fraction": -33068.55223880597,
+          "steal_jiffies_delta": -2215593,
+          "total_jiffies_delta": 67,
+          "runnable_mean": 18.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.16588205999960337
+        }
+      },
+      "log_ratio_b_over_a": -1.7022131612155178
+    },
+    {
+      "pair_index": 76,
+      "start": 5505024,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5505024,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08136125900000479,
+        "rate_hs": 805493.9267839518,
+        "env": {
+          "steal_fraction": -69239.71875,
+          "steal_jiffies_delta": -2215671,
+          "total_jiffies_delta": 32,
+          "runnable_mean": 21.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.08136125900000479
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5505024,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10517701999924611,
+        "rate_hs": 623101.8905124879,
+        "env": {
+          "steal_fraction": -54041.53658536585,
+          "steal_jiffies_delta": -2215703,
+          "total_jiffies_delta": 41,
+          "runnable_mean": 20.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.10517701999924611
+        }
+      },
+      "log_ratio_b_over_a": -0.25674560931483137
+    },
+    {
+      "pair_index": 77,
+      "start": 5570560,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5570560,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11951932300053159,
+        "rate_hs": 548329.7458077847,
+        "env": {
+          "steal_fraction": -45220.63265306123,
+          "steal_jiffies_delta": -2215811,
+          "total_jiffies_delta": 49,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.11951932300053159
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5570560,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.17181183899992902,
+        "rate_hs": 381440.53623701143,
+        "env": {
+          "steal_fraction": -32112.217391304348,
+          "steal_jiffies_delta": -2215743,
+          "total_jiffies_delta": 69,
+          "runnable_mean": 22.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.17181183899992902
+        }
+      },
+      "log_ratio_b_over_a": -0.36292186165153095
+    },
+    {
+      "pair_index": 78,
+      "start": 5636096,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5636096,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09848871200028952,
+        "rate_hs": 665416.3575599135,
+        "env": {
+          "steal_fraction": -55396.5,
+          "steal_jiffies_delta": -2215860,
+          "total_jiffies_delta": 40,
+          "runnable_mean": 13.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.09848871200028952
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5636096,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10627331500018045,
+        "rate_hs": 616674.091702971,
+        "env": {
+          "steal_fraction": -52759.52380952381,
+          "steal_jiffies_delta": -2215900,
+          "total_jiffies_delta": 42,
+          "runnable_mean": 14.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.10627331500018045
+        }
+      },
+      "log_ratio_b_over_a": -0.07607227639869324
+    },
+    {
+      "pair_index": 79,
+      "start": 5701632,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5701632,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11812498000017513,
+        "rate_hs": 554802.2103360597,
+        "env": {
+          "steal_fraction": -46167.708333333336,
+          "steal_jiffies_delta": -2216050,
+          "total_jiffies_delta": 48,
+          "runnable_mean": 13.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.11812498000017513
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5701632,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.27819058200020663,
+        "rate_hs": 235579.50642610656,
+        "env": {
+          "steal_fraction": -20144.918181818182,
+          "steal_jiffies_delta": -2215941,
+          "total_jiffies_delta": 110,
+          "runnable_mean": 14.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.27819058200020663
+        }
+      },
+      "log_ratio_b_over_a": -0.8565632090709235
+    },
+    {
+      "pair_index": 80,
+      "start": 5767168,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5767168,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09705611299978045,
+        "rate_hs": 675238.2510944803,
+        "env": {
+          "steal_fraction": -56824.820512820515,
+          "steal_jiffies_delta": -2216168,
+          "total_jiffies_delta": 39,
+          "runnable_mean": 15.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.09705611299978045
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5767168,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.18040422400008538,
+        "rate_hs": 363273.0905456459,
+        "env": {
+          "steal_fraction": -31212.647887323943,
+          "steal_jiffies_delta": -2216098,
+          "total_jiffies_delta": 71,
+          "runnable_mean": 15.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.18040422400008538
+        }
+      },
+      "log_ratio_b_over_a": -0.6199107262094997
+    },
+    {
+      "pair_index": 81,
+      "start": 5832704,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5832704,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.03179473500040331,
+        "rate_hs": 2061221.7714401046,
+        "env": {
+          "steal_fraction": -158300.5,
+          "steal_jiffies_delta": -2216207,
+          "total_jiffies_delta": 14,
+          "runnable_mean": 13.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.03179473500040331
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5832704,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.19097081100062496,
+        "rate_hs": 343172.8632067522,
+        "env": {
+          "steal_fraction": -29948.91891891892,
+          "steal_jiffies_delta": -2216220,
+          "total_jiffies_delta": 74,
+          "runnable_mean": 12.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.19097081100062496
+        }
+      },
+      "log_ratio_b_over_a": -1.792819884328393
+    },
+    {
+      "pair_index": 82,
+      "start": 5898240,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5898240,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09837868799968419,
+        "rate_hs": 666160.5407891837,
+        "env": {
+          "steal_fraction": -55407.35,
+          "steal_jiffies_delta": -2216294,
+          "total_jiffies_delta": 40,
+          "runnable_mean": 13.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.09837868799968419
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5898240,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11579574600000342,
+        "rate_hs": 565962.069107427,
+        "env": {
+          "steal_fraction": -46173.604166666664,
+          "steal_jiffies_delta": -2216333,
+          "total_jiffies_delta": 48,
+          "runnable_mean": 12.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.11579574600000342
+        }
+      },
+      "log_ratio_b_over_a": -0.16300363348170835
+    },
+    {
+      "pair_index": 83,
+      "start": 5963776,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 5963776,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09348091799984104,
+        "rate_hs": 701062.8629054696,
+        "env": {
+          "steal_fraction": -56832.179487179485,
+          "steal_jiffies_delta": -2216455,
+          "total_jiffies_delta": 39,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.09348091799984104
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 5963776,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.19255256400083454,
+        "rate_hs": 340353.8163205968,
+        "env": {
+          "steal_fraction": -29951.094594594593,
+          "steal_jiffies_delta": -2216381,
+          "total_jiffies_delta": 74,
+          "runnable_mean": 16.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.19255256400083454
+        }
+      },
+      "log_ratio_b_over_a": -0.7226118462952558
+    },
+    {
+      "pair_index": 84,
+      "start": 6029312,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6029312,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.16810629799965682,
+        "rate_hs": 389848.570695036,
+        "env": {
+          "steal_fraction": -34099.89230769231,
+          "steal_jiffies_delta": -2216493,
+          "total_jiffies_delta": 65,
+          "runnable_mean": 16.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.16810629799965682
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6029312,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.14740687500034255,
+        "rate_hs": 444592.56055626785,
+        "env": {
+          "steal_fraction": -37568.76271186441,
+          "steal_jiffies_delta": -2216557,
+          "total_jiffies_delta": 59,
+          "runnable_mean": 15.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.14740687500034255
+        }
+      },
+      "log_ratio_b_over_a": 0.13139988504396297
+    },
+    {
+      "pair_index": 85,
+      "start": 6094848,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6094848,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08862269700057368,
+        "rate_hs": 739494.533771363,
+        "env": {
+          "steal_fraction": -65195.529411764706,
+          "steal_jiffies_delta": -2216648,
+          "total_jiffies_delta": 34,
+          "runnable_mean": 15.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.08862269700057368
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6094848,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08300085000064428,
+        "rate_hs": 789582.2753561113,
+        "env": {
+          "steal_fraction": -67170.18181818182,
+          "steal_jiffies_delta": -2216616,
+          "total_jiffies_delta": 33,
+          "runnable_mean": 16.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.08300085000064428
+        }
+      },
+      "log_ratio_b_over_a": 0.06553714990972065
+    },
+    {
+      "pair_index": 86,
+      "start": 6160384,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6160384,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.2029601329995785,
+        "rate_hs": 322900.8526523586,
+        "env": {
+          "steal_fraction": -27032.634146341465,
+          "steal_jiffies_delta": -2216676,
+          "total_jiffies_delta": 82,
+          "runnable_mean": 14.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.2029601329995785
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6160384,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.27484650400037935,
+        "rate_hs": 238445.81992539932,
+        "env": {
+          "steal_fraction": -19792.428571428572,
+          "steal_jiffies_delta": -2216752,
+          "total_jiffies_delta": 112,
+          "runnable_mean": 17.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.27484650400037935
+        }
+      },
+      "log_ratio_b_over_a": -0.3032032039716097
+    },
+    {
+      "pair_index": 87,
+      "start": 6225920,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6225920,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.13692745699972875,
+        "rate_hs": 478618.3971862548,
+        "env": {
+          "steal_fraction": -41827.56603773585,
+          "steal_jiffies_delta": -2216861,
+          "total_jiffies_delta": 53,
+          "runnable_mean": 18.0,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.13692745699972875
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6225920,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.21109844700004032,
+        "rate_hs": 310452.3075908156,
+        "env": {
+          "steal_fraction": -26391.809523809523,
+          "steal_jiffies_delta": -2216912,
+          "total_jiffies_delta": 84,
+          "runnable_mean": 11.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.21109844700004032
+        }
+      },
+      "log_ratio_b_over_a": -0.4328733234876126
+    },
+    {
+      "pair_index": 88,
+      "start": 6291456,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6291456,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08327055500012648,
+        "rate_hs": 787024.8973349638,
+        "env": {
+          "steal_fraction": -65205.76470588235,
+          "steal_jiffies_delta": -2216996,
+          "total_jiffies_delta": 34,
+          "runnable_mean": 8.5,
+          "load1_mean": 16.97,
+          "elapsed_s": 0.08327055500012648
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6291456,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.17979186499997013,
+        "rate_hs": 364510.3742597636,
+        "env": {
+          "steal_fraction": -31225.74647887324,
+          "steal_jiffies_delta": -2217028,
+          "total_jiffies_delta": 71,
+          "runnable_mean": 12.0,
+          "load1_mean": 16.735,
+          "elapsed_s": 0.17979186499997013
+        }
+      },
+      "log_ratio_b_over_a": -0.769704871004944
+    },
+    {
+      "pair_index": 89,
+      "start": 6356992,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6356992,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.02380015699964133,
+        "rate_hs": 2753595.2809465765,
+        "env": {
+          "steal_fraction": -246344.33333333334,
+          "steal_jiffies_delta": -2217099,
+          "total_jiffies_delta": 9,
+          "runnable_mean": 11.5,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.02380015699964133
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6356992,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.17728643499958707,
+        "rate_hs": 369661.67208536086,
+        "env": {
+          "steal_fraction": -30793.152777777777,
+          "steal_jiffies_delta": -2217107,
+          "total_jiffies_delta": 72,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.17728643499958707
+        }
+      },
+      "log_ratio_b_over_a": -2.0080745241293885
+    },
+    {
+      "pair_index": 90,
+      "start": 6422528,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6422528,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09073363400057133,
+        "rate_hs": 722290.038549402,
+        "env": {
+          "steal_fraction": -63347.97142857143,
+          "steal_jiffies_delta": -2217179,
+          "total_jiffies_delta": 35,
+          "runnable_mean": 21.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.09073363400057133
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6422528,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.4067579039992779,
+        "rate_hs": 161117.95088834057,
+        "env": {
+          "steal_fraction": -13602.527607361963,
+          "steal_jiffies_delta": -2217212,
+          "total_jiffies_delta": 163,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.4067579039992779
+        }
+      },
+      "log_ratio_b_over_a": -1.5002900627022013
+    },
+    {
+      "pair_index": 91,
+      "start": 6488064,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6488064,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11381066600006307,
+        "rate_hs": 575833.5514877286,
+        "env": {
+          "steal_fraction": -48203.782608695656,
+          "steal_jiffies_delta": -2217374,
+          "total_jiffies_delta": 46,
+          "runnable_mean": 22.5,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.11381066600006307
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6488064,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.2205197949997455,
+        "rate_hs": 297188.7399046223,
+        "env": {
+          "steal_fraction": -25197.93181818182,
+          "steal_jiffies_delta": -2217418,
+          "total_jiffies_delta": 88,
+          "runnable_mean": 21.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.2205197949997455
+        }
+      },
+      "log_ratio_b_over_a": -0.6614512209634097
+    },
+    {
+      "pair_index": 92,
+      "start": 6553600,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6553600,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.024007478000385163,
+        "rate_hs": 2729816.1014225893,
+        "env": {
+          "steal_fraction": -221765.2,
+          "steal_jiffies_delta": -2217652,
+          "total_jiffies_delta": 10,
+          "runnable_mean": 21.5,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.024007478000385163
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6553600,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.37255272200036416,
+        "rate_hs": 175910.67285219283,
+        "env": {
+          "steal_fraction": -14983.135135135135,
+          "steal_jiffies_delta": -2217504,
+          "total_jiffies_delta": 148,
+          "runnable_mean": 21.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.37255272200036416
+        }
+      },
+      "log_ratio_b_over_a": -2.742013198210531
+    },
+    {
+      "pair_index": 93,
+      "start": 6619136,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6619136,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.16162339899983635,
+        "rate_hs": 405485.84181221406,
+        "env": {
+          "steal_fraction": -35200.98412698413,
+          "steal_jiffies_delta": -2217662,
+          "total_jiffies_delta": 63,
+          "runnable_mean": 21.5,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.16162339899983635
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6619136,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.22636605899970164,
+        "rate_hs": 289513.367373182,
+        "env": {
+          "steal_fraction": -24918.23595505618,
+          "steal_jiffies_delta": -2217723,
+          "total_jiffies_delta": 89,
+          "runnable_mean": 22.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.22636605899970164
+        }
+      },
+      "log_ratio_b_over_a": -0.33688448761527007
+    },
+    {
+      "pair_index": 94,
+      "start": 6684672,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6684672,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10377344300013647,
+        "rate_hs": 631529.5908599064,
+        "env": {
+          "steal_fraction": -51578.67441860465,
+          "steal_jiffies_delta": -2217883,
+          "total_jiffies_delta": 43,
+          "runnable_mean": 20.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.10377344300013647
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6684672,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.18916893700043147,
+        "rate_hs": 346441.6570668287,
+        "env": {
+          "steal_fraction": -30380.972602739726,
+          "steal_jiffies_delta": -2217811,
+          "total_jiffies_delta": 73,
+          "runnable_mean": 20.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.18916893700043147
+        }
+      },
+      "log_ratio_b_over_a": -0.6004303721655477
+    },
+    {
+      "pair_index": 95,
+      "start": 6750208,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6750208,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.16977118699924176,
+        "rate_hs": 386025.4567242479,
+        "env": {
+          "steal_fraction": -33604.93939393939,
+          "steal_jiffies_delta": -2217926,
+          "total_jiffies_delta": 66,
+          "runnable_mean": 20.5,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.16977118699924176
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6750208,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.20562106699981086,
+        "rate_hs": 318722.2056388818,
+        "env": {
+          "steal_fraction": -27048.682926829268,
+          "steal_jiffies_delta": -2217992,
+          "total_jiffies_delta": 82,
+          "runnable_mean": 21.5,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.20562106699981086
+        }
+      },
+      "log_ratio_b_over_a": -0.19158342267803485
+    },
+    {
+      "pair_index": 96,
+      "start": 6815744,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6815744,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.1286302059997979,
+        "rate_hs": 509491.52643122536,
+        "env": {
+          "steal_fraction": -42655.25,
+          "steal_jiffies_delta": -2218073,
+          "total_jiffies_delta": 52,
+          "runnable_mean": 20.5,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.1286302059997979
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6815744,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.3646390860003521,
+        "rate_hs": 179728.4013594108,
+        "env": {
+          "steal_fraction": -15192.602739726028,
+          "steal_jiffies_delta": -2218120,
+          "total_jiffies_delta": 146,
+          "runnable_mean": 20.5,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.3646390860003521
+        }
+      },
+      "log_ratio_b_over_a": -1.0419663913329402
+    },
+    {
+      "pair_index": 97,
+      "start": 6881280,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6881280,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.028724828000122216,
+        "rate_hs": 2281510.6151278317,
+        "env": {
+          "steal_fraction": -184859.33333333334,
+          "steal_jiffies_delta": -2218312,
+          "total_jiffies_delta": 12,
+          "runnable_mean": 19.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.028724828000122216
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6881280,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11472987500019372,
+        "rate_hs": 571220.0069937264,
+        "env": {
+          "steal_fraction": -47197.12765957447,
+          "steal_jiffies_delta": -2218265,
+          "total_jiffies_delta": 47,
+          "runnable_mean": 20.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.11472987500019372
+        }
+      },
+      "log_ratio_b_over_a": -1.3848186163919787
+    },
+    {
+      "pair_index": 98,
+      "start": 6946816,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 6946816,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.12564191199999186,
+        "rate_hs": 521609.3814300139,
+        "env": {
+          "steal_fraction": -44368.58,
+          "steal_jiffies_delta": -2218429,
+          "total_jiffies_delta": 50,
+          "runnable_mean": 16.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.12564191199999186
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 6946816,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.2676630030000524,
+        "rate_hs": 244845.19438791162,
+        "env": {
+          "steal_fraction": -20731.981308411214,
+          "steal_jiffies_delta": -2218322,
+          "total_jiffies_delta": 107,
+          "runnable_mean": 17.5,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.2676630030000524
+        }
+      },
+      "log_ratio_b_over_a": -0.7562928451250072
+    },
+    {
+      "pair_index": 99,
+      "start": 7012352,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7012352,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.1734556250003152,
+        "rate_hs": 377825.74073271424,
+        "env": {
+          "steal_fraction": -32624.66176470588,
+          "steal_jiffies_delta": -2218477,
+          "total_jiffies_delta": 68,
+          "runnable_mean": 20.5,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.1734556250003152
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7012352,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11371857799986174,
+        "rate_hs": 576299.8548933639,
+        "env": {
+          "steal_fraction": -47203.085106382976,
+          "steal_jiffies_delta": -2218545,
+          "total_jiffies_delta": 47,
+          "runnable_mean": 22.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.11371857799986174
+        }
+      },
+      "log_ratio_b_over_a": 0.4221950206802215
+    },
+    {
+      "pair_index": 100,
+      "start": 7077888,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7077888,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10575580900058412,
+        "rate_hs": 619691.727757839,
+        "env": {
+          "steal_fraction": -54112.0,
+          "steal_jiffies_delta": -2218592,
+          "total_jiffies_delta": 41,
+          "runnable_mean": 17.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.10575580900058412
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7077888,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.20531531799952063,
+        "rate_hs": 319196.8365465699,
+        "env": {
+          "steal_fraction": -27056.5,
+          "steal_jiffies_delta": -2218633,
+          "total_jiffies_delta": 82,
+          "runnable_mean": 15.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.20531531799952063
+        }
+      },
+      "log_ratio_b_over_a": -0.6634141861356567
+    },
+    {
+      "pair_index": 101,
+      "start": 7143424,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7143424,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.19270942999992258,
+        "rate_hs": 340076.767390295,
+        "env": {
+          "steal_fraction": -28445.05128205128,
+          "steal_jiffies_delta": -2218714,
+          "total_jiffies_delta": 78,
+          "runnable_mean": 24.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.19270942999992258
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7143424,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.3743593530007274,
+        "rate_hs": 175061.74074371974,
+        "env": {
+          "steal_fraction": -14991.831081081082,
+          "steal_jiffies_delta": -2218791,
+          "total_jiffies_delta": 148,
+          "runnable_mean": 23.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.3743593530007274
+        }
+      },
+      "log_ratio_b_over_a": -0.6640326626137728
+    },
+    {
+      "pair_index": 102,
+      "start": 7208960,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7208960,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.12636365400067007,
+        "rate_hs": 518630.14344023704,
+        "env": {
+          "steal_fraction": -43508.58823529412,
+          "steal_jiffies_delta": -2218938,
+          "total_jiffies_delta": 51,
+          "runnable_mean": 21.0,
+          "load1_mean": 16.5,
+          "elapsed_s": 0.12636365400067007
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7208960,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.306103572000211,
+        "rate_hs": 214097.46894412205,
+        "env": {
+          "steal_fraction": -18040.552845528455,
+          "steal_jiffies_delta": -2218988,
+          "total_jiffies_delta": 123,
+          "runnable_mean": 21.0,
+          "load1_mean": 15.84,
+          "elapsed_s": 0.306103572000211
+        }
+      },
+      "log_ratio_b_over_a": -0.8847596223730526
+    },
+    {
+      "pair_index": 103,
+      "start": 7274496,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7274496,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.078347376000238,
+        "rate_hs": 836479.8330935923,
+        "env": {
+          "steal_fraction": -69347.21875,
+          "steal_jiffies_delta": -2219111,
+          "total_jiffies_delta": 32,
+          "runnable_mean": 16.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.078347376000238
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7274496,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11601488500036794,
+        "rate_hs": 564893.0307502537,
+        "env": {
+          "steal_fraction": -48242.239130434784,
+          "steal_jiffies_delta": -2219143,
+          "total_jiffies_delta": 46,
+          "runnable_mean": 16.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.11601488500036794
+        }
+      },
+      "log_ratio_b_over_a": -0.392566024345289
+    },
+    {
+      "pair_index": 104,
+      "start": 7340032,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7340032,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.17989095299981273,
+        "rate_hs": 364309.5937129658,
+        "env": {
+          "steal_fraction": -31258.436619718308,
+          "steal_jiffies_delta": -2219349,
+          "total_jiffies_delta": 71,
+          "runnable_mean": 22.0,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.17989095299981273
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7340032,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.4036663540000518,
+        "rate_hs": 162351.9011445566,
+        "env": {
+          "steal_fraction": -13698.685185185184,
+          "steal_jiffies_delta": -2219187,
+          "total_jiffies_delta": 162,
+          "runnable_mean": 20.0,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.4036663540000518
+        }
+      },
+      "log_ratio_b_over_a": -0.808237829676899
+    },
+    {
+      "pair_index": 105,
+      "start": 7405568,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7405568,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08616023100057646,
+        "rate_hs": 760629.3441757547,
+        "env": {
+          "steal_fraction": -63411.97142857143,
+          "steal_jiffies_delta": -2219419,
+          "total_jiffies_delta": 35,
+          "runnable_mean": 23.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.08616023100057646
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7405568,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.2550859689999925,
+        "rate_hs": 256917.30618081128,
+        "env": {
+          "steal_fraction": -21548.087378640776,
+          "steal_jiffies_delta": -2219453,
+          "total_jiffies_delta": 103,
+          "runnable_mean": 21.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.2550859689999925
+        }
+      },
+      "log_ratio_b_over_a": -1.0853919077653318
+    },
+    {
+      "pair_index": 106,
+      "start": 7471104,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7471104,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.14370248500017624,
+        "rate_hs": 456053.3521735524,
+        "env": {
+          "steal_fraction": -38268.18965517241,
+          "steal_jiffies_delta": -2219555,
+          "total_jiffies_delta": 58,
+          "runnable_mean": 19.0,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.14370248500017624
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7471104,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.19463400800032105,
+        "rate_hs": 336714.02378916176,
+        "env": {
+          "steal_fraction": -28826.14285714286,
+          "steal_jiffies_delta": -2219613,
+          "total_jiffies_delta": 77,
+          "runnable_mean": 17.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.19463400800032105
+        }
+      },
+      "log_ratio_b_over_a": -0.303375827055849
+    },
+    {
+      "pair_index": 107,
+      "start": 7536640,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7536640,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.04183680400001322,
+        "rate_hs": 1566467.648914561,
+        "env": {
+          "steal_fraction": -138735.4375,
+          "steal_jiffies_delta": -2219767,
+          "total_jiffies_delta": 16,
+          "runnable_mean": 18.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.04183680400001322
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7536640,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.1936062659997333,
+        "rate_hs": 338501.4408577576,
+        "env": {
+          "steal_fraction": -28097.32911392405,
+          "steal_jiffies_delta": -2219689,
+          "total_jiffies_delta": 79,
+          "runnable_mean": 18.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.1936062659997333
+        }
+      },
+      "log_ratio_b_over_a": -1.5320501094136834
+    },
+    {
+      "pair_index": 108,
+      "start": 7602176,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7602176,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.0945366619998822,
+        "rate_hs": 693233.7001710687,
+        "env": {
+          "steal_fraction": -59994.13513513513,
+          "steal_jiffies_delta": -2219783,
+          "total_jiffies_delta": 37,
+          "runnable_mean": 16.0,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.0945366619998822
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7602176,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.17749422699944262,
+        "rate_hs": 369228.91018988355,
+        "env": {
+          "steal_fraction": -32171.260869565216,
+          "steal_jiffies_delta": -2219817,
+          "total_jiffies_delta": 69,
+          "runnable_mean": 20.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.17749422699944262
+        }
+      },
+      "log_ratio_b_over_a": -0.6299503675054638
+    },
+    {
+      "pair_index": 109,
+      "start": 7667712,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7667712,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11207674500019493,
+        "rate_hs": 584742.1782269463,
+        "env": {
+          "steal_fraction": -49330.8,
+          "steal_jiffies_delta": -2219886,
+          "total_jiffies_delta": 45,
+          "runnable_mean": 20.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.11207674500019493
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7667712,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.1768541159999586,
+        "rate_hs": 370565.3081888993,
+        "env": {
+          "steal_fraction": -31266.61971830986,
+          "steal_jiffies_delta": -2219930,
+          "total_jiffies_delta": 71,
+          "runnable_mean": 21.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.1768541159999586
+        }
+      },
+      "log_ratio_b_over_a": -0.45614132948852265
+    },
+    {
+      "pair_index": 110,
+      "start": 7733248,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7733248,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.11053004299992608,
+        "rate_hs": 592924.7670702873,
+        "env": {
+          "steal_fraction": -50457.34090909091,
+          "steal_jiffies_delta": -2220123,
+          "total_jiffies_delta": 44,
+          "runnable_mean": 21.0,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.11053004299992608
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7733248,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.31210248400020646,
+        "rate_hs": 209982.3082470457,
+        "env": {
+          "steal_fraction": -17759.992,
+          "steal_jiffies_delta": -2219999,
+          "total_jiffies_delta": 125,
+          "runnable_mean": 21.0,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.31210248400020646
+        }
+      },
+      "log_ratio_b_over_a": -1.038044241876456
+    },
+    {
+      "pair_index": 111,
+      "start": 7798784,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7798784,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.216141054000218,
+        "rate_hs": 303209.40324429946,
+        "env": {
+          "steal_fraction": -25519.149425287356,
+          "steal_jiffies_delta": -2220166,
+          "total_jiffies_delta": 87,
+          "runnable_mean": 18.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.216141054000218
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7798784,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.17950450299940712,
+        "rate_hs": 365093.90519421373,
+        "env": {
+          "steal_fraction": -31271.140845070422,
+          "steal_jiffies_delta": -2220251,
+          "total_jiffies_delta": 71,
+          "runnable_mean": 18.0,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.17950450299940712
+        }
+      },
+      "log_ratio_b_over_a": 0.1857309283717451
+    },
+    {
+      "pair_index": 112,
+      "start": 7864320,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7864320,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.18585342100050184,
+        "rate_hs": 352621.9729892572,
+        "env": {
+          "steal_fraction": -30004.337837837837,
+          "steal_jiffies_delta": -2220321,
+          "total_jiffies_delta": 74,
+          "runnable_mean": 17.0,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.18585342100050184
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7864320,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.21834102499997243,
+        "rate_hs": 300154.311357695,
+        "env": {
+          "steal_fraction": -25521.77011494253,
+          "steal_jiffies_delta": -2220394,
+          "total_jiffies_delta": 87,
+          "runnable_mean": 17.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.21834102499997243
+        }
+      },
+      "log_ratio_b_over_a": -0.16109987145984467
+    },
+    {
+      "pair_index": 113,
+      "start": 7929856,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7929856,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09428291099993658,
+        "rate_hs": 695099.4544498534,
+        "env": {
+          "steal_fraction": -56935.35897435898,
+          "steal_jiffies_delta": -2220479,
+          "total_jiffies_delta": 39,
+          "runnable_mean": 22.0,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.09428291099993658
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7929856,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.1091656860007788,
+        "rate_hs": 600335.1639225943,
+        "env": {
+          "steal_fraction": -52869.47619047619,
+          "steal_jiffies_delta": -2220518,
+          "total_jiffies_delta": 42,
+          "runnable_mean": 21.0,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.1091656860007788
+        }
+      },
+      "log_ratio_b_over_a": -0.1465668294635708
+    },
+    {
+      "pair_index": 114,
+      "start": 7995392,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 7995392,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.12801483200018993,
+        "rate_hs": 511940.678873076,
+        "env": {
+          "steal_fraction": -41122.53703703704,
+          "steal_jiffies_delta": -2220617,
+          "total_jiffies_delta": 54,
+          "runnable_mean": 23.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.12801483200018993
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 7995392,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.1654800369997247,
+        "rate_hs": 396035.6861662355,
+        "env": {
+          "steal_fraction": -34696.21875,
+          "steal_jiffies_delta": -2220558,
+          "total_jiffies_delta": 64,
+          "runnable_mean": 19.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.1654800369997247
+        }
+      },
+      "log_ratio_b_over_a": -0.2567044329753853
+    },
+    {
+      "pair_index": 115,
+      "start": 8060928,
+      "order": "BA",
+      "b_first": true,
+      "a": {
+        "implementation": "c_batch",
+        "start": 8060928,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.20464897799956816,
+        "rate_hs": 320236.1460126045,
+        "env": {
+          "steal_fraction": -27082.121951219513,
+          "steal_jiffies_delta": -2220734,
+          "total_jiffies_delta": 82,
+          "runnable_mean": 21.0,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.20464897799956816
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 8060928,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.16981772599956457,
+        "rate_hs": 385919.6654191921,
+        "env": {
+          "steal_fraction": -32656.897058823528,
+          "steal_jiffies_delta": -2220669,
+          "total_jiffies_delta": 68,
+          "runnable_mean": 23.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.16981772599956457
+        }
+      },
+      "log_ratio_b_over_a": 0.18657054720174618
+    },
+    {
+      "pair_index": 116,
+      "start": 8126464,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 8126464,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.026809654000317096,
+        "rate_hs": 2444492.569699887,
+        "env": {
+          "steal_fraction": -222081.6,
+          "steal_jiffies_delta": -2220816,
+          "total_jiffies_delta": 10,
+          "runnable_mean": 18.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.026809654000317096
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 8126464,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.09585706300003949,
+        "rate_hs": 683684.6232183538,
+        "env": {
+          "steal_fraction": -60022.32432432433,
+          "steal_jiffies_delta": -2220826,
+          "total_jiffies_delta": 37,
+          "runnable_mean": 13.0,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.09585706300003949
+        }
+      },
+      "log_ratio_b_over_a": -1.274096108287295
+    },
+    {
+      "pair_index": 117,
+      "start": 8192000,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 8192000,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08335879700007354,
+        "rate_hs": 786191.7680978791,
+        "env": {
+          "steal_fraction": -67298.84848484848,
+          "steal_jiffies_delta": -2220862,
+          "total_jiffies_delta": 33,
+          "runnable_mean": 16.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.08335879700007354
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 8192000,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.20552485200005322,
+        "rate_hs": 318871.41317578,
+        "env": {
+          "steal_fraction": -27761.175,
+          "steal_jiffies_delta": -2220894,
+          "total_jiffies_delta": 80,
+          "runnable_mean": 20.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.20552485200005322
+        }
+      },
+      "log_ratio_b_over_a": -0.9024128144113059
+    },
+    {
+      "pair_index": 118,
+      "start": 8257536,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 8257536,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.01958517099956225,
+        "rate_hs": 3346205.1468156595,
+        "env": {
+          "steal_fraction": -277621.75,
+          "steal_jiffies_delta": -2220974,
+          "total_jiffies_delta": 8,
+          "runnable_mean": 18.5,
+          "load1_mean": 15.18,
+          "elapsed_s": 0.01958517099956225
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 8257536,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.08734953600014705,
+        "rate_hs": 750273.0180488843,
+        "env": {
+          "steal_fraction": -61693.944444444445,
+          "steal_jiffies_delta": -2220982,
+          "total_jiffies_delta": 36,
+          "runnable_mean": 18.0,
+          "load1_mean": 15.29,
+          "elapsed_s": 0.08734953600014705
+        }
+      },
+      "log_ratio_b_over_a": -1.4951450263751325
+    },
+    {
+      "pair_index": 119,
+      "start": 8323072,
+      "order": "AB",
+      "b_first": false,
+      "a": {
+        "implementation": "c_batch",
+        "start": 8323072,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.10156911499962007,
+        "rate_hs": 645235.5127859995,
+        "env": {
+          "steal_fraction": -55525.425,
+          "steal_jiffies_delta": -2221017,
+          "total_jiffies_delta": 40,
+          "runnable_mean": 22.0,
+          "load1_mean": 15.4,
+          "elapsed_s": 0.10156911499962007
+        }
+      },
+      "b": {
+        "implementation": "shani_i_batch",
+        "start": 8323072,
+        "count": 65536,
+        "threads": 2,
+        "rc": 0,
+        "attempted": 65536,
+        "backend_attempted": 65536,
+        "elapsed_s": 0.16972326500035706,
+        "rate_hs": 386134.4524562506,
+        "env": {
+          "steal_fraction": -32662.602941176472,
+          "steal_jiffies_delta": -2221057,
+          "total_jiffies_delta": 68,
+          "runnable_mean": 20.5,
+          "load1_mean": 15.4,
+          "elapsed_s": 0.16972326500035706
+        }
+      },
+      "log_ratio_b_over_a": -0.5134297550119554
+    }
+  ],
+  "finished_utc": "2026-11-15T09:44:27.151535+00:00",
+  "environment_at_end": {
+    "cpu_total_jiffies": 2261565,
+    "cpu_steal_jiffies": 40440,
+    "load1": 15.4,
+    "runnable": 22
+  },
+  "load_average_at_end": [
+    "15.40",
+    "11.54",
+    "10.28"
+  ],
+  "coverage_assertion": {
+    "attempted_a": 7864320,
+    "attempted_b": 7864320,
+    "expected_each": 7864320
+  }
+}
