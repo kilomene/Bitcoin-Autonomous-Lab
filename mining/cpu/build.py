@@ -25,7 +25,17 @@ Task 001 build correction: a failed build is a failed build.
   2026-11-14) is built as its own translation unit with a
   restricted flag set (-mavx512f -mavx512bw, never
   -march=native), linked with the flag-free CPUID probe
-  (bal_avx512_probe.c). Its failure is reported loudly and
+  (bal_avx512_probe.c).
+- The AVX-512 DualMask library (bal_avx512_dual.c, the
+  EXP-026 candidate C2 kernel integrated as a production
+  backend on 2026-11-14 under the owner's explicit
+  decision) is built exactly the same way, as
+  libbal_v512dual.so: its own translation unit, the same
+  restricted flag set, the same flag-free probe. Its
+  failure is likewise reported loudly and separately and
+  never fails the production C build: the engine treats a
+  missing or unusable libbal_v512dual.so as "kernel not
+  built" and falls back to the single-batch v512 backend. Its failure is reported loudly and
   separately and never fails the production C build: the
   engine simply finds no libbal_v512.so (or a probe answer of
   unsupported) and stays on the OpenSSL C backend. When the
@@ -51,6 +61,7 @@ OUT = os.path.join(ROOT, ".local", "cpu")
 LIB = os.path.join(OUT, "libbal_batch.so")
 ILIB = os.path.join(OUT, "libbal_intrin.so")
 VLIB = os.path.join(OUT, "libbal_v512.so")
+VDLIB = os.path.join(OUT, "libbal_v512dual.so")
 # The exact CPU features the AVX-512 multi-buffer kernel
 # requires, and the restricted compiler flags that keep the
 # kernel object inside exactly that set. Determined from the
@@ -336,10 +347,185 @@ def build_v512(log=print):
             "supported": supported, "error": None}
 
 
+def _smoke_v512dual(lib_path):
+    """Verify the freshly built AVX-512 DualMask library
+    before anyone is told it exists. Same discipline as
+    _smoke_v512, with the audit D-1 rule applied to every
+    symbol: existence is checked with hasattr BEFORE any
+    argtypes assignment, so an incomplete library produces
+    this function's designed error string, never an
+    AttributeError. The flag-free probe answers first;
+    only when it reports the kernel can execute here are
+    kernel entry points called, and then the dual batch
+    must reproduce hashlib digests on the genesis header
+    and the DualMask counted search must re-find the
+    genesis nonce with dual-atomic accounting (a started
+    32-lane dual group completes; backend counts are
+    whole 16-lane groups). Returns (error, supported)
+    where error is None on success."""
+    try:
+        lib = ctypes.CDLL(lib_path)
+    except OSError as exc:
+        return f"built library failed to load: {exc}", None
+    if not hasattr(lib, "bal_v512_supported"):
+        return "library lacks the bal_v512_supported probe", None
+    lib.bal_v512_supported.restype = ctypes.c_int
+    supported = lib.bal_v512_supported()
+    if not supported:
+        return None, 0
+    if not hasattr(lib, "bal_vd_batch2"):
+        return "library lacks the bal_vd_batch2 entry point", 1
+    lib.bal_vd_batch2.restype = ctypes.c_int
+    lib.bal_vd_batch2.argtypes = [
+        ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+        ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p,
+        ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint64),
+        ctypes.POINTER(ctypes.c_uint64)]
+    count = 256
+    hashes = ctypes.create_string_buffer(32 * count)
+    flags = ctypes.create_string_buffer(count)
+    target = ((1 << 256) - 1).to_bytes(32, "little")
+    attempted = ctypes.c_uint64(0)
+    backend = ctypes.c_uint64(0)
+    rc = lib.bal_vd_batch2(GENESIS_HEADER, 0, count, 2, target,
+                           hashes, flags, ctypes.byref(attempted),
+                           ctypes.byref(backend))
+    if rc != 0:
+        return f"smoke v512dual batch returned {rc}", 1
+    for n in range(count):
+        want = hashlib.sha256(hashlib.sha256(
+            GENESIS_HEADER[:76] + n.to_bytes(4, "little")).digest()).digest()
+        if hashes.raw[32 * n:32 * n + 32] != want:
+            return f"smoke v512dual digest mismatch at nonce {n}", 1
+    if attempted.value != count or backend.value != count:
+        return (f"smoke v512dual batch accounting off: attempted "
+                f"{attempted.value} backend {backend.value} "
+                f"count {count}", 1)
+    if not hasattr(lib, "bal_vd_search2"):
+        return "library lacks the bal_vd_search2 entry point", 1
+    lib.bal_vd_search2.restype = ctypes.c_int
+    lib.bal_vd_search2.argtypes = [
+        ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+        ctypes.c_uint, ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_uint32), ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_uint64),
+        ctypes.POINTER(ctypes.c_uint64)]
+    nonce = ctypes.c_uint32(0)
+    s_attempted = ctypes.c_uint64(0)
+    s_backend = ctypes.c_uint64(0)
+    digest = ctypes.create_string_buffer(32)
+    diff1 = (0xFFFF << 208).to_bytes(32, "little")
+    rc = lib.bal_vd_search2(GENESIS_HEADER, GENESIS_NONCE - 3, 64, 2,
+                            diff1, ctypes.byref(nonce), digest,
+                            ctypes.byref(s_attempted),
+                            ctypes.byref(s_backend))
+    if rc != 1 or nonce.value != GENESIS_NONCE:
+        return (f"smoke v512dual search failed: rc={rc} "
+                f"nonce={nonce.value}", 1)
+    # Dual-atomic accounting: the winning nonce sits in a
+    # dual group of one span; every started group completes,
+    # so the backend lane count is a whole number of 16-lane
+    # groups and attempted is the real nonces behind them.
+    if s_backend.value % 16 or not (4 <= s_attempted.value
+                                    <= s_backend.value <= 64):
+        return (f"smoke v512dual search accounting implausible: "
+                f"attempted {s_attempted.value} backend "
+                f"{s_backend.value}", 1)
+    return None, 1
+
+
+def build_v512dual(log=print):
+    """Build the AVX-512 DualMask production library.
+
+    Mirrors build_v512 exactly: the kernel translation unit
+    is compiled with the restricted V512_FLAGS set (never
+    -march=native), the probe translation unit with no
+    vector flags at all, and a build failure is loud but
+    NEVER fails the production C build: the engine treats
+    a missing or unusable libbal_v512dual.so as "kernel
+    not built" and falls back to the single-batch v512
+    backend (and from there to the OpenSSL C backend).
+    """
+    os.makedirs(OUT, exist_ok=True)
+    cc = shutil.which("gcc") or shutil.which("cc")
+    if not cc:
+        log("AVX-512 DualMask build FAILED: no C compiler "
+            "found (gcc/cc); the engine will use the "
+            "single-batch AVX-512 backend")
+        return {"cc": None, "lib": None, "ok": False,
+                "supported": None, "error": "no C compiler found"}
+    tmpdir = os.path.join(OUT, ".v512dual-build")
+    os.makedirs(tmpdir, exist_ok=True)
+    kernel_obj = os.path.join(tmpdir, "bal_avx512_dual.o")
+    probe_obj = os.path.join(tmpdir, "bal_avx512_probe.o")
+    base = ["-O3", "-shared", "-fPIC", "-I", HERE]
+    cmd = [cc] + base + V512_FLAGS + [
+        "-c", os.path.join(HERE, "bal_avx512_dual.c"), "-o", kernel_obj]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        log(f"AVX-512 DualMask build FAILED for "
+            f"bal_avx512_dual.c: compiler exited "
+            f"{proc.returncode}; the engine will use the "
+            f"single-batch AVX-512 backend")
+        if proc.stderr.strip():
+            log("compiler output: " + proc.stderr.strip()[-1200:])
+        return {"cc": cc, "lib": None, "ok": False,
+                "supported": None,
+                "error": proc.stderr.strip()[-1200:]
+                or f"compiler exited {proc.returncode}"}
+    cmd = [cc] + base + [
+        "-c", os.path.join(HERE, "bal_avx512_probe.c"), "-o", probe_obj]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        log(f"AVX-512 DualMask build FAILED for "
+            f"bal_avx512_probe.c: compiler exited "
+            f"{proc.returncode}; the engine will use the "
+            f"single-batch AVX-512 backend")
+        if proc.stderr.strip():
+            log("compiler output: " + proc.stderr.strip()[-1200:])
+        return {"cc": cc, "lib": None, "ok": False,
+                "supported": None,
+                "error": proc.stderr.strip()[-1200:]
+                or f"compiler exited {proc.returncode}"}
+    cmd = [cc, "-shared", kernel_obj, probe_obj, "-o", VDLIB,
+           "-lpthread"]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        log(f"AVX-512 DualMask build FAILED at link: compiler "
+            f"exited {proc.returncode}; the engine will use "
+            f"the single-batch AVX-512 backend")
+        if proc.stderr.strip():
+            log("compiler output: " + proc.stderr.strip()[-1200:])
+        return {"cc": cc, "lib": None, "ok": False,
+                "supported": None,
+                "error": proc.stderr.strip()[-1200:]
+                or f"compiler exited {proc.returncode}"}
+    smoke_err, supported = _smoke_v512dual(VDLIB)
+    if smoke_err is not None:
+        log(f"AVX-512 DualMask build: compiled but SMOKE TEST "
+            f"FAILED: {smoke_err}; the engine will use the "
+            f"single-batch AVX-512 backend")
+        return {"cc": cc, "lib": None, "ok": False,
+                "supported": supported,
+                "error": f"smoke test failed: {smoke_err}"}
+    if supported:
+        log("AVX-512 DualMask build: ok (compiled with "
+            "restricted flags, CPUID probe confirms AVX-512F "
+            "and AVX-512BW, smoke-tested against hashlib)")
+    else:
+        log("AVX-512 DualMask build: ok (compiled and "
+            "loadable; CPUID probe reports this CPU cannot "
+            "execute it, so the engine will use the "
+            "single-batch AVX-512 backend here)")
+    return {"cc": cc, "lib": VDLIB, "ok": True,
+            "supported": supported, "error": None}
+
+
 if __name__ == "__main__":
     result = build()
     intrin = build_intrin()
     v512 = build_v512()
+    v512dual = build_v512dual()
     print({"batch": result, "intrin_ok": intrin["ok"],
-           "v512": v512})
+           "v512": v512, "v512dual": v512dual})
     sys.exit(0 if result["ok"] else 1)
