@@ -98,7 +98,7 @@ Assignment requires them stated.
 | C | Component benches: research/sha256d/experiments/bench_harness.py (counted batch2 entries on the genesis header, count-1 latency); the SHA-NI benches in research/sha256d/experiments/h02_shani/ (header inputs, C/D boundary); Makefile bal-miner bench (fixed header scan, C/D) | Measured only as components inside C/D work. No standalone C headline rate is published. |
 | D | gpu/benchmark.py (ComputeEngine.benchmark_report: batch_search over a fixed 80-byte header, full enumeration with in-kernel target comparison, Task 003.9 accounting); the EXP-017 paired benches of phase6 and phase6b (batch arms); the EXP-032 batch arms; the dashboard and agent benchmark figure (ComputeEngine.benchmark(), which is category D and is displayed under the bare label "benchmark": a labelling defect recorded in the audit) | The programme's strongest evidence base. Every VERIFIED kernel ratio in section 7 batch scope comes from here. |
 | E | EXP-032 search arms through real ComputeEngine instances; bench_exp009_pipeline.py (candidate construction cost, span-size interaction, candidate confirmation cost, GBT round trip, stub-RPC mine_cycle split: E components, measured separately and labelled as such in its own docstring); the EXP-031 load probe (search_first_counted under controlled load, a load probe, not a rate claim); the live miner's status rate (computed from search_first attempted counts, a genuine E rate, observed not benchmarked) | Component-labelled measurements and live observations exist. No single controlled E benchmark campaign is published as the system rate; the EXP-032 search arms are the controlled E evidence. |
-| F | None | MISSING AS A MEASUREMENT. No benchmark anywhere in the tree measures F as a rate. End-to-end correctness is proven by regtest tests (functional, un-timed) and by live pool operation. F is validated, not benchmarked. Building the F harness is an open Master Assignment item (BR-010); until it is built and run under this specification, no F rate may be quoted by anyone, in any document. |
+| F | research/sha256d/exp040/category_f.py (EXP-040): times the unmodified production GBT pipeline (MiningEngine.mine_cycle against the regtest Core node) as one system, stage attribution by wrapping at the RPC, prepare/build and compute seams, EXP-036 exact verification timed per accepted block; functional gate tests/test_exp040_category_f.py (make test-exp040) | MEASURED 2026-11-15 (EXP-040): 63 timed runs over 3 scenarios (empty template, 501-transaction template, amplified-target variant), 0 failed, every run one accepted block and every header EXP-036 verified. Results in section 9. Before EXP-040, F was validated by regtest tests and live pool operation but never benchmarked; that was the BR-010 gap, now closed. Any F figure must trace to the EXP-040 raw sessions. |
 
 The one historical mislabel, kept as the standing
 example: the README's "End to end engine rate 6,617,558
@@ -328,7 +328,8 @@ advice.
     operational events, not blocks.
 12. Claiming any category F rate before an F harness
     exists and has been run under this specification.
-    Today none exists.
+    (The EXP-040 harness now exists and has been run;
+    F claims must trace to its raw sessions.)
 
 ## 9. Current verified rate table (as of this specification)
 
@@ -380,6 +381,27 @@ search session medians 8.24M to 14.78M H/s at 2 threads
 21.5M H/s on v512dual (category E observations, single
 live sessions under contention, not benchmarks).
 
+Category F measured results (EXP-040, 2026-11-15, AMD
+EPYC 9D25 guest, contended single VM, regtest difficulty,
+v512dual backend; absolute pipeline figures, not ratios
+and not hash rates; medians over the cited runs, raw
+sessions in research/sha256d/exp040/RAW_RESULTS/): empty
+template, 24 runs, 0.065 s end to end per accepted block,
+non-search overhead 43.5 ms per block (fraction 0.930 of
+cycle time at the real regtest target, where the search
+stage is a handful of hashes by construction); loaded
+template (501 transactions), 24 runs, 0.215 s per block,
+overhead 206.3 ms per block (fraction 0.992), prepare
+plus construct 147x the empty-template cost (ratio of
+medians, bootstrap CI [110, 178], a measured comparison,
+not an EXP-017 verdict); amplified-target variant
+(search target divided by 2^24, about 2^25 counted
+hashes per block), 15 runs, overhead fraction 0.015 at
+the same fixed overhead (49.5 ms per block). EXP-036
+exact verification, measured on every accepted block:
+2.5 to 3.9 ms per candidate (a verification cost, part
+of category F, reported separately per section 1).
+
 Not in this table, by rule: the EXP-025 steps500 pooled
 23.02x (a candidate-construction ratio, section 1); the
 EXP-011 dual-batch session figure (raw record
@@ -394,8 +416,11 @@ exists; none has ever been measured).
 - Categories A: unmeasured by design. B: reference only.
   C: components only. D: strong protocol evidence. E:
   controlled search-arm evidence (EXP-032) plus labelled
-  component measurements and live observations. F: no
-  measurement exists.
+  component measurements and live observations. F:
+  measured by EXP-040 (2026-11-15): end-to-end pipeline
+  cost per accepted block and its stage partition on
+  regtest, empty and loaded templates, plus an
+  amplified-target variant; see section 9.
 - The targets (500 GH/s minimum, 140 TH/s larger) are
   system objectives. System counts derived from the rates
   in section 9 are arithmetic under stated assumptions
