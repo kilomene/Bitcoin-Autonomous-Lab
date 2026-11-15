@@ -1,0 +1,79 @@
+{
+  "experiment": "EXP-027",
+  "kind": "hardware differentials and price micro records",
+  "generated_utc": "2026-11-15T05:57:00Z",
+  "cpu": "AMD EPYC 9D25 126-Core Processor",
+  "cpu_flags_relevant": ["avx512f", "avx512bw", "avx512dq",
+    "avx512vl", "avx512vbmi", "avx512vbmi2", "avx512ifma",
+    "gfni", "vaes", "sha_ni"],
+  "guest": "4 vCPUs, about 1.5 effective shared CPUs",
+  "hardware_differentials": {
+    "tool": "exp027_hw_diff.c",
+    "build": "gcc -O3 -mavx512f -mavx512bw -mgfni",
+    "extra_flags_note": "-mgfni is required by candidate 1's "
+      "ISA and is recorded here; hosts without GFNI exist "
+      "in this fleet's history, so no GFNI form could be a "
+      "production dispatch candidate without a probe and "
+      "fallback. No GFNI form survived costing in any case.",
+    "T1_gfni_model_vs_hardware": {
+      "samples": 1000000, "mismatches": 0,
+      "note": "The scalar model convention was established "
+        "empirically by a single-bit probe: output bit i is "
+        "the parity of byte (7 - i) of the matrix operand "
+        "ANDed with the input byte, XOR imm bit i. Two "
+        "earlier conventions (row i = byte i; column form) "
+        "failed at 937,330 and 992,235 mismatches and were "
+        "discarded; the filed model is the one that matches "
+        "silicon at 1,000,000 random bytes."},
+    "T2_shuffle_rotr13_vs_scalar": {
+      "samples": 1000000, "mismatches": 0},
+    "T3_carrysave_identity_scalar_c": {
+      "samples": 1000000, "mismatches": 0}
+  },
+  "ifma_model_differential": {
+    "method": "numpy uint64 model of 52-bit accumulation "
+      "semantics vs the mod-2^32 add chain",
+    "samples": 1000000, "mismatches": 0,
+    "max_sum_bits_observed": 35,
+    "note": "The VPMADD52 instruction itself was not "
+      "executed; equivalence rests on the z3 proof over "
+      "the arithmetic semantics (proofs record L6) plus "
+      "this model differential. Labelled as such."
+  },
+  "rotation_price_micro": {
+    "tool": "exp027_micro.c (v2, register-resident)",
+    "build": "gcc -O3 -mavx512f -mavx512bw",
+    "forms": {
+      "A_vprold_1op": "ROTR13 by VPROLD",
+      "B_shuffle_4op": "VPSHUFB byte rotate + VPSRLD 5 + "
+        "VPSLLD 27 + VPOR",
+      "C_shiftor_3op": "VPSRLD 13 + VPSLLD 19 + VPOR"},
+    "sessions": [
+      {"A_ns_per_vec": 0.2608, "B_ns_per_vec": 0.5212,
+       "C_ns_per_vec": 0.2608, "ratio_B_A": 1.999,
+       "ratio_C_A": 1.000},
+      {"A_ns_per_vec": 0.2609, "B_ns_per_vec": 0.5212,
+       "C_ns_per_vec": 0.2608, "ratio_B_A": 1.998,
+       "ratio_C_A": 1.000},
+      {"A_ns_per_vec": 0.2616, "B_ns_per_vec": 0.5244,
+       "C_ns_per_vec": 0.2622, "ratio_B_A": 2.005,
+       "ratio_C_A": 1.002}],
+    "discarded_v1": "The first micro streamed a 256 KB "
+      "buffer and measured the load path (all forms "
+      "1.05 ns/vec, ratios 1.000). It priced memory, not "
+      "ops, and is not used; v2 is register-resident "
+      "with eight independent accumulators.",
+    "reading": "The shuffle form costs 2.00x the VPROLD "
+      "price for the identical rotation in every session. "
+      "The shift/or form ties VPROLD on throughput (the "
+      "two shifts issue on separate ports) but costs 3 "
+      "census ops against 1 and a 2-level dependency "
+      "chain against 1. No rotation form beats the "
+      "incumbent."
+  },
+  "kernel_benchmarks": "None. No candidate survived the "
+    "proof and cost gates, so no kernel was compiled and "
+    "the EXP-017 benchmarking leg (criterion 5 of the "
+    "stub) was not triggered. This is stated plainly "
+    "rather than filled with a substitute measurement."
+}
