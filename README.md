@@ -50,7 +50,7 @@ Manual reference (what the installer runs, for operators who
 want the pieces separately): scripts/setup-bitcoin-core.sh
 (Bitcoin Core 28.1, SHA256SUMS verified, only needed for the
 optional local node), python3 mining/cpu/build.py,
-make test-all (15 suites, all must print PASSED),
+make test-all (33 targets, all must print PASSED),
 bash scripts/autopilot.sh start, and on systemd machines
 bash scripts/autopilot.sh install-service.
 Rules for agents: never commit credentials or keys (node configs live in .local/,
@@ -70,12 +70,12 @@ Snapshot taken 2026-11-13 19:09 UTC while writing this README. The miner runs on
 | --- | --- | --- |
 | Mining mode now | Mainnet, pool (public-pool.io), solo payout mode | session log |
 | Aspect active now | CPU only | aspect sections below |
-| Worker | `bc1q528egeqsvv8aa382j43edxskqw6x7zxc2xpcf3.bal1` | Stratum authorize, accepted |
+| Worker | `bc1q528egeqsvv8aa382j43edxskqw6x7zxc2xpcf3.htch-runtime` (current; the worker suffix defaults to the machine hostname via default_worker() in mining/autopilot.py; session 1 on 2026-11-13 ran as `.bal1`) | Stratum authorize, accepted |
 | Session 1 start | 2026-11-13 18:40:48 UTC | evidence/mainnet-live.jsonl |
 | First accepted share | 2026-11-13 18:59:51 UTC, difficulty 41.35, nonce 3179128530 | pool answered accepted: true |
 | Hashes in session 1 | 6,912,212,992 | engine status log at 19:03 UTC |
 | Live hash rate, session 1 | 5.18 MH/s average | engine status log |
-| Suite peak CPU rate | 6.62 MH/s end to end | results/CPU_RESULTS.md |
+| Suite peak CPU rate | 6.62 MH/s (category D batch measurement from the C-backend era; not an end to end rate) | results/CPU_RESULTS.md |
 | CPU load while mining | about 100 to 136 percent (2 tuned threads on a shared vCPU allocation) | live process monitor |
 | Jobs received | 62 real mainnet jobs by 19:09 UTC | session log |
 | Session 2 | relaunched 19:08 UTC as a 24 hour run, authorized again | session log |
@@ -102,13 +102,15 @@ How to read the dashboard: **Workers** counts live workers; **Best Difficulty** 
 
 ![CPU workflow](docs/images/cpu-workflow.svg)
 
-The production miner. A C batch engine computes the first compression of the 80 byte header once per template (midstate), then scans nonces with two SHA-256 transforms per nonce through OpenSSL's SHA-NI code path. An early-exit threaded search stops at the first valid nonce; a flags array replaced the old Python rescan of every digest; a live tuner picks the thread count by measurement (2 threads wins on this VM; more threads lose to contention). Every candidate is re-verified in Python before it is trusted.
+The production miner as first built (backend history in the dated updates below; the current backend is v512dual). A C batch engine computes the first compression of the 80 byte header once per template (midstate), then scans nonces with two SHA-256 transforms per nonce through OpenSSL's SHA-NI code path. An early-exit threaded search stops at the first valid nonce; a flags array replaced the old Python rescan of every digest; a live tuner picks the thread count by measurement (2 threads wins on this VM; more threads lose to contention). Every candidate is re-verified in Python before it is trusted.
 
 Update, 2026-11-14: the production CPU backend is now the AVX-512 16-way multi-buffer kernel (mining/cpu/bal_avx512_mb.c, the EXP-007 kernel), integrated under the owner's adopted EXP-017 decision rule (pooled 3.55x against the C backend, CI 3.17x to 3.97x, significant in every session). Sixteen hashes advance in lockstep per zmm register through the same counted batch ABI, with wave-exact accounting. Selection is runtime CPUID dispatch: a flag-free probe confirms AVX-512F and AVX-512BW (the exact feature set of the kernel's restricted-flag build, confirmed by an instruction audit of the compiled object) and the batch must reproduce hashlib digests before the backend is chosen. Any failure falls back cleanly to the OpenSSL C backend, and machines without AVX-512 behave exactly as before. The standing gate is tests/test_avx512_integration.py (make test-avx512): dispatch, 196,608 randomized differentials through the production path, accounting parity, and a fresh regtest block accepted through the MB backend.
 
+Update, 2026-11-15: the production CPU backend is now v512dual (the DualMask kernel, mining/cpu/bal_avx512_dual.c, EXP-026), which measured pooled 1.718x against the v512 production search under the EXP-017 protocol (CI 1.511x to 1.955x) and runs the live miner. Dispatch order in gpu/engine.py is CUDA (no device on this VM, never selected), v512dual, v512, shani, avx2, the C batch backend, then Python hashlib. Two further production pieces landed with the EXP-030 programme: the EXP-025 template cache inside mining/engine.py (layered dsha256 identity, bounded at 128 entries, with the uncached construction preserved as fallback), and exact candidate verification in mining/candidate_verify.py (EXP-036), through which both the pool and solo paths route every candidate before submission. The EXP-022 flags batch (bal_v_batchf2) serves batch consumers only; it is not in the live search path.
+
 | Metric | Value | Kind |
 | --- | --- | --- |
-| End to end engine rate | 6,617,558 H/s | MEASURED, suite benchmark |
+| Batch engine rate (category D) | 6,617,558 H/s | MEASURED, suite benchmark, C-backend era |
 | Live mainnet session rate | 5.18 MH/s average | MEASURED, session log |
 | Raw batch, 2 threads | 7,083,630 H/s | MEASURED |
 | Raw batch, 4 threads | 7,774,869 H/s | MEASURED |
@@ -212,15 +214,15 @@ The lab hunted for statistical structure that could bend the search, and measure
 - `asic/`: gate-level flow script and build outputs (gitignored build dir).
 - `agent/`: autonomous agent and structured question interface.
 - `dashboard/`: live stdlib web dashboard.
-- `research/`: statistics and probability engine.
+- `research/`: the NOVA SHA-X research programme (research/sha256d with the experiment registries and the exp030 to exp038 trees, the Phase 001 genesis deconstruction under research/phase001, the Core and repository audits under research/bitcoin_core and research/bitcoin_reverse_engineering) plus the original statistics.py and probability.py modules.
 - `scripts/`: one-command installer (`install.sh`), network self-configuration (`network_setup.py`), autopilot control, peer pinning, Core setup.
-- `tests/`: 15 suites (correctness, regtest, engine, PoW, GPU, mining, adversarial, deepening, CPU aspect, RTL aspects, solo server, research, autopilot, block judgement, installer).
+- `tests/`: 33 Makefile test targets (correctness, regtest, engine, PoW, GPU and GPU correction, mining, adversarial, deepening, CPU aspect and CPU correction, RTL, solo server, solo cutover, research, autopilot, block judgement, installer, the Task 003, 003.8 and 003.9 suites, AVX-512, AVX-512 dual, mainnet live, template cache, AVX-512 flags, EXP-034, EXP-036, EXP-037, EXP-038, probability percentiles, EXP-039 and EXP-040).
 - `evidence/`: session logs and milestone evidence JSON.
 - `results/`, `docs/`: measured results and design documents.
 
 ## Testing
 
-`make test-all` runs 15 suites; all must print PASSED. Highlights: the Python PoW engine is verified against hashlib, six real mainnet headers, and the entire live regtest chain; the C engine is verified against hashlib on thousands of consecutive nonces; the RTL and the gate netlist pass the same genesis testbench; the solo server test mines a real block through a real TCP Stratum session into a real node.
+`make test-all` runs 33 targets; all must print PASSED. Highlights: the Python PoW engine is verified against hashlib, six real mainnet headers, and the entire live regtest chain; the C engine is verified against hashlib on thousands of consecutive nonces; the RTL and the gate netlist pass the same genesis testbench; the solo server test mines a real block through a real TCP Stratum session into a real node.
 
 ## Mining status log
 
