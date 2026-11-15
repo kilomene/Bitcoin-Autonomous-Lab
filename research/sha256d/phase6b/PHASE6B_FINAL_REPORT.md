@@ -408,3 +408,29 @@ kilomene/Bitcoin-Autonomous-Lab, with the
 independent full-tree verification required by
 finding B6-A1, is recorded in the push note
 appended below at push time.
+
+## Push note (appended 2026-11-15, Assignment H)
+
+The Phase 6B tree was pushed with
+/home/hatch/workspace/bin/bal_github.py (contents
+API, one commit per file). Against the Assignment A
+baseline 2bc63b49a16b15d899d4eab85379f9b957015dcf:
+183 files changed (171 added, 12 modified, 0
+removed), remote head after the push
+59dec1091b39f3cd37f43884c19939669fc4bb8a, repo
+confirmed public. Independent full-tree comparison
+(the B6-A1 method: the helper's local_files() and
+remote_tree() machinery used read-only across the
+whole tree, including research/): local 579 files,
+remote 579 files, 0 missing, 0 remote-only, and
+exactly one differing file,
+evidence/mainnet-live.jsonl, which differs because
+the live miner keeps appending to it (expected
+runtime churn, not a push defect). This note is
+the only content change made after that
+verification; it was pushed immediately after
+being appended, and the full-tree comparison was
+re-run as the final check (its outcome is stated
+in the Assignment H closing message, since a file
+cannot contain the verification of its own final
+form).
