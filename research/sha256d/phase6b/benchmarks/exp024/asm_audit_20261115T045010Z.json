@@ -1,0 +1,48 @@
+{
+  "experiment": "EXP-024",
+  "audit_utc": "2026-11-15T04:50:09.495156+00:00",
+  "functions": {
+    "libbal_m512.so:vm_group": {
+      "instructions": 576,
+      "vpcmp_opmask": 15,
+      "zmm_stack_stores": 51,
+      "scalar_byte_compares": 0,
+      "movzbl_byte_loads": 0,
+      "library": "libbal_m512.so",
+      "note": "EXP-024 mask group"
+    },
+    "libbal_m512.so:vm_worker": {
+      "instructions": 125,
+      "vpcmp_opmask": 0,
+      "zmm_stack_stores": 1,
+      "scalar_byte_compares": 0,
+      "movzbl_byte_loads": 0,
+      "library": "libbal_m512.so",
+      "note": "EXP-024 mask search walker"
+    },
+    "libbal_m512.so:vs_worker": {
+      "instructions": 82,
+      "vpcmp_opmask": 0,
+      "zmm_stack_stores": 1,
+      "scalar_byte_compares": 0,
+      "movzbl_byte_loads": 0,
+      "library": "libbal_m512.so",
+      "note": "EXP-024 scan walker"
+    },
+    "libbal_v512_exp022base.so:v_walk.constprop.0": {
+      "instructions": 3948,
+      "vpcmp_opmask": 0,
+      "zmm_stack_stores": 70,
+      "scalar_byte_compares": 0,
+      "movzbl_byte_loads": 2,
+      "library": "libbal_v512_exp022base.so",
+      "note": "production group and walker (v_group inlined into v_walk by the compiler in this build)"
+    }
+  },
+  "vm_group_mask_branch": {
+    "mask_guard_instruction": "782f:\tc5 f8 98 c0          \tkortestw %k0,%k0",
+    "zmm_stack_stores_before_mask_guard": 43,
+    "zmm_stack_stores_after_mask_guard": 8,
+    "interpretation": "in vm_group the eight digest staging stores and all extraction code sit behind a test of extract_mode and a kortestw of the meets mask, both branching to the exit region: on a group whose mask is zero they never execute, so the miss path performs zero digest stores. The zmm stores before the guard are the inner-state staging (which feeds the outer compression, present in both kernels) plus the compiler's spill of the final state, which the compare consumes from stack slots. Production v_walk has no opmask compare at all: its staging stores and its scalar byte-compare loop over all 16 lanes run unconditionally per group."
+  }
+}
