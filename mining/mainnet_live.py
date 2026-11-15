@@ -36,6 +36,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from gpu import engine as gpu_engine
 from gpu.engine import ComputeEngine
 from mining.candidate_verify import verify_candidate
+from mining.mining_statistics import (FrontierAccountant,
+                                      MiningStatistics)
 from mining.pow_engine import POW_LIMIT_MAINNET
 from mining.stratum_client import StratumClient, Evidence, build_header
 
@@ -83,6 +85,42 @@ def call_attempts(engine, hit, start):
     if hit is not None:
         return hit[0] - start + 1
     return 0
+
+
+def record_candidate_event(recorder, verified, is_block_candidate,
+                           worker, backend):
+    """EXP-037 wiring: one backend hit, after EXP-036
+    verification. Each outcome is its own counter, never
+    summed: the candidate itself, the verification work (two
+    full SHA-256d recomputations per verify_candidate call:
+    hashlib dsha256 and the independent pure-Python
+    double_sha256_pure), the candidates that passed exact
+    verification (digests agree, header valid, share target
+    met; the template-freshness submit gate is not part of
+    verification and is not counted here), and the verified
+    candidates the verifier classified as meeting the network
+    target."""
+    recorder.record("candidates", 1, worker=worker,
+                    backend=backend)
+    recorder.record("verification_hashes", 2, worker=worker,
+                    backend=backend)
+    if verified:
+        recorder.record("valid_candidates", 1, worker=worker,
+                        backend=backend)
+    if is_block_candidate:
+        recorder.record("network_target_candidates", 1,
+                        worker=worker, backend=backend)
+
+
+def record_share_result(recorder, accepted, worker, backend):
+    """EXP-037 wiring: the pool's verdict on one submitted
+    share, delivered by the StratumClient share-result hook as
+    it happens. These counters are this process's session
+    scope; the autopilot's EvidenceCounter census over the
+    whole evidence log remains the lifetime source."""
+    recorder.record("pool_shares_accepted" if accepted
+                    else "pool_shares_rejected", 1,
+                    worker=worker, backend=backend)
 
 
 def main():
@@ -148,6 +186,18 @@ def main():
            native_impl=desc["native_impl"],
            v512_reason=desc["v512_reason"],
            v512dual_reason=desc.get("v512dual_reason"))
+    # EXP-037 statistics wiring: search accounting, candidate
+    # events and share results are recorded as they happen,
+    # into separated counters that are never summed (see
+    # mining/mining_statistics.py). Recording goes through the
+    # failure-isolated FrontierAccountant/SafeRecorder, so a
+    # statistics defect can never stop mining; its error count
+    # rides in the periodic status event below.
+    stats = MiningStatistics()
+    accountant = FrontierAccountant(stats)
+    recorder = accountant.recorder
+    client.on_share_result = lambda accepted: record_share_result(
+        recorder, accepted, args.worker, desc["backend"])
     # Scan chunks sized to about one second of this machine's
     # measured rate, so a fresher template preempts the search
     # within about a second instead of after a long fixed chunk.
@@ -182,8 +232,13 @@ def main():
                 if client.job_generation != gen:
                     break
             span = min(span_size, (1 << 32) - nonce)
+            span_start = nonce
             hit = engine.search_first(header, target, nonce, span)
-            total_hashes += call_attempts(engine, hit, nonce)
+            attempts = call_attempts(engine, hit, nonce)
+            total_hashes += attempts
+            accountant.record_search(
+                header, span_start, attempts, hit is None,
+                worker=args.worker, backend=desc["backend"])
             nonce += span
             if hit is not None:
                 found, digest = hit
@@ -214,6 +269,12 @@ def main():
                              and v["meets_share_target"]
                              and fresh)
                 is_block_candidate = v["meets_network_target"]
+                record_candidate_event(
+                    recorder,
+                    hash_match and v["valid_header"]
+                    and v["meets_share_target"],
+                    is_block_candidate,
+                    args.worker, desc["backend"])
                 d = difficulty_of(digest)
                 best = max(best, d)
                 ev.log("candidate_confirmed" if confirmed
@@ -228,6 +289,9 @@ def main():
                 if confirmed:
                     client.submit(job, en2, found)
                     submitted += 1
+                    recorder.record("pool_shares_submitted", 1,
+                                    worker=args.worker,
+                                    backend=desc["backend"])
                     ev.log("share_submitted", nonce=found,
                            difficulty=d, job_id=job.get("job_id"),
                            is_block_candidate=is_block_candidate)
@@ -250,7 +314,9 @@ def main():
                         f"worker={user}\npool={pool_host}:{pool_port}\n"
                         f"{endpoint_line}\n{backend_line}\n")
             ev.log("status", hashes=total_hashes, rate=rate, best=best,
-                   submitted=submitted)
+                   submitted=submitted,
+                   statistics=stats.snapshot()["totals"],
+                   statistics_errors=recorder.errors)
     print("duration complete", flush=True)
     return 0
 
