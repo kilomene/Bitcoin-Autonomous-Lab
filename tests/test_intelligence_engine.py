@@ -37,7 +37,10 @@ EVIDENCE_PATH = os.path.join(
 def wallet_rpc(rpc):
     wallets = rpc.call("listwallets")
     if "bal-regtest" not in wallets:
-        rpc.call("createwallet", "bal-regtest")
+        try:
+            rpc.call("loadwallet", "bal-regtest")
+        except Exception:
+            rpc.call("createwallet", "bal-regtest")
     return BitcoinRPC(wallet="bal-regtest")
 
 
