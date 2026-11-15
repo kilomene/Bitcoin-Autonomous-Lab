@@ -1,0 +1,120 @@
+{
+  "audit_verdicts": {
+    "exp034": "PASS, zero defects (auditor regtest block 1154 on a real Core segwit template, chain_status tip)",
+    "exp036": "PASS WITH NOTES, zero defects (auditor regtest blocks 1070 and 1123, chain_status tip; 300 random-header differentials across 12 nBits encodings)",
+    "exp037_exp038": "PASS WITH NOTES, zero defects (auditor brute-force census 248 accepted, 8 rejected, 256 share_result events; 24-configuration checkpoint restart campaign, coverage disjoint and union-complete in every configuration)"
+  },
+  "date_utc": "2026-11-15",
+  "deliverables": {
+    "exp037": [
+      "exp037/STATISTICAL_MODEL.md",
+      "exp037/FINAL_REPORT.md"
+    ],
+    "exp038": [
+      "exp038/AUTONOMOUS_OPERATIONS.md",
+      "exp038/FINAL_REPORT.md",
+      "exp038/EXP037_038_POST_INTEGRATION_AUDIT.md"
+    ],
+    "experiment_manifest": "exp030/EXPERIMENT_MANIFEST.json",
+    "final_report": "exp030/FINAL_REPORT.md",
+    "hypothesis_registry": "exp030/HYPOTHESIS_REGISTRY.json",
+    "phase_a": [
+      "exp030/REPOSITORY_AUDIT.md",
+      "exp030/REFERENCE_TO_NOVA_MATRIX.md"
+    ],
+    "phase_b": [
+      "exp030/NOVA_GAP_ANALYSIS.md"
+    ],
+    "phase_c_exp031": [
+      "exp031/CPU_VM_CHARACTERIZATION.md",
+      "exp031/tools/vm_profile.py",
+      "exp031/tools/load_probe.py",
+      "exp031/RAW_RESULTS/"
+    ],
+    "phase_d_exp032": [
+      "exp032/EXP032_REPORT.md",
+      "exp032/src/",
+      "exp032/RAW_RESULTS/"
+    ],
+    "phase_e_exp034": [
+      "exp034/JOB_TEMPLATE_ENGINE.md",
+      "exp034/EXP034_POST_INTEGRATION_AUDIT.md"
+    ],
+    "phase_f_exp036": [
+      "exp036/BLOCK_SUBMISSION_DESIGN.md",
+      "exp036/EXP036_POST_INTEGRATION_AUDIT.md"
+    ],
+    "phase_g_exp035": [
+      "exp035/WORK_DISTRIBUTION_DESIGN.md",
+      "exp035/FINAL_REPORT.md",
+      "exp035/INTEGRATION_DECISIONS.md",
+      "exp035/PROOFS/PROOF_OBLIGATIONS.md"
+    ],
+    "phase_h_exp033": [
+      "exp033/MATHEMATICAL_INVESTIGATION.md",
+      "exp033/HYPOTHESIS_REGISTRY.json",
+      "exp033/EXPERIMENT_MANIFEST.json",
+      "exp033/PROOFS/",
+      "exp033/RAW_RESULTS/"
+    ]
+  },
+  "experiment": "EXP-030",
+  "hard_rules_honoured": [
+    "exact SHA-256d only; Bitcoin consensus preserved exactly; no probabilistic skipping",
+    "targets never lowered: 500 GH/s minimum, 140 TH/s larger objective",
+    "no aggregate theoretical estimate reported as a measured result; no candidate-construction rate reported as hash rate",
+    "floating-point difficulty never the authoritative consensus test in any production path after EXP-036",
+    "the roughly 25 fleet agents were NOT activated for mining; EXP-035 is design, prototype and local simulation only",
+    "benchmarks and experiments run one at a time under the EXP-017 paired protocol where rates are claimed",
+    "every production integration followed by an independent post-integration audit before anything else moved",
+    "no secrets in any deliverable; no live process restarted by any phase except through the existing supervision layers"
+  ],
+  "inputs": [
+    "EXP030_DIRECTIVE_RECORD.md (owner directive 2026-11-15), sections 1 to 16",
+    "Phase 6B close: v512 and v512dual production backends, EXP-017 paired protocol as the integration decision rule",
+    "Owner option A: EXP-025 repaired template cache integration (audited PASS WITH NOTES, zero defects)",
+    "Owner option B: EXP-022 flags batch adoption (audited PASS WITH NOTES, zero defects)"
+  ],
+  "measured_gaps": {
+    "basis_exp032_contended_search": "best complete-search session median 14.8M H/s (EXP-017 protocol, 2 threads, contended guest)",
+    "basis_live_observation": "about 20.6M H/s per system (v512dual, Phase 6B live sessions, AMD host)",
+    "labelling": "theoretical arithmetic on measured single-system rates; coordination overhead at scale unmeasured",
+    "systems_to_140_ths_exp032_basis": "about 9500000 (140000000 / 14.8 is about 9459000)",
+    "systems_to_140_ths_live_basis": "about 6800000 (140000000 / 20.6 is about 6796000)",
+    "systems_to_500_ghs_exp032_basis": "about 33800 (500000 / 14.8 is about 33784)",
+    "systems_to_500_ghs_live_basis": "about 24000 (500000 / 20.6 is about 24272)"
+  },
+  "phase": "EXP-030 programme, Phases A to H plus directive sections 10 and 11",
+  "production_changes": [
+    "mining/candidate_verify.py (new, EXP-036): exact candidate verification, submit classification, chain acceptance",
+    "mining/solo_server.py (EXP-036 acceptance standard; EXP-034 coinbase split offset fix)",
+    "mining/mainnet_live.py (EXP-036: block candidacy is check_pow verdict alone; float target demoted to share criterion)",
+    "mining/engine.py (EXP-034 opt-in extranonce_space, default (0, 64) historical; EXP-038 opt-in checkpoint_path, default off)",
+    "mining/autopilot.py (EXP-037 EvidenceCounter whole-log census replacing the tail-window count)",
+    "mining/mining_statistics.py (new, EXP-037): separated category counters, per-worker and per-backend breakdowns, no combined total",
+    "mining/probability.py (new, EXP-037): research probability formulas adopted into production reach",
+    "mining/work_checkpoint.py (new, EXP-038): exact (extranonce, nonce) frontier checkpoints for the GBT path",
+    "agent/autonomous.py (EXP-038: enables the work checkpoint in production)"
+  ],
+  "repository": "kilomene/Bitcoin-Autonomous-Lab",
+  "status": "programme complete; all phases A to H delivered; every production change independently audited; success criterion (a valid mainnet block discovered, verified, submitted and accepted) NOT yet met; balance 0 BTC; no mainnet block found",
+  "test_result": {
+    "environment_failures_only": [
+      "test-rtl: iverilog not installed on this VM",
+      "test-cpu-correction: SIGILL, -msha binaries on the current Intel host which has no SHA extension (passed on the earlier AMD host)",
+      "test-task003: SIGILL, same mechanism as test-cpu-correction"
+    ],
+    "makefile_test_all_targets": 30,
+    "passing": 27
+  },
+  "title": "NOVA SHA-X: Open-Source Mining Intelligence, CPU Architecture Transformation, Autonomous Mining and Mathematical Breakthrough Programme",
+  "unverified": [
+    "multi-machine coordination overhead (no measurement)",
+    "template and lease propagation latency (no measurement)",
+    "linear scaling with worker count (no measurement)",
+    "fleet agent behaviour (agents not activated; activation remains the owner's decision)",
+    "AVX2 and SHA-NI fallback rates on genuinely AVX2-only or SHA-NI-only hosts (correctness verified; ratios are the EXP-032 host's)",
+    "directive section 10 latency series: verification, template construction, job distribution, submission, worker recovery (unmeasured)",
+    "mainnet behaviour of the fixed solo path (cutover armed, not fired; node still syncing at programme close)"
+  ]
+}
