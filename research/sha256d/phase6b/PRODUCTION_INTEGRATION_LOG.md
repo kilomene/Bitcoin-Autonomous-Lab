@@ -185,3 +185,171 @@ State carried in at phase open, for continuity:
   WITH NOTES (no defects; notes N-1 to N-3, cosmetic
   and observational): research/sha256d/phase6b/
   DUALMASK_POST_INTEGRATION_AUDIT.md.
+
+## Entry 2: EXP-025 repaired template cache integrated into mining/engine.py (2026-11-14)
+
+- Experiment and decision record: EXP-025
+  (research/sha256d/phase6b/EXP025_CACHE_CORRECTNESS.md),
+  verdict ACCEPTED as a correctness repair. EXP-025
+  demonstrated the EXP-023 prototype cache unsafe as
+  written (5 stale serves, 2 validation bypasses
+  against its 8-field fingerprint) and proved the
+  repaired layered identity complete against the full
+  dependency matrix (19 adversarial cases, 1,320
+  byte-identical differentials, regtest block 826
+  through the research path). Performance record,
+  EXP-017 protocol: steps500 pooled 23.02x VERIFIED
+  as a candidate-construction rate (never a hash
+  rate); family500 pooled 1.083x NOT VERIFIED (a full
+  identity recomputation costs about 79 percent of an
+  uncached build at 500 transactions).
+- Owner decision: explicit, 2026-11-14 23:40 PST,
+  option A ("integrate the EXP-025 repaired cache"),
+  chosen from the two open Phase 6B decisions.
+- Design: the repaired design is ported into
+  production mining/engine.py itself (no new module,
+  so the cache's use of build_coinbase and the
+  engine's use of the cache cannot form an import
+  cycle). Layered dsha256 keys exactly as repaired:
+  family_key (payout address, scriptPubKey, chain,
+  halving interval), tx_key (count, then per
+  transaction in order txid, wtxid, fee, plus the
+  default_witness_commitment string as a validation
+  input), coinbase_key (family_key, height,
+  coinbasevalue, flags, witness commitment with an
+  explicit none marker), header_key (version,
+  previousblockhash, bits, target); identity is
+  dsha256 of the three subkeys. Key domain tags are
+  production strings (bal/template-cache/v1 family);
+  the construction is otherwise the research design
+  unchanged. mintime, curtime and the extranonce are
+  per-build inputs, never cached.
+- Serving rule: MiningEngine.build_candidate (cache
+  enabled, the default) routes through the
+  identity-keyed TemplateCache; every serve recomputes
+  the template's identity from scratch with the
+  uncached path's own validations (txid
+  re-verification, witness commitment cross-check,
+  coinbasevalue equals subsidy plus fees) and raises
+  TemplateError on any mismatch or invalid input. A
+  stale serve or validation bypass is impossible by
+  construction, up to SHA-256 collision resistance.
+  MiningEngine.mine_cycle uses the steps shape: it
+  prepares the fetched template once (identity
+  verified at prepare time) and steps extranonces off
+  the prepared entry; the loop holds the template
+  object itself and never hands it out between steps.
+  If a caller or subclass overrides build_candidate,
+  mine_cycle calls the override per round exactly as
+  before this integration. The TemplateCache is
+  bounded at 128 entries (oldest evicted), a
+  production hygiene addition that does not change
+  identity semantics.
+- Fallback preserved: the original construction is
+  kept unchanged as build_candidate_uncached, and
+  MiningEngine(use_template_cache=False) routes every
+  build to it, mirroring how the v512 integration
+  preserved the C backend.
+- Call sites and live impact: MiningEngine consumers
+  are the GBT loop in mine_cycle, agent/autonomous.py
+  and mining/cpu/miner.py (regtest and research
+  paths), the solo tooling does not construct through
+  MiningEngine (mining/solo_server.py builds Stratum
+  jobs from templates itself), and the live pool
+  miner mining/mainnet_live.py does not import
+  mining/engine.py at all (it is Stratum plus
+  ComputeEngine only, verified from its imports and
+  from .local/mainnet-status.txt). No production
+  consumer that is currently running loads this code,
+  so the live miner was NOT restarted. Evidence at
+  integration close: heartbeat fresh, autopilot pid
+  3190, miner pid 30455 unchanged, restarts still 2,
+  shares 211 and rising on public-pool.io. The node,
+  the autopilot, the solo cutover endpoint config,
+  marker and watcher cron were not touched.
+- Gates, all through the production path, all before
+  the deployment decision (tests/test_template_cache.py,
+  wired into the suite as make test-template-cache
+  and into test-all):
+  1. Adversarial invalidation (G-A): 19 of 19 cases
+     pass, including the EXP-025 defect cases D1 to
+     D7 (middle tx replaced, witness-only change with
+     txid fixed, reorder, flags change, target change,
+     fee raised with value fixed, wrong witness
+     commitment). Each valid mutation is refused as a
+     sibling serve, prepares a new identity entry, and
+     is byte-identical to the uncached path; each
+     invalid mutation raises TemplateError on both
+     paths with no new prepare; the curtime-only case
+     is served under the same identity, byte-identical.
+  2. Randomised differentials (G-C): 1,320 (template,
+     extranonce) cases over 11 configurations (0, 1,
+     2, 3, 10, 100 and 500 transactions, segwit
+     fractions 0, 0.5 and 1.0, flags, witness
+     commitments), byte-identical to the uncached
+     production path on header, body and every scalar
+     field; 11 cache prepares (one per configuration).
+  3. Validation parity (G-D): 6 invalid shapes (wrong
+     txid field, missing data, missing txid,
+     coinbasevalue mismatch, fee raised with value
+     fixed, wrong witness commitment) each raise
+     TemplateError on the uncached path, the cached
+     first serve, the cached sibling serve and the
+     cached prepare.
+  4. Positive controls (G-B): identical inputs reuse
+     the cache (prepares 1, hits 1) with byte-identical
+     output; a reused entry stays byte-identical
+     across boundary extranonces (0, 1, 2, 3, 2^32-1)
+     and 20 random extranonces; the steps shape
+     prepares once for 64 extranonce steps, all
+     byte-identical; the uncached fallback is
+     byte-identical with zero cache activity.
+  5. Fresh regtest block through the production
+     MiningEngine with the cache active (mine_cycle
+     steps fast path), accepted by Core as best
+     block: height 912, hash
+     6138ae771cf95279e72bd0a16322b75c8500f66a64879c08ff8da004f9711900
+     (dedicated gate run; cache prepares 1,
+     identity_checks 1). Suite re-runs mined further
+     blocks through the same path (height 978 in the
+     final suite run).
+  6. Full suite (make -k test-all, now 25 targets
+     with the new one): final run 24 of 25 targets
+     pass; the only failure is test-rtl, which fails
+     because iverilog is absent on this VM
+     (pre-existing environment failure, unchanged).
+     The first suite run also failed test-task0039 on
+     a thread-timing assertion inside
+     ComputeEngine.search_first_counted (attempted
+     40185 against a bound of 10000, under full-suite
+     plus live-miner contention). Correction per the
+     post-integration audit N-1: test-task0039 does
+     import MiningEngine for its regtest section; the
+     flaked assertion itself lives in gpu/engine.py
+     accounting (ComputeEngine.search_first_counted),
+     untouched by this integration. It passed
+     standalone immediately after (including its own
+     regtest block through the integrated engine),
+     and it passed in the final suite run. Recorded
+     here as a contention flake, not hidden.
+- Scope honesty: the verified gain is the steps
+  shape only (EXP-025: pooled 23.02x
+  candidate-construction rate, not a hash rate, and
+  no system rate changes by this integration). The
+  family shape is NOT verified and no gain is claimed
+  for per-call build_candidate serves, which pay the
+  full identity recomputation per call by design. No
+  new benchmark was run for this integration; none
+  was required, and none is claimed.
+- Files changed: mining/engine.py,
+  tests/test_template_cache.py (new), Makefile, and
+  this log.
+- Post-integration audit: NOT performed by the
+  integration author; an independent audit is the
+  required next step before anything else moves
+  (owner rule, 2026-11-14).
+- Post-integration audit: COMPLETE, verdict PASS
+  WITH NOTES (zero defects; notes N-1 to N-6,
+  documentation precision and inherited design
+  boundaries): research/sha256d/phase6b/
+  CACHE_POST_INTEGRATION_AUDIT.md.
