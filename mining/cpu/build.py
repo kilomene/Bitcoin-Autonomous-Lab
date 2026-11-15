@@ -83,6 +83,17 @@ VFLIB = os.path.join(OUT, "libbal_v512flags.so")
 # by an objdump instruction audit of the built object.
 V512_FEATURES = ("avx512f", "avx512bw")
 V512_FLAGS = ["-mavx512f", "-mavx512bw"]
+ALIB = os.path.join(OUT, "libbal_avx2.so")
+MLIB = os.path.join(OUT, "libbal_shani.so")
+# EXP-039 fallback tiers. The exact CPU features each kernel
+# requires, and the restricted compiler flags that keep each
+# kernel object inside exactly that set (never -march=native;
+# see bal_fallback_probe.c). AVX2 tier: -mavx2. SHA-NI tier:
+# -msha -mssse3, dispatched at streams 4 (the EXP-032 design
+# point).
+AVX2_FLAGS = ["-mavx2"]
+SHANI_FLAGS = ["-msha", "-mssse3"]
+SHANI_STREAMS = 4
 OPENSSL_HEADER = os.path.join(os.sep, "usr", "include", "openssl", "sha.h")
 
 GENESIS_HEADER = bytes.fromhex(
@@ -718,13 +729,262 @@ def build_v512flags(log=print):
             "supported": supported, "error": None}
 
 
+def _smoke_avx2(lib_path):
+    """Verify the freshly built AVX2 library before anyone
+    is told it exists. Same discipline as _smoke_v512, with
+    the audit D-1 rule applied to every symbol: existence is
+    checked with hasattr BEFORE any argtypes assignment. The
+    flag-free probe answers first; only when it reports the
+    kernel can execute here are kernel entry points called,
+    and then the batch must reproduce hashlib digests on the
+    genesis header and the counted search must re-find the
+    genesis nonce with group-exact accounting (a started
+    8-lane group completes, so the backend lane count is a
+    whole number of groups). Returns (error, supported)
+    where error is None on success."""
+    try:
+        lib = ctypes.CDLL(lib_path)
+    except OSError as exc:
+        return f"built library failed to load: {exc}", None
+    if not hasattr(lib, "bal_avx2_supported"):
+        return "library lacks the bal_avx2_supported probe", None
+    lib.bal_avx2_supported.restype = ctypes.c_int
+    supported = lib.bal_avx2_supported()
+    if not supported:
+        return None, 0
+    if not hasattr(lib, "bal_a_batch2"):
+        return "library lacks the bal_a_batch2 entry point", 1
+    lib.bal_a_batch2.restype = ctypes.c_int
+    lib.bal_a_batch2.argtypes = [
+        ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+        ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p,
+        ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint64),
+        ctypes.POINTER(ctypes.c_uint64)]
+    count = 256
+    hashes = ctypes.create_string_buffer(32 * count)
+    flags = ctypes.create_string_buffer(count)
+    target = ((1 << 256) - 1).to_bytes(32, "little")
+    attempted = ctypes.c_uint64(0)
+    backend = ctypes.c_uint64(0)
+    rc = lib.bal_a_batch2(GENESIS_HEADER, 0, count, 2, target,
+                          hashes, flags, ctypes.byref(attempted),
+                          ctypes.byref(backend))
+    if rc != 0:
+        return f"smoke avx2 batch returned {rc}", 1
+    for n in range(count):
+        want = hashlib.sha256(hashlib.sha256(
+            GENESIS_HEADER[:76] + n.to_bytes(4, "little")).digest()).digest()
+        if hashes.raw[32 * n:32 * n + 32] != want:
+            return f"smoke avx2 digest mismatch at nonce {n}", 1
+    if attempted.value != count or backend.value != count:
+        return (f"smoke avx2 batch accounting off: attempted "
+                f"{attempted.value} backend {backend.value} "
+                f"count {count}", 1)
+    if not hasattr(lib, "bal_a_search2"):
+        return "library lacks the bal_a_search2 entry point", 1
+    lib.bal_a_search2.restype = ctypes.c_int
+    lib.bal_a_search2.argtypes = [
+        ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+        ctypes.c_uint, ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_uint32), ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_uint64),
+        ctypes.POINTER(ctypes.c_uint64)]
+    nonce = ctypes.c_uint32(0)
+    s_attempted = ctypes.c_uint64(0)
+    s_backend = ctypes.c_uint64(0)
+    digest = ctypes.create_string_buffer(32)
+    diff1 = (0xFFFF << 208).to_bytes(32, "little")
+    rc = lib.bal_a_search2(GENESIS_HEADER, GENESIS_NONCE - 3, 64, 2,
+                           diff1, ctypes.byref(nonce), digest,
+                           ctypes.byref(s_attempted),
+                           ctypes.byref(s_backend))
+    if rc != 1 or nonce.value != GENESIS_NONCE:
+        return (f"smoke avx2 search failed: rc={rc} "
+                f"nonce={nonce.value}", 1)
+    if s_backend.value % 8 or not (4 <= s_attempted.value
+                                   <= s_backend.value):
+        return (f"smoke avx2 search accounting implausible: "
+                f"attempted {s_attempted.value} backend "
+                f"{s_backend.value}", 1)
+    return None, 1
+
+
+def _smoke_shani(lib_path):
+    """Verify the freshly built SHA-NI multi-stream library
+    before anyone is told it exists. Same discipline as
+    _smoke_avx2 (audit D-1: hasattr before argtypes). The
+    H-01 ABI reports out_attempted only: the kernel hashes
+    no dummy lanes, so attempted is exact (== count on a
+    completed batch). The search smoke re-finds the genesis
+    nonce at streams 4 and checks the returned digest
+    against hashlib. Returns (error, supported)."""
+    try:
+        lib = ctypes.CDLL(lib_path)
+    except OSError as exc:
+        return f"built library failed to load: {exc}", None
+    if not hasattr(lib, "bal_shani_supported"):
+        return "library lacks the bal_shani_supported probe", None
+    lib.bal_shani_supported.restype = ctypes.c_int
+    supported = lib.bal_shani_supported()
+    if not supported:
+        return None, 0
+    if not hasattr(lib, "bal_m_batch2"):
+        return "library lacks the bal_m_batch2 entry point", 1
+    lib.bal_m_batch2.restype = ctypes.c_int
+    lib.bal_m_batch2.argtypes = [
+        ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+        ctypes.c_uint, ctypes.c_int, ctypes.c_char_p,
+        ctypes.c_char_p, ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_uint64)]
+    count = 256
+    hashes = ctypes.create_string_buffer(32 * count)
+    flags = ctypes.create_string_buffer(count)
+    target = ((1 << 256) - 1).to_bytes(32, "little")
+    attempted = ctypes.c_uint64(0)
+    rc = lib.bal_m_batch2(GENESIS_HEADER, 0, count, 2,
+                          SHANI_STREAMS, target, hashes, flags,
+                          ctypes.byref(attempted))
+    if rc != 0:
+        return f"smoke shani batch returned {rc}", 1
+    for n in range(count):
+        want = hashlib.sha256(hashlib.sha256(
+            GENESIS_HEADER[:76] + n.to_bytes(4, "little")).digest()).digest()
+        if hashes.raw[32 * n:32 * n + 32] != want:
+            return f"smoke shani digest mismatch at nonce {n}", 1
+    if attempted.value != count:
+        return (f"smoke shani batch accounting off: attempted "
+                f"{attempted.value} count {count}", 1)
+    if not hasattr(lib, "bal_m_search2"):
+        return "library lacks the bal_m_search2 entry point", 1
+    lib.bal_m_search2.restype = ctypes.c_int
+    lib.bal_m_search2.argtypes = [
+        ctypes.c_char_p, ctypes.c_uint64, ctypes.c_uint64,
+        ctypes.c_uint, ctypes.c_int, ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_uint32), ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_uint64)]
+    nonce = ctypes.c_uint32(0)
+    s_attempted = ctypes.c_uint64(0)
+    digest = ctypes.create_string_buffer(32)
+    diff1 = (0xFFFF << 208).to_bytes(32, "little")
+    rc = lib.bal_m_search2(GENESIS_HEADER, GENESIS_NONCE - 3, 64, 2,
+                           SHANI_STREAMS, diff1,
+                           ctypes.byref(nonce), digest,
+                           ctypes.byref(s_attempted))
+    if rc != 1 or nonce.value != GENESIS_NONCE:
+        return (f"smoke shani search failed: rc={rc} "
+                f"nonce={nonce.value}", 1)
+    want = hashlib.sha256(hashlib.sha256(
+        GENESIS_HEADER[:76]
+        + GENESIS_NONCE.to_bytes(4, "little")).digest()).digest()
+    if digest.raw != want:
+        return "smoke shani search digest mismatch", 1
+    if not (1 <= s_attempted.value <= 64):
+        return (f"smoke shani search accounting implausible: "
+                f"attempted {s_attempted.value}", 1)
+    return None, 1
+
+
+def _build_fallback_tier(log, label, source, probe_source,
+                         flags, lib_path, tmpname, smoke,
+                         fallback_note):
+    """Shared builder for the EXP-039 fallback tiers. The
+    kernel translation unit is compiled with the tier's
+    restricted flag set (never -march=native), the probe
+    translation unit with no vector flags at all, and a
+    build failure is loud but NEVER fails the production C
+    build: the engine treats a missing or unusable library
+    as "kernel not built" and falls back to the next tier.
+    """
+    os.makedirs(OUT, exist_ok=True)
+    cc = shutil.which("gcc") or shutil.which("cc")
+    if not cc:
+        log(f"{label} build FAILED: no C compiler found "
+            f"(gcc/cc); {fallback_note}")
+        return {"cc": None, "lib": None, "ok": False,
+                "supported": None, "error": "no C compiler found"}
+    tmpdir = os.path.join(OUT, tmpname)
+    os.makedirs(tmpdir, exist_ok=True)
+    kernel_obj = os.path.join(
+        tmpdir, os.path.splitext(source)[0] + ".o")
+    probe_obj = os.path.join(
+        tmpdir, os.path.splitext(probe_source)[0] + ".o")
+    base = ["-O3", "-shared", "-fPIC", "-I", HERE]
+    for src, obj, extra in ((source, kernel_obj, flags),
+                            (probe_source, probe_obj, [])):
+        cmd = [cc] + base + extra + [
+            "-c", os.path.join(HERE, src), "-o", obj]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            log(f"{label} build FAILED for {src}: compiler "
+                f"exited {proc.returncode}; {fallback_note}")
+            if proc.stderr.strip():
+                log("compiler output: " + proc.stderr.strip()[-1200:])
+            return {"cc": cc, "lib": None, "ok": False,
+                    "supported": None,
+                    "error": proc.stderr.strip()[-1200:]
+                    or f"compiler exited {proc.returncode}"}
+    cmd = [cc, "-shared", kernel_obj, probe_obj, "-o", lib_path,
+           "-lpthread"]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        log(f"{label} build FAILED at link: compiler exited "
+            f"{proc.returncode}; {fallback_note}")
+        if proc.stderr.strip():
+            log("compiler output: " + proc.stderr.strip()[-1200:])
+        return {"cc": cc, "lib": None, "ok": False,
+                "supported": None,
+                "error": proc.stderr.strip()[-1200:]
+                or f"compiler exited {proc.returncode}"}
+    smoke_err, supported = smoke(lib_path)
+    if smoke_err is not None:
+        log(f"{label} build: compiled but SMOKE TEST FAILED: "
+            f"{smoke_err}; {fallback_note}")
+        return {"cc": cc, "lib": None, "ok": False,
+                "supported": supported,
+                "error": f"smoke test failed: {smoke_err}"}
+    if supported:
+        log(f"{label} build: ok (compiled with restricted "
+            f"flags, CPUID probe confirms the feature set, "
+            f"smoke-tested against hashlib)")
+    else:
+        log(f"{label} build: ok (compiled and loadable; CPUID "
+            f"probe reports this CPU cannot execute it, so "
+            f"the engine will use the next tier here)")
+    return {"cc": cc, "lib": lib_path, "ok": True,
+            "supported": supported, "error": None}
+
+
+def build_avx2(log=print):
+    """Build the AVX2 multi-buffer fallback library
+    (EXP-039). Restricted -mavx2 flags; flag-free probe."""
+    return _build_fallback_tier(
+        log, "AVX2 multi-buffer", "bal_avx2_mb.c",
+        "bal_fallback_probe.c", AVX2_FLAGS, ALIB,
+        ".avx2-build", _smoke_avx2,
+        "the engine will use the OpenSSL C backend")
+
+
+def build_shani(log=print):
+    """Build the SHA-NI multi-stream fallback library
+    (EXP-039). Restricted -msha -mssse3 flags; flag-free
+    probe."""
+    return _build_fallback_tier(
+        log, "SHA-NI multi-stream", "bal_shani_streams.c",
+        "bal_fallback_probe.c", SHANI_FLAGS, MLIB,
+        ".shani-build", _smoke_shani,
+        "the engine will use the next fallback tier")
+
+
 if __name__ == "__main__":
     result = build()
     intrin = build_intrin()
     v512 = build_v512()
     v512dual = build_v512dual()
     v512flags = build_v512flags()
+    avx2 = build_avx2()
+    shani = build_shani()
     print({"batch": result, "intrin_ok": intrin["ok"],
            "v512": v512, "v512dual": v512dual,
-           "v512flags": v512flags})
+           "v512flags": v512flags, "avx2": avx2,
+           "shani": shani})
     sys.exit(0 if result["ok"] else 1)
