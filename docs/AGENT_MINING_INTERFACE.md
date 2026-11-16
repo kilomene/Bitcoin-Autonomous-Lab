@@ -1,10 +1,13 @@
 # Agent Mining Interface
 
-Date: 2026-11-15. The typed interface between the agent
-intelligence layer and the mining system, as implemented in
-agent/intelligence/interface.py (MiningInterface) and
-agent/intelligence/awareness.py (Awareness), Master Build
-Milestones 1 and 2. Every operation is gated by
+Date: 2026-11-15, updated 2026-11-16 (Stage 7: production
+controller and load-shedding modes). The typed interface
+between the agent intelligence layer and the mining system,
+as implemented in agent/intelligence/interface.py
+(MiningInterface), agent/intelligence/controller.py
+(MiningController) and agent/intelligence/awareness.py
+(Awareness), Master Build Milestones 1 and 2 plus Stage 7.
+Every operation is gated by
 agent/intelligence/permissions.py and recorded in the audit log
 (.local/agent-audit.jsonl). The audit record schema (audit.py):
 version, ts, ts_utc, operation, level, inputs (a summary dict),
@@ -23,7 +26,12 @@ as such in the response itself.
 Constructed with a PermissionChecker, an AuditLog, and injectable
 local_dir, engine_factory and controller (all injectable for
 tests; defaults are the repo .local directory, the real
-ComputeEngine factory, and no controller).
+ComputeEngine factory, and the production MiningController
+over that local_dir, built lazily on first controlled use).
+controller=False constructs an explicitly unwired interface
+(controlled operations raise NotImplementedError after the
+permission check); a callable(action) remains the legacy
+injectable seam.
 
 ### inspect_status (L1, operation inspect_status)
 
@@ -116,19 +124,72 @@ unknown pin raises ValueError naming the expected set; a pin the
 host cannot serve returns eligible False with the tier dispatch
 actually cascaded to, not an exception.
 
-### start_mining and stop_mining (L2, operations start_mining, stop_mining)
+### start_mining, stop_mining, restart_mining (L2, operations start_mining, stop_mining, restart_mining)
 
-Request: none. Response: whatever the injected controller
-returns. These are the interface's only production-mutating
-specifications. Failure behaviour, as built: with no controller
-injected (the production default), the operation is
-permission-checked, an audit record with outcome not_implemented
-is written, and NotImplementedError is raised. No code path in
-the package starts or stops the live miner, the autopilot or a
-node. The registry also carries adjust_workers and
-trigger_recovery as L2 specifications; Milestone 1 defines no
-MiningInterface method for them, so they exist as permission
-specifications only.
+Request: none. Response: the controller's ControlResult
+(action, ok, status, detail, before, after, verified). As
+built in Stage 7, the default controller is the production
+MiningController (agent/intelligence/controller.py): start
+and stop go through scripts/autopilot.sh, restart is a
+verified stop plus start, and every postcondition is checked
+against the autopilot's own published state (fresh heartbeat
+with miner_state running for start, autopilot process exit
+for stop, a changed miner pid for restart) inside a bounded
+verification window. A postcondition that does not
+materialise is a failed result, never a success. Starting an
+already running stack and stopping an already stopped one
+are verified no-ops, reported as such. Failure behaviour on
+an explicitly unwired interface (controller=False): the
+operation is permission-checked, an audit record with
+outcome not_implemented is written, and NotImplementedError
+is raised.
+
+### adjust_workers (L2, operation adjust_workers)
+
+Request: a positive integer count. Response: the
+controller's ControlResult with status restart_required and
+ok False. Worker identity and thread counts are launch-time
+only in the current production path (the autopilot's
+--worker / BAL_WORKER and the ComputeEngine construction
+inside the miner process); no runtime channel exists, so
+the controller applies nothing and says why. A non-positive
+or non-integer count is refused.
+
+### refresh_job (L2, operation refresh_job)
+
+Request: none. Response: ControlResult with status
+unsupported and ok False. Job supply is push-driven inside
+the miner (pool Stratum mining.notify, or GBT longpoll); the
+miner installs no signal handler and reads no control file,
+so there is no external trigger to invoke. Refused rather
+than faked.
+
+### trigger_recovery (L2, operation trigger_recovery)
+
+Request: an optional correctness_failure flag declaring a
+correctness or consensus fault. Response: the controller's
+ControlResult under its fault taxonomy. Miner down with the
+autopilot alive is recovered through the autopilot watchdog
+(wait and verify; a verified miner pid may be SIGTERMed to
+trigger the watchdog, and only that pid: signal_verified
+refuses any pid not published by the autopilot or whose
+/proc cmdline does not verify). Autopilot down is recovered
+by starting it through its script. A declared correctness
+failure, and a crash loop (heartbeat restart count at or
+beyond the controller's cap of 10 with the miner down),
+halt with status halted and change nothing.
+
+### Controller select_backend and checkpoint
+
+MiningController also exposes select_backend(pin), refused
+as unsupported (mining/mainnet_live.py constructs
+ComputeEngine() with no pin; a restart cannot honour one
+either; the interface's select_backend eligibility decision
+above is unaffected), and checkpoint(path=None), which reads
+the GBT path's work checkpoint frontier
+(mining/work_checkpoint.py) and reports it, or its absence,
+honestly; the pool path has no checkpoint. Both are gated
+and audited like the other controller operations.
 
 ## Awareness operations
 
@@ -142,7 +203,10 @@ bounded 30 s timeout. Responses are plain dicts.
 
 ### snapshot()
 
-Returns one coherent live picture: ts_utc; autopilot (running,
+Returns one coherent live picture: ts_utc; mode (the current
+load-shedding mode from modes.py: mode name, since, baseline
+rate, last trigger ratios, transition count, per-kind allows
+table, awareness interval); autopilot (running,
 note, pids, state, uptime, restarts, heartbeat and evidence ages,
 shares_accepted_total); evidence_census (present, accepted,
 rejected, share_results, consistent); miner_status_file (present,
@@ -201,18 +265,57 @@ window separated from active overhead), and the standing task
 record (task id live-awareness-observe in the planning registry,
 one evidence entry per cycle). Returns the structured
 operational report (kind awareness_operational_report).
+Stage 7: the report carries mode_before and mode (after the
+cycle fed the mode machine the load average and the measured
+miner rate). In Brownout the rate-observation window is shed
+(the observation is a stub that says so) while snapshots,
+degradation and coverage continue; in Critical the cycle is
+minimal: one snapshot, no rate window, no coverage, with a
+mode_note saying so.
+
+## Load-shedding modes (modes.py)
+
+ModeManager is the persisted mode machine the facade owns
+(state at .local/agent-mode.json). Modes: normal (all
+discretionary work allowed), brownout (experiments and
+bake-offs shed, awareness cadence reduced from 60 s to
+300 s), critical (only status; awareness minimal at 900 s).
+Triggers: load ratio (1-minute load average over the
+effective CPU estimate, EXP-031's about 2) at or above 1.5
+for brownout and 3.0 for critical, or miner rate ratio
+against the standing baseline at or below 0.75 for brownout
+and 0.50 for critical. Entry needs 2 consecutive qualifying
+samples; exit steps down one level at a time after the
+clear condition (load ratio below 1.2 and rate ratio above
+0.85, for whichever signals are present) holds for a
+sustained 300 s window. Every transition is audit-logged
+(operation mode_transition) with its trigger values.
+Enforcement points: ExperimentRunner.create_experiment and
+run_command (per command boundary, which is the in-flight
+wind-down), Scheduler.bake_off measurement (cache service
+stays allowed), and the optimisation loop's transitions
+into the isolated implementation, correctness tests and
+controlled measurement states. A mode transition never
+touches mining.
 
 ## Facade and CLI surface
 
 agent.intelligence.Agent exposes: status() (delegates to
 inspect_status), memory (lazy ResearchMemory), loop() (a new
-OptimisationLoop bound to the memory, checker and audit),
+OptimisationLoop bound to the memory, checker, audit and the
+mode gate), mode() (the current load-shedding mode dict),
 gap_report(verified_rate_hs), next_investigations(limit) and
-bottleneck_summary() (delegating to strategy.py). Research
+bottleneck_summary() (delegating to strategy.py). The facade
+constructs the production MiningController over its local_dir
+by default and passes it to the interface; controller=False
+leaves the facade explicitly unwired. Research
 memory access itself (lookup, search, was_rejected, by_status,
 stats) is gated at the call sites that use it under the L1
 memory_lookup and memory_search operations.
 
 CLI (python3 -m agent.intelligence): status prints the live
 status; awareness [window_s] runs one observe cycle and prints
-the operational report as JSON.
+the operational report as JSON; mode prints the current
+load-shedding mode; control-status prints the controller's
+verified read-only status (heartbeat, pids, cmdline
+verification) as JSON.
