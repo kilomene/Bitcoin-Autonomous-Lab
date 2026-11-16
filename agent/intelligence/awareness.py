@@ -26,6 +26,13 @@ is gated on the existing L1 read-only permission
 in the facade's audit log under the operation name
 awareness_observe.
 
+Stage 7: awareness also carries the load-shedding mode
+(modes.py). Snapshots report the current mode; observe
+cycles feed the mode machine the load average and the
+measured miner rate, and honour the mode: Brownout sheds
+the rate-observation window, Critical reduces the cycle to
+a single snapshot. Mode changes never touch mining.
+
 Honesty rules, inherited from the lab's standing practice:
 
 - A field a source does not carry is reported as absent
@@ -153,10 +160,20 @@ class Awareness:
                  census_path=None, status_path=None,
                  endpoint_path=None, node_config_path=None,
                  evidence_log_path=None, rpc_factory=None,
-                 rpc_timeout_s=DEFAULT_RPC_TIMEOUT_S):
+                 rpc_timeout_s=DEFAULT_RPC_TIMEOUT_S,
+                 mode_manager=None):
         self.agent = agent
         self.checker = agent.checker
         self.audit = agent.audit
+        # Load-shedding modes (Stage 7, modes.py). Default:
+        # the facade's ModeManager when the agent carries
+        # one. snapshot() reports the mode; observe_cycle()
+        # feeds it real signals (load average, measured
+        # miner rate) and honours it: Brownout sheds the
+        # rate-observation window, Critical reduces the
+        # cycle to a single snapshot.
+        self.modes = mode_manager or getattr(
+            agent, "modes", None)
         local = agent.local_dir
         self.heartbeat_path = heartbeat_path or os.path.join(
             local, "heartbeat.json")
@@ -360,6 +377,8 @@ class Awareness:
             "ts": now,
             "ts_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                     time.gmtime(now)),
+            "mode": (self.modes.current()
+                     if self.modes is not None else None),
             "autopilot": autopilot,
             "evidence_census": census_out,
             "miner_status_file": status_out,
@@ -691,6 +710,35 @@ class Awareness:
         return out
 
     # 5. Observe cycle -------------------------------------------
+    def _update_mode(self, observation, snap):
+        """Feed the load-shedding mode machine the real
+        signals this cycle measured: the 1-minute load
+        average against EXP-031's effective-CPU estimate,
+        and the miner backend rate against the manager's
+        standing baseline. Returns the current mode dict,
+        or None when no mode manager is wired."""
+        if self.modes is None:
+            return None
+        try:
+            load1 = os.getloadavg()[0]
+        except (OSError, AttributeError):
+            load1 = None
+        rate = None
+        if observation is not None:
+            rate = observation.get("backend_rate_hs")
+        if rate is None:
+            tail = (snap or {}).get("evidence_tail") or {}
+            last_status = tail.get("last_status_event") or {}
+            rate = last_status.get("session_rate_hs")
+        from .modes import EFFECTIVE_CPUS_EXP031
+        return self.modes.update({
+            "load1": load1,
+            "effective_cpus": EFFECTIVE_CPUS_EXP031,
+            "miner_rate_hs": rate,
+            "heartbeat_age_s": ((snap or {}).get("autopilot")
+                                or {}).get("heartbeat_age_s"),
+        })
+
     def _ensure_awareness_task(self):
         tasks = self.agent.tasks
         rec = tasks.get(AWARENESS_TASK_ID)
@@ -733,6 +781,44 @@ class Awareness:
         self._gate()
         t_start = time.perf_counter()
         phases = {}
+        mode_before = (self.modes.current()
+                       if self.modes is not None else None)
+        if mode_before is not None and \
+                mode_before["mode"] == "critical":
+            # CRITICAL: awareness is minimal. One snapshot,
+            # no rate window, no coverage pass. The mode is
+            # still fed the load signal so recovery can be
+            # observed and the exit hysteresis can run.
+            snap = self.snapshot()
+            mode_after = self._update_mode(
+                None, snap)
+            report = {
+                "kind": "awareness_operational_report",
+                "ts_utc": snap["ts_utc"],
+                "mode": mode_after,
+                "mode_before": mode_before,
+                "mode_note": (
+                    "critical mode: minimal awareness cycle "
+                    "(snapshot only); rate observation and "
+                    "coverage shed to protect mining"),
+                "snapshot": snap,
+                "rate_observation": None,
+                "degradation": None,
+                "coverage": None,
+                "overhead": {
+                    "phase_times_s": {},
+                    "total_wall_s": round(
+                        time.perf_counter() - t_start, 4),
+                    "active_overhead_s_excluding_window": 0.0,
+                    "observation_window_s": 0.0},
+                "task": {"task_id": AWARENESS_TASK_ID,
+                         "state": "critical_minimal"},
+            }
+            self._audit("observe_cycle", detail={
+                "mode": "critical",
+                "total_wall_s":
+                    report["overhead"]["total_wall_s"]})
+            return report
         t = time.perf_counter()
         baseline_snap = self.snapshot()
         phases["baseline_snapshot_s"] = time.perf_counter() - t
@@ -749,7 +835,28 @@ class Awareness:
                     "degradation rate-drop check compares the "
                     "fresh window measurement against it")}}
         t = time.perf_counter()
-        observation = self.rate_observation(window_s)
+        if mode_before is not None and \
+                mode_before["mode"] == "brownout":
+            # BROWNOUT: the rate-observation window is
+            # discretionary measurement and is shed; the
+            # rest of the cycle (snapshots, degradation,
+            # coverage) continues at reduced cadence.
+            observation = {
+                "window_requested_s": 0.0,
+                "window_wall_s": 0.0,
+                "shares_delta": None,
+                "share_rate_per_s": None,
+                "backend_hashes_delta": None,
+                "backend_rate_hs": None,
+                "backend_interval_s": None,
+                "implied_difficulty_weighted_rate_hs": None,
+                "pool_share_difficulty": None,
+                "method": ("shed in brownout mode: no rate "
+                           "window measured this cycle"),
+                "notes": ["rate observation shed by the "
+                          "brownout load-shedding mode"]}
+        else:
+            observation = self.rate_observation(window_s)
         phases["rate_observation_s"] = time.perf_counter() - t
         t = time.perf_counter()
         final_snap = self.snapshot()
@@ -775,9 +882,12 @@ class Awareness:
             f"flags={[f['flag'] for f in degradation['flags']]}")
         self.agent.tasks.add_evidence(AWARENESS_TASK_ID,
                                       [evidence_item])
+        mode_after = self._update_mode(observation, final_snap)
         report = {
             "kind": "awareness_operational_report",
             "ts_utc": final_snap["ts_utc"],
+            "mode": mode_after,
+            "mode_before": mode_before,
             "baseline_note": (
                 "the degradation baseline was constructed "
                 "from the census and evidence status event at "
