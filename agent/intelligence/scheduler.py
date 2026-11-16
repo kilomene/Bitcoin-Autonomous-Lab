@@ -17,10 +17,13 @@ research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md:
 
 Method, following the EXP-031 load probe precedent
 (research/sha256d/exp031/tools/load_probe.py): the thread
-count is set through the gpu.engine module global C_THREADS,
-the engine's returned attempted count is the authority for
-work done, and the rate is attempted hashes over wall time
-measured around the call. Target 1 is met by a real digest
+count is passed through the ComputeEngine constructor on a
+throwaway instance per (tier, thread count) pair (Stage 7:
+the former gpu.engine module global C_THREADS is gone, so
+no shared state is set or restored), the engine's returned
+attempted count is the authority for work done, and the
+rate is attempted hashes over wall time measured around
+the call. Target 1 is met by a real digest
 with probability about 2^-256, so the scan covers the full
 range in practice; the attempted count is recorded either
 way.
@@ -100,6 +103,7 @@ class Scheduler:
         self.engine_factory = engine_factory or \
             agent.interface.engine_factory
         self._engines = {}
+        self._measure_engines = {}
         self._profile = None
 
     # Internals --------------------------------------------------
@@ -130,30 +134,53 @@ class Scheduler:
                 "category": CATEGORY,
                 "workload_hashes": WORKLOAD_HASHES}
 
+    def _engine_at_threads(self, requested, threads):
+        """A ComputeEngine for one (tier, thread count) pair,
+        cached per pair. The thread count goes through the
+        factory as a constructor argument when the factory
+        accepts one (the production factory does); a factory
+        that only accepts the tier gets an instance whose own
+        c_threads attribute is set instead. Either way the
+        count lives on that instance alone: nothing shared is
+        set or restored."""
+        key = (requested, threads)
+        if key not in self._measure_engines:
+            import inspect
+            factory = self.engine_factory
+            try:
+                params = inspect.signature(factory).parameters
+                accepts = ("threads" in params or any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD
+                    for p in params.values()))
+            except (TypeError, ValueError):
+                accepts = False
+            if accepts:
+                engine = factory(requested, threads=threads)
+            else:
+                engine = factory(requested)
+                engine.c_threads = threads
+                engine.c_threads_tuned = True
+            self._measure_engines[key] = engine
+        return self._measure_engines[key]
+
     def _measure(self, requested, threads, repetitions,
                  count):
         """Median rate of the real search path for one tier
         at one thread count. Returns (median_rate, runs) with
         each run's attempted count and wall time recorded."""
-        import gpu.engine as engine_mod
-        engine = self._engine(requested)
-        saved = engine_mod.C_THREADS
+        engine = self._engine_at_threads(requested, threads)
         runs = []
-        try:
-            for _ in range(repetitions):
-                engine_mod.C_THREADS = threads
-                t0 = time.perf_counter()
-                _hit, attempted, _secs = \
-                    engine.search_first_counted(
-                        BENCH_HEADER, BENCH_TARGET, 0, count)
-                wall = time.perf_counter() - t0
-                runs.append({
-                    "attempted": attempted,
-                    "wall_s": round(wall, 4),
-                    "rate_hs": (attempted / wall
-                                if wall > 0 else 0.0)})
-        finally:
-            engine_mod.C_THREADS = saved
+        for _ in range(repetitions):
+            t0 = time.perf_counter()
+            _hit, attempted, _secs = \
+                engine.search_first_counted(
+                    BENCH_HEADER, BENCH_TARGET, 0, count)
+            wall = time.perf_counter() - t0
+            runs.append({
+                "attempted": attempted,
+                "wall_s": round(wall, 4),
+                "rate_hs": (attempted / wall
+                            if wall > 0 else 0.0)})
         rates = [r["rate_hs"] for r in runs]
         return statistics.median(rates), runs
 
@@ -254,6 +281,17 @@ class Scheduler:
                     result["from_cache"] = True
                     result["cache_age_s"] = round(age, 1)
                     return result
+        # Load-shedding gate (Stage 7): a bake-off is
+        # discretionary measurement work. Serving a fresh
+        # cache entry (above) costs nothing and stays
+        # allowed; actually measuring is refused in Brownout
+        # and Critical modes.
+        modes = getattr(self.agent, "modes", None)
+        if modes is not None:
+            modes.require_allowed(
+                "bake_off",
+                detail="bake_off measurement refused by the "
+                       "load-shedding mode")
         ctx = self._context()
         rows = []
         table = {}
