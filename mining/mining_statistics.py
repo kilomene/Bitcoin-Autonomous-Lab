@@ -44,6 +44,25 @@ counter, two source documents; the equivalence is recorded
 here and in STATISTICAL_MODEL.md so the vocabularies cannot
 drift apart silently.
 
+EXP-051 prefetch accounting (kept as its own counters, never
+merged into the names above): prefetch_enqueued (prepared
+templates the background feed placed in the queue),
+prefetch_served (template transitions served from the queue
+after the identity and tip re-verification),
+prefetch_starved (template transitions where no valid
+prepared work was ready, including a cold engine's first
+cycle: the starvation counter), and the drop counters
+prefetch_dropped_identity (identity recomputation at serve
+time disagreed with the prepared identity),
+prefetch_dropped_stale (previousblockhash no longer the
+node's best block, or the tip could not be verified),
+prefetch_dropped_superseded (a newer queued entry dominated
+this one) and prefetch_dropped_overflow (evicted from the
+bounded queue). A served transition records exactly one
+prefetch_served; a transition the queue could not serve
+records exactly one prefetch_starved; dropped entries are
+counted per entry, separately from both.
+
 What this engine does not do: it does not reach into the live
 paths and count on their behalf. Callers record what they did;
 tests pin the accounting rules. The evidence-log census (pool
@@ -96,6 +115,14 @@ CATEGORIES = (
     "actual_computations",
     "duplicate_deliveries",
     "stale_reports",
+    # EXP-051 prefetch accounting.
+    "prefetch_enqueued",
+    "prefetch_served",
+    "prefetch_starved",
+    "prefetch_dropped_identity",
+    "prefetch_dropped_stale",
+    "prefetch_dropped_superseded",
+    "prefetch_dropped_overflow",
 )
 
 _CATEGORY_SET = frozenset(CATEGORIES)
@@ -115,9 +142,9 @@ class MiningStatistics:
         if category not in _CATEGORY_SET:
             raise ValueError(
                 f"unknown statistics category {category!r}; "
-                f"categories are fixed by directive section 10 "
-                f"and EXP-035 section 7, add new ones there "
-                f"first")
+                f"categories are fixed by directive section 10, "
+                f"EXP-035 section 7 and the EXP-051 prefetch "
+                f"accounting, add new ones there first")
         if not isinstance(count, int) or count < 0:
             raise ValueError("count must be a non-negative int")
         if count == 0:
