@@ -95,7 +95,8 @@ def main():
 
     configs = []
     for threads in [int(x) for x in args.threads.split(",")]:
-        engine_mod.C_THREADS = threads
+        engine.c_threads = threads
+        engine.c_threads_tuned = True
         time.sleep(1.0)  # settle between configurations
         before = read_stat()
         wall0 = time.perf_counter()
