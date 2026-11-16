@@ -24,9 +24,22 @@ document.
    default_witness_commitment.
 5. Nonce search runs in batches through the ComputeEngine: CUDA
    when a real device passes the self-test, otherwise CPU with the
-   reason recorded. Every candidate is re-verified on the CPU
-   before submission. Exhaustion escalates to the next extranonce
-   (coinbase rebuilt, merkle root recomputed).
+   reason recorded. (Correction, 2026-11-15: the next sentence of
+   the original text, "Every candidate is re-verified on the CPU
+   before submission", overstated this GBT path. What
+   mining/engine.py actually does on a hit: the nonce is spliced
+   into the header, submitblock is called, and acceptance is
+   submitblock returning None plus the block equalling the node's
+   best block hash. mining/candidate_verify.py is NOT called
+   inside mine_cycle; CPU-side digest checking happens inside
+   gpu/engine.py's search internals, and the EXP-036 exact
+   verifier serves the pool and solo paths. The Milestone 6
+   demonstration verified an engine-produced block from outside
+   the engine and the two verdicts agreed
+   (research/master_build/MILESTONE6_E2E.md); whether to move
+   verification inside the GBT cycle is an owner decision item in
+   docs/IMPLEMENTATION_ROADMAP.md.) Exhaustion escalates to the
+   next extranonce (coinbase rebuilt, merkle root recomputed).
 6. submitblock; a block counts as mined only when submitblock
    returns no error AND the block is the node's best block.
 
@@ -61,8 +74,10 @@ then C, then Python; every candidate is still CPU verified.
 ## Update, 2026-11-15: current engine state
 
 The ComputeEngine dispatch order is now CUDA (no device on this
-VM, never selected), v512dual, v512, the C batch backend, then
-Python hashlib. v512dual (mining/cpu/bal_avx512_dual.c, the
+VM, never selected), v512dual, v512, shani, avx2, the C batch
+backend, then Python hashlib. (The shani and avx2 fallback tiers
+are the EXP-039 integration; this sentence was corrected
+2026-11-15 to include them.) v512dual (mining/cpu/bal_avx512_dual.c, the
 DualMask kernel from EXP-026) is the production search backend;
 v512 (mining/cpu/bal_avx512_mb.c) is preserved behind it. The
 EXP-022 flags batch (bal_v_batchf2 in mining/cpu/bal_avx512_flags.c)
