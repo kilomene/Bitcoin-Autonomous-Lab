@@ -52,9 +52,12 @@ class Agent:
 
     def __init__(self, local_dir=None, audit_path=None,
                  tasks_path=None, sandbox_root=None,
-                 engine_factory=None, controller=None):
+                 engine_factory=None, controller=None,
+                 verifier_key_path=None):
         local = local_dir or _LOCAL
         self.local_dir = local
+        self.verifier_key_path = verifier_key_path or \
+            os.path.join(local, "verifier", "verifier.key")
         self.sandbox_root = sandbox_root or os.path.join(
             local, "agent-experiments")
         self.checker = PermissionChecker(
@@ -81,9 +84,10 @@ class Agent:
     def loop(self):
         """A new optimisation loop bound to the research
         memory, this facade's permissions and audit."""
-        return OptimisationLoop(memory=self.memory,
-                                checker=self.checker,
-                                audit=self.audit)
+        return OptimisationLoop(
+            memory=self.memory, checker=self.checker,
+            audit=self.audit,
+            verifier_key_path=self.verifier_key_path)
 
     # Strategy conveniences --------------------------------------
     def gap_report(self, verified_rate_hs):
