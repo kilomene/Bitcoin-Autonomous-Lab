@@ -6,6 +6,8 @@ An autonomous Bitcoin mining research laboratory that designs, builds, tests and
 
 **Status at a glance (2026-11-13):** the lab is **live on mainnet**, mining on **CPU** through public-pool.io under payout address `bc1q528egeqsvv8aa382j43edxskqw6x7zxc2xpcf3`. First pool-accepted share: **difficulty 41.35, accepted 2026-11-13 18:59:51 UTC**. No block has been found yet and **0 BTC has been earned**; on a solo pool nothing is earned until a full block is found. Every number in this document is either measured by the lab's own test suites (labelled MEASURED) or is a clearly labelled PREDICTION or ESTIMATE.
 
+**Update, 2026-11-15:** the at-a-glance figures above are the 2026-11-13 session-1 record and are kept as history. The current state: the production backend is v512dual (EXP-026, with the EXP-039 fallback tiers), the live rate is in the 20 MH/s class (24.5 MH/s measured over a 120 s window on 2026-11-15 by the agent awareness layer), accepted pool shares stood at 411 with 8 rejected at the last Master Build check, the Master Build agent intelligence layer (Milestones 0 to 6) is complete (docs/AUTONOMOUS_MINING_ARCHITECTURE.md), and the solo cutover remains staged and armed behind the still-syncing pruned mainnet node. Still no block found and still 0 BTC earned.
+
 ---
 
 ## For agents: install this lab
@@ -50,7 +52,7 @@ Manual reference (what the installer runs, for operators who
 want the pieces separately): scripts/setup-bitcoin-core.sh
 (Bitcoin Core 28.1, SHA256SUMS verified, only needed for the
 optional local node), python3 mining/cpu/build.py,
-make test-all (33 targets, all must print PASSED),
+make test-all (36 targets, all must print PASSED; environment caveat: test-rtl needs iverilog, which is absent on this VM after replacements, so that one target fails for environment reasons, not code),
 bash scripts/autopilot.sh start, and on systemd machines
 bash scripts/autopilot.sh install-service.
 Rules for agents: never commit credentials or keys (node configs live in .local/,
@@ -214,15 +216,15 @@ The lab hunted for statistical structure that could bend the search, and measure
 - `asic/`: gate-level flow script and build outputs (gitignored build dir).
 - `agent/`: autonomous agent and structured question interface.
 - `dashboard/`: live stdlib web dashboard.
-- `research/`: the NOVA SHA-X research programme (research/sha256d with the experiment registries and the exp030 to exp038 trees, the Phase 001 genesis deconstruction under research/phase001, the Core and repository audits under research/bitcoin_core and research/bitcoin_reverse_engineering) plus the original statistics.py and probability.py modules.
+- `research/`: the NOVA SHA-X research programme (research/sha256d with the experiment registries and the exp030 to exp043 trees, the Phase 001 genesis deconstruction under research/phase001, the Core and repository audits under research/bitcoin_core and research/bitcoin_reverse_engineering, and the Master Build records under research/master_build) plus the original statistics.py and probability.py modules.
 - `scripts/`: one-command installer (`install.sh`), network self-configuration (`network_setup.py`), autopilot control, peer pinning, Core setup.
-- `tests/`: 33 Makefile test targets (correctness, regtest, engine, PoW, GPU and GPU correction, mining, adversarial, deepening, CPU aspect and CPU correction, RTL, solo server, solo cutover, research, autopilot, block judgement, installer, the Task 003, 003.8 and 003.9 suites, AVX-512, AVX-512 dual, mainnet live, template cache, AVX-512 flags, EXP-034, EXP-036, EXP-037, EXP-038, probability percentiles, EXP-039 and EXP-040).
+- `tests/`: 36 Makefile test targets (correctness, regtest, engine, PoW, GPU and GPU correction, mining, adversarial, deepening, CPU aspect and CPU correction, RTL, solo server, solo cutover, research, autopilot, block judgement, installer, the Task 003, 003.8 and 003.9 suites, AVX-512, AVX-512 dual, mainnet live, template cache, AVX-512 flags, EXP-034, EXP-036, EXP-037, EXP-038, probability percentiles, EXP-039, EXP-040, and the three agent intelligence suites: agent intelligence, agent awareness, agent operations).
 - `evidence/`: session logs and milestone evidence JSON.
 - `results/`, `docs/`: measured results and design documents.
 
 ## Testing
 
-`make test-all` runs 33 targets; all must print PASSED. Highlights: the Python PoW engine is verified against hashlib, six real mainnet headers, and the entire live regtest chain; the C engine is verified against hashlib on thousands of consecutive nonces; the RTL and the gate netlist pass the same genesis testbench; the solo server test mines a real block through a real TCP Stratum session into a real node.
+`make test-all` runs 36 targets; all must print PASSED. Environment caveat: on this VM, test-rtl fails because iverilog is absent after VM replacements, a standing environment failure recorded across the programme, not a code failure. Highlights: the Python PoW engine is verified against hashlib, six real mainnet headers, and the entire live regtest chain; the C engine is verified against hashlib on thousands of consecutive nonces; the RTL and the gate netlist pass the same genesis testbench; the solo server test mines a real block through a real TCP Stratum session into a real node.
 
 ## Mining status log
 
