@@ -1992,3 +1992,124 @@ run logs under exp043/RAW_RESULTS/. Host AMD EPYC
 nothing was pushed; production code untouched.
 
 Next unreserved ID: EXP-044.
+
+## EXP-045 record (2026-11-16)
+
+EXP-045 (NOVA-ER-0002: AVX2 batch discrepancy
+resolution). EXP-032 measured the AVX2 multi-buffer
+batch at pooled 1.409x [1.340, 1.480] against
+production C; EXP-039 measured the byte-identical
+kernel as the production tier at 1.252x [1.185, 1.322];
+the intervals do not overlap and the EXP-039 audit
+(note N-2) left the discrepancy unresolved. EXP-045
+crossed every candidate factor in one campaign on the
+AMD EPYC 9D25 host (EXP-017 protocol throughout, 15
+sessions, 120 paired 65,536-hash blocks each, live
+miner running and untouched): harness (direct ctypes
+vs the production ComputeEngine.batch_search seam) by
+library (research-built exp032 .so vs production-built
+.local .so), production C measured inside every cell,
+plus a direct library head-to-head. Gates first:
+917,504 hashlib differentials across all six arm
+paths, zero mismatches. Forensics: both campaigns'
+manifests record the identical libbal_batch.so sha256
+(8794238c...), refuting baseline drift; the kernel
+sources differ only in comments; the compiled kernel
+code is instruction-identical between the two
+libraries (bal_a_batch2 41 insns identical;
+a_walk.constprop.0 2,380 insns identical except
+RIP-relative constant-pool displacements). Results
+(adjusted pooled): direct/production-lib 1.274x
+[1.222, 1.328]; direct/research-lib 1.286x [1.233,
+1.345]; seam/production-lib 1.287x [1.236, 1.340];
+seam/research-lib 1.315x [1.261, 1.374]; head-to-head
+production vs research 0.976x [0.930, 1.025], NOT
+SIGNIFICANT. Verdict: CAUSE IDENTIFIED. The
+discrepancy is a session-conditions effect on the
+AVX2 arm (session medians 0.64M to 2.57M H/s across
+campaigns against C's stable 0.84M to 1.07M), not a
+kernel, build, harness or baseline difference; every
+factor effect is measured at 3 percent or less while
+the between-campaign spread is about 12 percent.
+Both historical VERIFIED IMPROVEMENT verdicts stand;
+the point estimates are condition-drawn, and the
+defensible current band is 1.27x to 1.32x under load.
+No discards; no production file modified. Full
+record: exp045/EXP045_REPORT.md; sessions, gates,
+analysis and disassembly comparison under
+exp045/RAW_RESULTS/. (EXP-044 stands pre-committed
+to the -mtune scheduling study, NOVA-ER-0005, per the
+Extreme Research portfolio; it is not this record.)
+
+Next unreserved ID: EXP-046.
+
+## R-12 prototype record (2026-11-16): solo vardiff (NOVA-ER-0004)
+
+The decided solo vardiff design (register R-12, EXP-030
+matrix M10: adapt share difficulty toward a target share
+interval with hysteresis on increases) is implemented as a
+RESEARCH PROTOTYPE in research/vardiff/ (DESIGN.md,
+vardiff.py, TESTS/test_vardiff.py, TEST_RESULTS.md,
+PORTFOLIO_SUMMARY.md). No EXP number is consumed: the
+Extreme Research portfolio assigns EXP identity at
+integration candidacy, and this work is the pre-candidacy
+prototype, recorded here under its register identity R-12 /
+NOVA-ER-0004. No production file was modified; the
+prototype subclasses mining/solo_server.py's SoloServer and
+mirrors its TCP handler with four named deltas.
+
+Design as built: per-connection difficulty (keyed by
+extranonce1) toward a 15 s target share interval, EMA alpha
+0.35, deadband [target/1.25, target x 1.25], increases
+gated by 2 confirmations plus a 30 s grace period and
+capped at 1.5x per step, decreases free of hysteresis and
+capped at 2x per step, floor 0.002, ceiling 1.0, initial
+0.02 (the operative endpoint-config value). A share is
+judged against the difficulty snapshot taken when its job
+was issued, so an adjustment never invalidates issued work.
+Stale shares (bounded 8-job history) are classified into
+their own category, never counted as accepted, and still
+routed through the EXP-036 exact pipeline when they meet
+the network target; duplicates are their own category and
+never count as work. Difficulty never enters candidate
+judging (the EXP-036 separation). Idle clients decay to
+the floor on job changes (60 s threshold, halving steps);
+reconnects restart at the initial difficulty. Discrepancy
+D10 (endpoint config 0.02 vs the SoloServer constructor
+default 0.01) is documented in the design, NOT fixed:
+closure is step 3 of the Stage 6 integration path the
+design specifies.
+
+Verification (suite research/vardiff/TESTS/test_vardiff.py,
+final recorded run 2026-11-16 on AMD EPYC 9D25, transient
+systemd unit vardiff-full5, raw log at
+research/vardiff/TESTS/full-run.log): 41 of 41 checks
+passed, exit 0. Control law under a simulated clock
+(convergence from both sides, hysteresis, caps, floor,
+ceiling, decay window, reconnect); the target formula
+integer-identical to production and the acceptance
+comparison exact at the boundary through
+candidate_verify.meets_target; pinned-mode differential
+against production SoloServer on a scripted stub stream
+(decisions and counters identical); live regtest over TCP
+(fast client raised with a replayable adjustment log,
+ceiling clamp, duty-cycled slow client lowered, silent
+client decayed to the floor, stale share classified with
+its block accepted by Core as the new tip, reconnect at
+initial). Gates 1 to 3 and 6 for the prototype; Gate 4
+does not apply (no rate claimed). Run history includes two
+harness defects found and fixed (proxy-routed loopback RPC
+answered by an egress-proxy 503; a scripted-client makefile
+reader poisoned by its own timeout), one test premise
+corrected (the ceiling scenario is rate-relative and now
+runs a 60 s target instance), one run lost to a VM
+replacement with no result claimed, and the deadband's
+origin: the first law draft hunted at equilibrium (68
+adjustments in 120 simulated shares) and the band is the
+fix. Portfolio verdict: SUCCESS at prototype scope, with
+D10 closure explicitly carried to Stage 6
+(PORTFOLIO_SUMMARY.md). Not verified: anything on mainnet,
+two-client interference on one server, the rate-stepped
+stability campaign, any other host.
+
+Next unreserved ID: EXP-046.
