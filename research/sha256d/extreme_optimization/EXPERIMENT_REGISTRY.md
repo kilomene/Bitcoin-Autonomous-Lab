@@ -2411,3 +2411,138 @@ CUDA hosts. Full record: research/sha256d/exp049/
 EXP049_REPORT.md and RAW_RESULTS/.
 
 Next unreserved ID: EXP-050.
+
+## EXP-050 record (2026-11-16)
+
+EXP-050 (NOVA-ER-0010, register R-26: endpoint health
+policy for the pool leg). New production module
+mining/endpoint_health.py: EndpointHealthPolicy, a named,
+inspectable decision object (ordered endpoints, N
+consecutive errors before failover, a timed failback
+retry of the primary, and a damping window bounding
+failbacks, the addition the poclbm precedent lacks).
+Configuration lives in mining/endpoint_config.py
+(pool_health section, pool_health_config(),
+pool_policy_endpoints()); defaults reproduce today's
+single-endpoint behaviour exactly (enabled false, no
+fallbacks), so the live stack is unaffected until an
+operator enables it. Wiring is additive: StratumClient
+gains an optional endpoint_policy (None is the historical
+behaviour byte for byte), connect_initial() for the
+startup path, policy-driven retargeting inside the
+existing reconnect loop, failback probes between reads,
+and submits_unresolved_on_reset accounting (a share is
+submitted exactly once; verdicts that can never arrive
+are reported as their own category, EXP-037 rule);
+mainnet_live builds the policy in pool mode when enabled
+and carries policy.status() in its status events. The
+autopilot restart is unchanged and remains the outer
+backstop. One real defect was found and fixed during the
+campaign: pending-submit registration raced fast verdicts
+(a discard could land before the add, leaving a phantom
+pending id); registration now happens inside _send,
+before the bytes leave. Gates: 1, 2, 4, 6 do not apply
+(no new hash path, no benchmark claim, no consensus
+surface). Gate 3 fault injection against local stubs
+(research/sha256d/exp050/exp050_fault_injection.py, 7
+scenarios, all passed): startup failover and startup
+exhaustion (connect raises, backstop intact); mid-job
+failover to the first fallback job in 0.084 s against a
+4.0 s job interval; exactly one failback on recovery;
+flapping primary (4 s up / 2.5 s down) earned exactly 1
+failback in 26 s under a 60 s damping window; mid-session
+exhaustion reported once with no faked recovery, recovery
+logged when the primary returned; accounting identity
+submitted 4 = accepted 2 + rejected 0 + unresolved 2 as
+separately recorded categories, zero double submissions.
+Gate 5: an isolated instance (byte copies, own .local)
+running production mainnet_live through start, primary
+death, failover, an accepted share on the fallback,
+primary return, failback, and stop by signal, the process
+alive throughout. Production suite
+tests/test_exp050_endpoint_health.py (make test-exp050,
+40 checks, all passing 2026-11-16 on AMD EPYC 9D25);
+test-mainnet-live, test-solo and test-solo-vardiff
+(59/59) also passed. Live miner untouched (share census
+609/8 before, 613/8 after; the delta is the live miner's
+own shares). An independent post-integration audit is
+owed before any push, and before the policy is enabled
+on the live stack. UNVERIFIED: failover against the real
+public-pool.io, any real second endpoint (none exists in
+the live config), other hosts, live enablement. Full
+record: research/sha256d/exp050/EXP050_REPORT.md and
+RAW_RESULTS/.
+
+Next unreserved ID: EXP-051.
+
+## EXP-051 record (2026-11-16)
+
+EXP-051 (NOVA-ER-0011, register R-33: prepared-work
+prefetch queue) is COMPLETE and VERIFIED at regtest
+difficulty. New production module mining/prefetch.py
+(PrefetchQueue, PrefetchFeed), wired into
+MiningEngine.mine_cycle behind opt-in use_prefetch=False
+(the disabled default is byte-for-byte the historical
+behaviour and the rollback surface; pinned by test). A
+background GBT longpoll feed prepares the next template
+through the EXP-025 cache while search runs on the
+current one; at a transition the queue serves its newest
+entry only after its previousblockhash is confirmed to
+still be the node's best block and its EXP-025 layered
+identity is recomputed from scratch and matches the
+identity it was prepared under. Any failure drops the
+entry (counted by reason) and the cycle falls back to
+the synchronous fetch and prepare, so a candidate
+prepared under identity A is never searched under
+identity B. Seven separated EXP-037 counters were added
+(prefetch_enqueued, prefetch_served, prefetch_starved,
+prefetch_dropped_identity, prefetch_dropped_stale,
+prefetch_dropped_superseded, prefetch_dropped_overflow);
+snapshot() still has no combined total. Predeclared
+criteria (research/sha256d/exp051/PREDECLARATION.md,
+written before measuring): H1 zero stale serves, H2
+loaded median non-search overhead per block at least 15
+percent below the synchronous arm, H3 at least half of
+loaded prefetch runs queue-served with (gbt + prepare)
+under 5 ms in served runs. Gate 3 adversarial suite
+tests/test_exp051_prefetch.py (make test-exp051, all
+passing, AMD EPYC 9D25): queue unit gates (stale tip,
+unverifiable tip, identity confusion twice, superseded,
+overflow, duplicate), feed dedupe, engine gates on a
+fake node (cold starve, served cycle, identity confusion
+refused, stale drop after an external block, rapid tip
+changes), the disabled default, and Gate 6 on the real
+regtest node (a queue-served block accepted by Core and
+EXP-036 verified). NO stale serve was found anywhere.
+Gate 4 in category F form through the EXP-040 harness
+shape (84 timed runs, 0 failed, every block EXP-036
+verified): loaded scenario B median non-search overhead
+389.7 ms synchronous vs 167.3 ms prefetch, a 57.1
+percent reduction (H2 PASS); served fraction in B 1.0,
+18 of 18, with (gbt + prepare) at 0.0 ms median in
+served runs (H3 PASS); campaign counters enqueued 62,
+served 42 (every timed prefetch run), starved 6 (the
+six session warm-ups), superseded 16, identity and
+stale drops 0 in the campaign. Scenario A (empty) is
+reported without a verdict: the removable stages are
+about 7 ms there and both arms are dominated by
+submit/confirm variance under load 9 to 16. Gates 1
+and 2 inherited and re-run: test-exp034, test-exp036,
+test-template-cache, test-exp037, test-mining and
+test-exp040 all passed; make test-engine (the
+intelligence suite, outside this change's import graph)
+failed three times on its full-sync assertion while
+external blocks were landing on the shared regtest
+chain, recorded as environment interference with the
+evidence in the report. The solo server seam is
+declared out of scope (it does not consume
+MiningEngine; its JobRefresher already pre-builds jobs
+server-side). Live miner untouched (share census 614/8
+before and after). An independent post-integration
+audit is owed before any push. UNVERIFIED: mainnet
+difficulty effect (claimed nil, unmeasured), the solo
+server seam, other hosts, long-run feed soaking.
+Full record: research/sha256d/exp051/EXP051_REPORT.md
+and RAW_RESULTS/.
+
+Next unreserved ID: EXP-052.
