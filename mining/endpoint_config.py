@@ -45,13 +45,67 @@ SOLO_PORT = 3333
 # is exactly the blink-off-the-dashboard gap this replaces.
 SOLO_SHARE_DIFFICULTY = 0.02
 
+# Solo vardiff parameters (Stage 6 integration of the decided
+# R-12 design, research/vardiff/DESIGN.md section 4). These are
+# the declared operating point of the control law; under
+# vardiff, SOLO_SHARE_DIFFICULTY becomes the INITIAL difficulty
+# each new connection starts at. Vardiff is disabled by default
+# in the config below: the armed cutover keeps today's fixed-
+# difficulty behaviour until the integration gates (DESIGN.md
+# section 9 step 5, including the independent audit) have all
+# passed and an operator enables it here.
+SOLO_VARDIFF_TARGET_INTERVAL = 15.0
+SOLO_VARDIFF_FLOOR = 0.002
+SOLO_VARDIFF_CEILING = 1.0
+SOLO_VARDIFF_EMA_ALPHA = 0.35
+SOLO_VARDIFF_DEADBAND = 1.25
+SOLO_VARDIFF_UP_HYSTERESIS_S = 30.0
+SOLO_VARDIFF_UP_CONFIRMATIONS = 2
+SOLO_VARDIFF_MAX_UP_FACTOR = 1.5
+SOLO_VARDIFF_MAX_DOWN_FACTOR = 2.0
+SOLO_VARDIFF_DECAY_AFTER_S = 60.0
+SOLO_VARDIFF_DECAY_FACTOR = 2.0
+
+SOLO_VARDIFF_DEFAULTS = {
+    "enabled": False,
+    "target_interval": SOLO_VARDIFF_TARGET_INTERVAL,
+    "floor": SOLO_VARDIFF_FLOOR,
+    "ceiling": SOLO_VARDIFF_CEILING,
+    "ema_alpha": SOLO_VARDIFF_EMA_ALPHA,
+    "deadband": SOLO_VARDIFF_DEADBAND,
+    "up_hysteresis_s": SOLO_VARDIFF_UP_HYSTERESIS_S,
+    "up_confirmations": SOLO_VARDIFF_UP_CONFIRMATIONS,
+    "max_up_factor": SOLO_VARDIFF_MAX_UP_FACTOR,
+    "max_down_factor": SOLO_VARDIFF_MAX_DOWN_FACTOR,
+    "decay_after_s": SOLO_VARDIFF_DECAY_AFTER_S,
+    "decay_factor": SOLO_VARDIFF_DECAY_FACTOR,
+}
+
 DEFAULT_CONFIG = {
     "mode": "pool",
     "pool": {"host": POOL_HOST, "port": POOL_PORT},
     "solo": {"host": SOLO_HOST, "port": SOLO_PORT,
-             "share_difficulty": SOLO_SHARE_DIFFICULTY},
+             "share_difficulty": SOLO_SHARE_DIFFICULTY,
+             "vardiff": dict(SOLO_VARDIFF_DEFAULTS)},
     "payout_address": LAB_PAYOUT_ADDRESS,
 }
+
+
+def solo_vardiff_config(cfg=None):
+    """The merged vardiff settings from an endpoint config
+    (defaults when cfg is None or carries no vardiff section).
+    Pure data; mining/solo_mainnet.py turns it into a
+    VarDiffController when "enabled" is true."""
+    out = dict(SOLO_VARDIFF_DEFAULTS)
+    if cfg is None:
+        cfg = load_config()
+    solo = cfg.get("solo") if isinstance(cfg, dict) else None
+    vd = solo.get("vardiff") if isinstance(solo, dict) else None
+    if isinstance(vd, dict):
+        for key, val in vd.items():
+            if key in out and val is not None:
+                out[key] = val
+    return out
 
 
 def _merged(cfg):
