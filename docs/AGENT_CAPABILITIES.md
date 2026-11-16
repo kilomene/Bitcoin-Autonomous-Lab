@@ -1,7 +1,9 @@
 # Agent Capabilities
 
 Date: 2026-11-15, updated 2026-11-16 (Stage 7: production
-controller and load-shedding modes). The capabilities,
+controller and load-shedding modes; Stage 8: autonomous
+agent-directed regtest mining demonstration). The
+capabilities,
 permissions, operational authority and limitations of the
 agent intelligence layer in agent/intelligence/, as built by
 the Master Build (Milestones 1 to 5), demonstrated against
@@ -15,6 +17,26 @@ agent/intelligence/interface.py, controller.py, modes.py,
 awareness.py, loop.py, experiments.py, scheduler.py,
 resources.py, and the milestone reports in
 research/master_build/.
+
+Stage 8 (2026-11-16) demonstrated the assembled layer end
+to end: the agent directed a complete regtest mining
+operation through its own machinery only (awareness
+inspection, research-memory gate consultations with cited
+refusals, a TaskRegistry plan with evidence requirements,
+permission-gated start/stop through the production
+MiningController against an isolated autopilot instance
+running the production MiningEngine path, EXP-036 block
+verification, a controlled fault with watchdog relaunch and
+a correctness-fault halt, one sandboxed bake-off experiment
+decided by the strict signed-evidence gate, and a mode
+observation cycle), producing 4 regtest blocks and a
+measured unique hash rate through the awareness surfaces.
+Full record: research/EXTREME_RESEARCH/
+STAGE8_AUTONOMOUS_DEMONSTRATION.md. The demonstration ran
+on regtest against an isolated instance; the live mainnet
+stack was observed read-only and never controlled, so
+autonomous production mining on mainnet remains
+undemonstrated.
 
 ## What the agent can do
 
