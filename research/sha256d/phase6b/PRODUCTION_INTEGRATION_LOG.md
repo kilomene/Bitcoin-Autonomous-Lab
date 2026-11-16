@@ -572,3 +572,243 @@ State carried in at phase open, for continuity:
   fallbacks, regtest block 1025, one-session
   benchmark spot-check consistent with the pooled
   figure).
+
+## Entry 4: Stage 0 discrepancy D9 fixed: the live miner's backend line names the selected backend's own probe (2026-11-16)
+
+- Nature: cosmetic logging only. No change to backend
+  selection, dispatch order, search, accounting or share
+  handling; no benchmark is implicated and none was run.
+- Defect: mining/mainnet_live.py labelled the backend
+  reason "AVX-512 MB" and read desc["v512_reason"] for
+  every backend that was not v512dual or v512, so on a
+  host selecting shani, avx2 or C, the session backend
+  line (printed at startup and written into the status
+  file the awareness layer reads) would name the v512
+  probe as the reason source. Recorded as discrepancy
+  D9 in research/EXTREME_RESEARCH/
+  REPOSITORY_RECONCILIATION.md.
+- Fix: a new module-level helper,
+  mainnet_live.backend_reason(desc), returns the (label,
+  reason) pair for the selected backend from the
+  per-backend reason fields gpu/engine.py already
+  maintains on the describe() dict (v512dual_reason,
+  v512_reason, shani_reason, avx2_reason,
+  cuda_context_reason). The C tier has no probe-reason
+  field of its own; its backend value is set only after
+  the library loads and its digests match the Python
+  recount in ComputeEngine._try_c, and its line states
+  exactly that. main() takes its label and reason from
+  the helper. The backend_selected evidence event is
+  unchanged: it records the v512 and v512dual probe
+  reasons under their own field names, which was
+  already accurate.
+- Files changed: mining/mainnet_live.py (helper added,
+  inline labelling replaced), tests/
+  test_mainnet_live_accounting.py (two D9 checks added:
+  simulated describe() dicts pinning every backend's
+  label and reason, and real describe() dicts from the
+  production engine), research/EXTREME_RESEARCH/
+  REPOSITORY_RECONCILIATION.md (D9 marked FIXED), and
+  this log.
+- Tests: the new checks fail on the pre-fix code
+  (backend_reason absent; the pre-fix inline logic,
+  replayed against a simulated shani describe(), prints
+  "AVX-512 MB" with the v512 probe's reason) and pass on
+  the fixed code. Post-fix regression on AMD EPYC 9D25:
+  36 of 37 make test-all targets pass. The only failure
+  is test-rtl, on the missing iverilog binary, a
+  pre-existing environment failure on this VM unrelated
+  to this change. test-agent-awareness passed with 51
+  checks (the node RPC answered during the run; the
+  count is 50 when it does not, per D8).
+- Live miner: not restarted. The running process keeps
+  the pre-fix code in memory, so the fix takes effect
+  at its next natural restart. Miner pid 7872 and
+  restarts 0 throughout; shares accepted 483 before the
+  work and 486 after.
+- Post-integration audit: NOT performed by the author
+  of this fix; an independent audit is the required
+  next step before anything else moves (owner rule,
+  2026-11-14).
+
+## Entry 5: Stage 6, item 2: solo vardiff (register R-12) integrated into production, and discrepancy D10 closed (2026-11-16)
+
+- Nature: production integration of the verified
+  research prototype in research/vardiff/ (41 of 41
+  checks at prototype scope), following the integration
+  path its DESIGN.md section 9 specifies, step for step.
+  One unrelated optimisation at a time; nothing else in
+  the solo path changed behaviour.
+- Step 1, the component: VarDiffController now lives in
+  mining/solo_server.py, and SoloServer gains a
+  vardiff=None parameter. With vardiff=None the server
+  is the pre-integration server: submit_share dispatches
+  to the pre-integration body verbatim, the handler and
+  broadcast paths keep their original shapes, and the
+  only visible difference is one added stats key. Passing
+  both an explicit share_difficulty and a controller is
+  refused. The controller's semantics are the
+  prototype's, unchanged: per-connection difficulty keyed
+  by extranonce1, 15 s target interval, EMA alpha 0.35,
+  deadband [target/1.25, target x 1.25], increases gated
+  by 2 confirmations plus a 30 s grace and capped at
+  1.5x, decreases capped at 2x, floor 0.002, ceiling 1.0,
+  idle decay on job changes after 60 s idle, full
+  adjustment logging.
+- Step 2, the server state: per-connection state,
+  per-job difficulty snapshots, the bounded 8-job
+  history, stale and duplicate accounting and the
+  adjustment log moved into SoloServer alongside the
+  workers table. SoloTCPServer takes a handler_class
+  parameter, and the prototype handler's deltas landed
+  in the production handler: connection registration,
+  per-connection set_difficulty on subscribe, a pending
+  set_difficulty notice after a submit response when an
+  adjustment is due, and a per-client set_difficulty
+  ahead of the job notify on broadcast (the last two
+  only when vardiff is active). Stale shares are
+  classified via the history and never accepted as
+  shares; duplicates are their own category; a stale
+  share that meets the network target still goes through
+  the block pipeline.
+- Step 3, D10 closed: the SoloServer constructor default
+  share_difficulty=0.01 is removed. With neither an
+  explicit difficulty nor a controller, the difficulty
+  resolves from mining/endpoint_config.py
+  (SOLO_SHARE_DIFFICULTY = 0.02), which is now the single
+  source. A repo-wide grep reconciles every remaining
+  mention of either value: production readers
+  (scripts/solo_cutover.py, mining/mainnet_live.py) read
+  the endpoint config; tests pass 0.01 explicitly as a
+  chosen test difficulty; the remaining mentions are
+  historical narrative in docs and the D10 record itself.
+  The D10 entry in research/EXTREME_RESEARCH/
+  REPOSITORY_RECONCILIATION.md is marked FIXED.
+- Step 4, configuration: mining/endpoint_config.py
+  carries the vardiff parameters (target interval, EMA
+  alpha, deadband, up hysteresis and confirmations, up
+  and down caps, decay) alongside SOLO_SHARE_DIFFICULTY,
+  which is the controller's initial value, with a
+  solo_vardiff_config() merge helper. The config default
+  is vardiff DISABLED: the armed solo cutover keeps
+  today's fixed-difficulty behaviour until an operator
+  enables vardiff after the independent audit below.
+  mining/solo_mainnet.py builds the controller from the
+  config when enabled and constructs the server exactly
+  as before when not. Rollback at every point:
+  vardiff=None in code, or the config switch off.
+- Step 5, gates, all run 2026-11-16 on AMD EPYC 9D25
+  (hostname htch-runtime), production suite
+  tests/test_solo_vardiff.py (make test-solo-vardiff),
+  final recorded run 59 of 59 checks passed:
+  Gate 2 differential: a pristine copy of the
+  pre-integration solo_server.py was taken from remote
+  HEAD 3ebbaeb216bc1260cfca22c63b9af60d780a971e through
+  the GitHub contents API (27,536 bytes, sha256
+  518ef05c5c7d49fdf6408e68494fecde24a1c55b337c59576696f77a2a37ab44,
+  byte-identical to the local pre-integration file) and
+  is pinned as tests/fixtures/
+  solo_server_pre_integration.py. Against a scripted stub
+  stream (valid shares, a low-difficulty share, a bad
+  extranonce2 size, an unknown job, ntime before mintime,
+  ntime too far in the future), the production server
+  with vardiff off produces identical jobs, identical
+  decisions and identical counters. Gate 3 adversarial:
+  oscillation injection (adjustments bounded, difficulty
+  in bounds), a rate step followed in both directions,
+  a stale flood (25 stale shares, all classified, none
+  accepted, sub-kinds recorded), a duplicate flood (one
+  acceptance, 24 duplicates, no adjustment). EXP-036
+  separation, shown at unit and server level: the
+  verify_candidate network verdict is identical across
+  share targets, and two connections holding different
+  snapshot difficulties on the same job split their
+  classifications exactly as their snapshots dictate,
+  with no submission reaching the node below the network
+  target; vardiff difficulty is a share-acceptance
+  criterion only and candidate judging is untouched.
+  Gate 5: server start, refresh and recovery with
+  vardiff live, including the JobRefresher broadcasting
+  a new-tip job that the client then mines. Gate 6:
+  regtest blocks accepted by Core through the production
+  path in both modes, each confirmed on the best chain
+  under the EXP-036 rule; the recorded run mined blocks
+  1658 to 1679 (22 blocks), the first of them, height
+  1658, hash
+  000000227d0e82d1d8e8270b7979cdc7c037c84bef231d0028651fcf7b439e76,
+  through the vardiff-active server, and the pinned
+  default mode's block verified by the suite's tip and
+  best-hash checks. Gate 4 does not apply (no rate is
+  claimed for this change). Gate 1 and the differential
+  half of Gate 2 are the suite's stub sections (the
+  prototype's 41 checks ported to the production
+  classes, plus the exactness and D10 pins).
+- Run history, recorded honestly: run 1 scored 57 of 59;
+  the two failures were the live convergence direction
+  checks (fast client upward, slow client downward).
+  A control run of the prototype's own suite the same
+  day failed its own two equivalent checks with near
+  identical figures (load average about 16 on a guest
+  delivering about 2 effective CPUs), while the
+  production server behaved identically to the
+  prototype; the two instances were therefore
+  recalibrated to decisive settings, following the
+  prototype's own ceiling-instance precedent (a 60 s
+  target for the fast client, a heavier duty cycle for
+  the slow client), with the reasoning recorded in the
+  suite. Run 2 was lost to a VM replacement after 11 of
+  18 live checks had passed, no result claimed from it.
+  Run 3 passed 52 checks and then died on a harness bind
+  collision (an ephemeral client socket in TIME_WAIT on
+  the next scenario's port); the harness now waits out
+  the TIME_WAIT, production socket behaviour untouched.
+  Run 4 is the recorded 59 of 59.
+- EXP-038: unaffected, verified two ways. By code read:
+  the solo Stratum path never imports or calls
+  mining/work_checkpoint.py, and vardiff assigns no
+  nonce ranges and advances no frontier (the DESIGN.md
+  section 6 boundary). By suite: test-exp038 passes in
+  the regression below.
+- Regression: 36 of 38 make test-all targets pass. The
+  two failures are neither caused by nor related to this
+  change. test-rtl fails on the missing iverilog binary,
+  the known pre-existing environment failure. test-
+  autopilot fails on its environment precondition: the
+  suite is designed to skip when a live autopilot owns
+  the checkout, but its skip check reads a pid from
+  .local/autopilot.lock, which the autopilot flocks but
+  leaves empty, so the skip cannot fire while the live
+  stack is up; the suite then reads the live heartbeat
+  and its restart assertion cannot hold. The autopilot
+  and its test share no code path with this change, and
+  the live autopilot has run the new endpoint_config
+  code without disturbance throughout. Agent suites in
+  the same regression: intelligence 86, awareness 50
+  (the node RPC did not answer during that run; 51 when
+  it does, per D8), operations 10,309, security 112
+  checks, all passing.
+- Live miner: not restarted or signalled by this work.
+  Shares accepted 487 and rejected 8 before, 517 and 8
+  after. One VM replacement during the work cycle
+  replaced the miner process under the environment's own
+  supervision (autopilot restarts 0 in its own
+  accounting); the fix and the integration take effect
+  for the solo leg only when the armed cutover fires.
+- Files changed: mining/solo_server.py,
+  mining/endpoint_config.py, mining/solo_mainnet.py,
+  tests/test_solo_vardiff.py (new),
+  tests/fixtures/solo_server_pre_integration.py (new),
+  Makefile (test-solo-vardiff added; test-all is now 38
+  targets), research/EXTREME_RESEARCH/
+  REPOSITORY_RECONCILIATION.md (D10 marked FIXED),
+  research/vardiff/PORTFOLIO_SUMMARY.md (dated appendix),
+  both experiment registries (R-12 marked INTEGRATED),
+  and this log. The solo cutover files, the endpoint
+  config on disk, and scripts/solo_cutover.py were not
+  touched; cutover semantics are identical.
+- Post-integration audit: NOT performed by the author
+  of this integration; an independent audit is the
+  required next step (owner rule, 2026-11-14), and the
+  DESIGN step 5 gate: vardiff stays disabled in the
+  endpoint config until that audit has passed and an
+  operator enables it.
