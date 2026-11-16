@@ -20,15 +20,23 @@ One Agent facade wires the logical subsystems together:
 The facade's default grant follows the mandate: L2 for
 operations, with L3 available only inside the experiment
 sandbox directory (.local/agent-experiments by default).
-Nothing in this package starts, stops or restarts the live
-miner, autopilot or node in Milestone 1.
+Stage 7: the facade's interface carries the production
+MiningController by default (controller.py), so the L2
+controlled operations act on the real autopilot with
+verified postconditions; pass controller=False for an
+explicitly unwired facade. The facade also owns the
+load-shedding ModeManager (modes.py): Normal, Brownout and
+Critical modes gate the package's discretionary work and
+never touch mining itself.
 """
 
 import os
 
 from .audit import AuditLog
+from .controller import MiningController
 from .interface import MiningInterface
 from .loop import OptimisationLoop
+from .modes import ModeManager, ModeRefusal
 from .permissions import Level, PermissionChecker
 from .planning import TaskRegistry
 from . import strategy as _strategy
@@ -38,6 +46,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(
 _LOCAL = os.path.join(_REPO_ROOT, ".local")
 
 __all__ = ["Agent", "AuditLog", "MiningInterface",
+           "MiningController", "ModeManager", "ModeRefusal",
            "OptimisationLoop", "PermissionChecker",
            "TaskRegistry", "Level"]
 
@@ -53,7 +62,7 @@ class Agent:
     def __init__(self, local_dir=None, audit_path=None,
                  tasks_path=None, sandbox_root=None,
                  engine_factory=None, controller=None,
-                 verifier_key_path=None):
+                 verifier_key_path=None, mode_state_path=None):
         local = local_dir or _LOCAL
         self.local_dir = local
         self.verifier_key_path = verifier_key_path or \
@@ -66,6 +75,16 @@ class Agent:
             audit_path or os.path.join(local, "agent-audit.jsonl"))
         self.tasks = TaskRegistry(
             tasks_path or os.path.join(local, "agent-tasks.json"))
+        from .modes import ModeManager
+        self.modes = ModeManager(
+            state_path=mode_state_path or os.path.join(
+                local, "agent-mode.json"),
+            audit=self.audit)
+        if controller is None:
+            from .controller import MiningController
+            controller = MiningController(
+                repo_root=_REPO_ROOT, local_dir=local,
+                checker=self.checker, audit=self.audit)
         self.interface = MiningInterface(
             self.checker, self.audit, local_dir=local,
             engine_factory=engine_factory, controller=controller)
@@ -83,11 +102,20 @@ class Agent:
 
     def loop(self):
         """A new optimisation loop bound to the research
-        memory, this facade's permissions and audit."""
+        memory, this facade's permissions and audit, and the
+        load-shedding mode gate: transitions into the
+        discretionary execution states are refused while the
+        mode sheds experiment work."""
         return OptimisationLoop(
             memory=self.memory, checker=self.checker,
             audit=self.audit,
-            verifier_key_path=self.verifier_key_path)
+            verifier_key_path=self.verifier_key_path,
+            mode_gate=lambda kind: self.modes.allows(kind))
+
+    def mode(self):
+        """The current load-shedding mode, for status
+        surfaces."""
+        return self.modes.current()
 
     # Strategy conveniences --------------------------------------
     def gap_report(self, verified_rate_hs):
