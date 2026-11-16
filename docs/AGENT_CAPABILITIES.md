@@ -1,14 +1,20 @@
 # Agent Capabilities
 
-Date: 2026-11-15. The capabilities, permissions, operational
-authority and limitations of the agent intelligence layer in
-agent/intelligence/, as built by the Master Build (Milestones 1
-to 5) and demonstrated against the live system in Milestones 2
-and 6. Sources: agent/intelligence/permissions.py (the registry
-table below is generated from the live ACTION_REGISTRY),
-agent/intelligence/interface.py, awareness.py, loop.py,
-experiments.py, scheduler.py, resources.py, and the milestone
-reports in research/master_build/.
+Date: 2026-11-15, updated 2026-11-16 (Stage 7: production
+controller and load-shedding modes). The capabilities,
+permissions, operational authority and limitations of the
+agent intelligence layer in agent/intelligence/, as built by
+the Master Build (Milestones 1 to 5), demonstrated against
+the live system in Milestones 2 and 6, and extended in
+Stage 7 with a real production controller
+(agent/intelligence/controller.py) and cognitive
+load-shedding modes (agent/intelligence/modes.py). Sources:
+agent/intelligence/permissions.py (the registry table below
+is generated from the live ACTION_REGISTRY),
+agent/intelligence/interface.py, controller.py, modes.py,
+awareness.py, loop.py, experiments.py, scheduler.py,
+resources.py, and the milestone reports in
+research/master_build/.
 
 ## What the agent can do
 
@@ -60,14 +66,34 @@ reports in research/master_build/.
 - Keep a task registry with enforced state transitions and an
   append-only audit trail of every gated operation, including
   permission denials (Milestone 1, planning.py and audit.py).
+- Start, stop and restart mining through the production
+  MiningController (Stage 7, controller.py), which extends
+  the existing autopilot (scripts/autopilot.sh plus the
+  heartbeat and lock files), verifies every postcondition
+  from the autopilot's own published state before reporting
+  success, and never signals a pid it did not read from that
+  state and verify against /proc cmdline. Recovery follows
+  a fault taxonomy: miner-down and autopilot-down faults
+  recover through the autopilot; correctness or consensus
+  failures and crash loops at the restart cap halt and
+  report, never auto-recover.
+- Shed its own discretionary load under contention
+  (Stage 7, modes.py): Normal, Brownout and Critical modes
+  computed from the load average against EXP-031's effective
+  CPU estimate and the miner rate against its own baseline,
+  with entry confirmation and a sustained-clear exit window
+  so the mode cannot flap. Brownout stops new experiments
+  and bake-offs and reduces awareness cadence; Critical
+  leaves only status. Mining is never shed, throttled or
+  restarted by a mode transition.
 
 ## Permissions: the action registry
 
 Every operation the package exposes is named in ACTION_REGISTRY
 (agent/intelligence/permissions.py) with its level and whether it
 mutates production state. The table below is generated from the
-actual registry. The registry contains 22 ActionSpecs: 11 at L1,
-8 at L2, 3 at L3.
+actual registry. The registry contains 24 ActionSpecs: 11 at L1,
+10 at L2, 3 at L3.
 
 | Operation | Level | Mutates production | Description |
 |---|---|---|---|
@@ -83,11 +109,13 @@ actual registry. The registry contains 22 ActionSpecs: 11 at L1,
 | plan_read | L1 read-only | no | Read the task registry. |
 | audit_read | L1 read-only | no | Read the audit log. |
 | select_backend | L2 controlled operations | no | Decide the eligible backend for a requested pin. Decision only; never starts mining. |
-| start_mining | L2 controlled operations | yes | Start mining through the injected controller. Not wired to production in Milestone 1. |
-| stop_mining | L2 controlled operations | yes | Stop mining through the injected controller. Not wired to production in Milestone 1. |
-| adjust_workers | L2 controlled operations | yes | Adjust approved worker settings through the injected controller. Not wired in Milestone 1. |
+| start_mining | L2 controlled operations | yes | Start mining through the production MiningController (agent/intelligence/controller.py) over the autopilot control surface. Wired in Stage 7. |
+| stop_mining | L2 controlled operations | yes | Stop mining through the production MiningController over the autopilot control surface. Wired in Stage 7. |
+| restart_mining | L2 controlled operations | yes | Restart mining through the production MiningController (verified stop plus start with a miner pid change). Wired in Stage 7. |
+| adjust_workers | L2 controlled operations | yes | Adjust approved worker settings through the production MiningController. Launch-time only in the current production path: the controller reports restart-required and applies nothing silently. |
+| refresh_job | L2 controlled operations | no | Request a mining job refresh through the production MiningController. No external trigger exists in the current production path (job supply is push-driven inside the miner); the controller refuses it as unsupported rather than faking an effect. |
 | run_benchmark | L2 controlled operations | no | Run a controlled benchmark in an experiment context. |
-| trigger_recovery | L2 controlled operations | yes | Initiate a recovery operation through the injected controller. Not wired in Milestone 1. |
+| trigger_recovery | L2 controlled operations | yes | Initiate a recovery operation through the production MiningController, under its fault taxonomy (correctness failures and crash loops halt, never auto-recover). Wired in Stage 7. |
 | plan_write | L2 controlled operations | no | Create or transition tasks in the task registry. |
 | loop_advance | L2 controlled operations | no | Advance an optimisation loop record one state. |
 | create_experiment | L3 experimental modifications | no | Create an isolated experimental implementation inside the sandbox directory. |
@@ -99,26 +127,55 @@ an operation above the caller's grant is refused; an L3 operation
 additionally requires a sandbox path inside the checker's sandbox
 root, and is refused without one even when the grant is L3.
 Refusals raise the package's PermissionError carrying the
-operation, the required level and the granted level. No registry
-entry mutates production state in the as-built system: the four
-entries marked as mutating are specifications that execute only
-through an injected controller, and no production controller is
-wired (the default raises NotImplementedError after the
-permission check and an audit record).
+operation, the required level and the granted level. The five
+entries marked as mutating production state execute through
+the production MiningController (controller.py); an explicitly
+unwired interface (controller=False, the test seam) still
+raises NotImplementedError for them after the permission
+check and an audit record.
 
 ## Operational authority, stated plainly
 
 The agent's live authority today is: read everything listed
-above, decide backend eligibility, run sandboxed experiments and
-benchmarks, maintain its own task, audit, scheduler-cache and
-resource-registry state under .local/, and judge integration
-attempts at the gate. It has no live authority over the running
-miner: it cannot start, stop, restart, signal or reconfigure the
-miner, the autopilot or either node, and no code path in the
-package attempts to. Live supervision remains the autopilot's
-and the keeper cron's. Production integration of any experiment
-remains a separate gated act outside the package, followed by the
+above, decide backend eligibility, run sandboxed experiments
+and benchmarks, maintain its own task, audit, scheduler-cache,
+resource-registry and mode state under .local/, judge
+integration attempts at the gate, and, through the production
+MiningController, start, stop, restart and recover the miner
+by extending the existing autopilot. The controller creates
+no competing supervision: the autopilot keeps its watchdog,
+backoff, session rotation and self-update, and the keeper
+cron remains an independent layer. The controller's one
+signal (SIGTERM to the miner child inside recover, so the
+watchdog relaunches it) goes only to a pid read from the
+autopilot heartbeat and verified against /proc cmdline;
+there is no guessed-PID path. Every mutating call verifies
+its postcondition and reports failure honestly when it does
+not materialise.
+
+What the controller does NOT do, by measured fact about the
+current production path, not by omission: it cannot apply a
+backend pin (mining/mainnet_live.py constructs
+ComputeEngine() with no pin and no CLI carries one, so
+select_backend at the controller is refused as unsupported;
+the interface's eligibility decision is unaffected), it
+cannot adjust worker counts at runtime (launch-time only,
+reported restart-required, nothing applied silently), and
+it cannot trigger a job refresh (job supply is push-driven
+inside the miner; refused as unsupported). It has no
+authority over either node, the solo cutover or the endpoint
+config. Production integration of any experiment remains a
+separate gated act outside the package, followed by the
 standing independent post-integration audit.
+
+Load-shedding modes bound the agent's own appetite, never
+mining's: in Brownout and Critical the experiment runner,
+the bake-off and the loop's discretionary transitions refuse
+new work, and awareness reduces cadence or goes minimal.
+Mode state is persisted at .local/agent-mode.json, shown in
+awareness snapshots and by python3 -m agent.intelligence
+mode, and every transition is audit-logged with its trigger
+values.
 
 ## Limitations
 
@@ -149,26 +206,34 @@ Awareness gaps (Milestone 2, from the demonstration report):
 - Whether the pool would accept a block is unexercised:
   network_target_candidates is 0 in every session to date.
 
-Research memory parsing gap (Milestone 1): memory.py maps
+Research memory parsing gap (Milestone 1), FIXED 2026-11-16
+(Stage 7, wave 1, item A; discrepancy D6): memory.py maps
 registry prose onto mandate statuses heuristically. Its
 _map_status returns INTEGRATED only when a verdict line literally
 contains "integrated" (and not "not integrated"), or the body
 contains the phrase "integrated into production". Measured
 consequence on the live registries (2026-11-15): the parsed
-memory holds 98 entries with by_status EXPERIMENTAL 46, REJECTED
-19, PROVEN 32, UNDER_INVESTIGATION 1, and zero INTEGRATED,
-although the Milestone 0 reconciliation (section d) establishes
-from source that EXP-007, EXP-017, EXP-022, EXP-025, EXP-026,
-EXP-034, EXP-036, EXP-037, EXP-038 and EXP-039 are integrated.
-Those entries parse as EXPERIMENTAL (EXP-007, EXP-017, EXP-034,
-EXP-036, EXP-037, EXP-038) or PROVEN (EXP-022, EXP-025, EXP-026,
-EXP-039). The REJECTED mapping, which the loop's safety gate
-depends on, is not affected (EXP-014 parses as REJECTED, and the
-live refusal fired correctly). Treat memory INTEGRATED lookups
-as unreliable until the parser or the registries carry an
-explicit integration marker; the ground truth for integration
-status is the Milestone 0 map and the consolidated register
-(research/master_build/RESEARCH_OPPORTUNITY_REGISTER.md).
+memory held 98 entries with zero INTEGRATED, although the
+Stage 0 reconciliation registry
+(research/EXTREME_RESEARCH/EXPERIMENT_REGISTRY.json) records
+the integrations verified in source. The fix does not change
+the parser. A derived machine-readable integration registry
+(agent/intelligence/integration_registry.json, built by
+agent/intelligence/integrations.py from the Stage 0 registry)
+is now authoritative for integration status only: after
+parsing, an entry whose id the registry records reports
+INTEGRATED unless its parse is REJECTED (never overridden),
+registry ids with no narrative entry are indexed from the
+registry itself, and every other field still comes from the
+narrative parse. Measured after the fix (2026-11-16): the
+memory reports 28 distinct INTEGRATED ids, exactly the Stage 0
+registry's INTEGRATED set, computed live on both sides by the
+intelligence suite. The optimisation loop's prior-research
+gate now also refuses a hypothesis matching an INTEGRATED
+entry, with the citation, so integrated work is not
+re-proposed as new. The REJECTED mapping, which the loop's
+safety gate depends on, is unaffected (EXP-014 and EXP-015
+still parse and report REJECTED).
 
 Further limitations:
 
@@ -209,3 +274,21 @@ Further limitations:
 - The agent cannot see or affect the solo cutover, the endpoint
   config flip, or the mainnet node's sync; it reads the endpoint
   mode only.
+- Controller limits (Stage 7): postcondition verification is
+  bounded by the heartbeat cadence (5 s) and the verification
+  window (60 s default); a start whose miner comes up after
+  the window is reported failed even if it later succeeds,
+  and the next status read shows the truth. The crash-loop
+  cap (10 restarts in the heartbeat) is a controller policy
+  over the autopilot's counter, not an autopilot feature.
+  Recovery of a hung miner relies on the autopilot watchdog
+  after a verified SIGTERM; if the watchdog itself is the
+  fault, the controller reports failure rather than escalating
+  to unverified signals.
+- Mode limits (Stage 7): triggers see only the load average
+  and the miner rate awareness republishes; a contention
+  source that moves neither (for example pure disk pressure)
+  does not shed load. Wind-down of in-flight discretionary
+  work is cooperative at command and transition boundaries,
+  not a kill: a single long-running experiment command runs
+  to its own timeout inside the Prompt 1 sandbox.
