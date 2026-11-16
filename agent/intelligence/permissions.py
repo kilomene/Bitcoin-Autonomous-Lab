@@ -15,11 +15,13 @@ The mandate defines three action categories:
   L3 act: it passes the independent integration gate in loop.py.
 
 Every operation this package exposes is named in ACTION_REGISTRY
-with its level and whether it mutates production state. No entry
-in the registry mutates production state in Milestone 1: the
-operations that would (start/stop of the live miner) are L2
-specifications whose execution is delegated to an injectable
-controller that is not wired to production in this milestone.
+with its level and whether it mutates production state. The
+production-mutating L2 operations (start/stop/restart of the
+miner, worker adjustment, recovery) execute through the
+production MiningController (agent/intelligence/controller.py,
+Stage 7), which extends the existing autopilot and verifies
+every postcondition; the injectable controller seam remains
+for tests.
 
 Enforcement is a PermissionChecker: a caller holds a granted
 level, and require() raises PermissionError when an operation
@@ -127,26 +129,43 @@ ACTION_REGISTRY = {spec.name: spec for spec in [
           "Read the task registry."),
     _spec("audit_read", 1, False,
           "Read the audit log."),
-    # L2 controlled operations. None of these is wired to the
-    # live miner in Milestone 1; start/stop execute only through
-    # an injectable controller (see interface.py).
+    # L2 controlled operations. Start/stop/restart, worker
+    # adjustment and recovery execute through the production
+    # MiningController (see controller.py and interface.py);
+    # the injectable seam remains for tests.
     _spec("select_backend", 2, False,
           "Decide the eligible backend for a requested pin. "
           "Decision only; never starts mining."),
     _spec("start_mining", 2, True,
-          "Start mining through the injected controller. Not "
-          "wired to production in Milestone 1."),
+          "Start mining through the production MiningController "
+          "(agent/intelligence/controller.py) over the autopilot "
+          "control surface. Wired in Stage 7."),
     _spec("stop_mining", 2, True,
-          "Stop mining through the injected controller. Not "
-          "wired to production in Milestone 1."),
+          "Stop mining through the production MiningController "
+          "over the autopilot control surface. Wired in "
+          "Stage 7."),
+    _spec("restart_mining", 2, True,
+          "Restart mining through the production "
+          "MiningController (verified stop plus start with a "
+          "miner pid change). Wired in Stage 7."),
     _spec("adjust_workers", 2, True,
-          "Adjust approved worker settings through the injected "
-          "controller. Not wired in Milestone 1."),
+          "Adjust approved worker settings through the "
+          "production MiningController. Launch-time only in "
+          "the current production path: the controller reports "
+          "restart-required and applies nothing silently."),
+    _spec("refresh_job", 2, False,
+          "Request a mining job refresh through the production "
+          "MiningController. No external trigger exists in the "
+          "current production path (job supply is push-driven "
+          "inside the miner); the controller refuses it as "
+          "unsupported rather than faking an effect."),
     _spec("run_benchmark", 2, False,
           "Run a controlled benchmark in an experiment context."),
     _spec("trigger_recovery", 2, True,
-          "Initiate a recovery operation through the injected "
-          "controller. Not wired in Milestone 1."),
+          "Initiate a recovery operation through the production "
+          "MiningController, under its fault taxonomy "
+          "(correctness failures and crash loops halt, never "
+          "auto-recover). Wired in Stage 7."),
     _spec("plan_write", 2, False,
           "Create or transition tasks in the task registry."),
     _spec("loop_advance", 2, False,
