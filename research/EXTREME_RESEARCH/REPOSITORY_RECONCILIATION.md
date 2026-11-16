@@ -479,6 +479,17 @@ the code cannot deliver today: integrated work parses as PROVEN
 or EXPERIMENTAL and can be re-proposed. The gap is disclosed in
 the Master Build records; it is still present in current source
 and is Prompt 3 scope in the Autonomous Mining Brain mandate.
+Status: FIXED 2026-11-16 (Stage 7, wave 1, item A): a derived
+machine-readable integration registry
+(agent/intelligence/integration_registry.json, built by
+agent/intelligence/integrations.py from this reconciliation's
+Stage 0 registry) is now authoritative for integration status
+only; ResearchMemory overlays it after parsing, never
+overriding a REJECTED parse, and the loop's prior-research
+gate also refuses already-integrated hypotheses. The memory
+now reports 28 distinct INTEGRATED ids, exactly this
+registry's INTEGRATED set, pinned live by the intelligence
+suite.
 
 D7. The "never -march=native" build claim has a legacy exception.
 mining/cpu/build.py compiles the AVX-512, AVX2, SHA-NI and probe
