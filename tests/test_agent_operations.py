@@ -110,18 +110,36 @@ def test_experiment_refusals(tmp):
     return runner, record
 
 
+def _vrec(verifier_id, artifact_sha, method="differential_reference"):
+    """A strict-schema verification record (Prompt 1)."""
+    from agent.intelligence.experiments import CURRENT_SOURCE_COMMIT
+    return {"passed": True, "verifier_id": verifier_id,
+            "artifact_sha256": artifact_sha,
+            "source_commit": CURRENT_SOURCE_COMMIT,
+            "verification_method": method,
+            "timestamp": "2026-11-15T00:00:00Z"}
+
+
 def test_experiment_end_to_end(runner, record):
-    code = (
-        "import json;"
-        "json.dump({'correctness_pass': True,"
-        " 'differential_pass': True,"
-        " 'independent_verifier': None, 'exp017': None},"
-        " open('evidence.json', 'w'));"
-        "print('evidence written')")
+    import hashlib
+    from agent.intelligence import verifier
+    from agent.intelligence.experiments import CURRENT_SOURCE_COMMIT
+    artifact_path = runner.write_file(
+        record, "artifact.bin", "tiny experiment artifact\n")
+    with open(artifact_path, "rb") as f:
+        artifact_sha = hashlib.sha256(f.read()).hexdigest()
+    crec = _vrec("agent-test", artifact_sha)
+    payload = {"correctness": crec, "differential": dict(crec),
+               "exp017": None}
+    code = ("import json;"
+            f"json.dump({payload!r}, open('evidence.json', 'w'));"
+            "print('evidence written')")
     result = runner.run_command(
         record, [sys.executable, "-c", code], timeout_s=60)
     check(result["exit_code"] == 0, "tiny experiment exits 0")
     check(result["wall_s"] >= 0, "wall time recorded")
+    check(result["termination_reason"] == "exit",
+          "sandbox termination reason recorded")
     sandbox = runner.sandbox_of(record)
     with open(os.path.join(sandbox,
                            result["stdout_file"])) as f:
@@ -132,11 +150,11 @@ def test_experiment_end_to_end(runner, record):
     check(len(hist) == 1 and hist[0]["exit_code"] == 0,
           "run recorded in the loop record history")
     bundle = runner.assemble_evidence(record)
-    check(bundle["correctness"] is True
-          and bundle["differential"] is True,
-          "evidence bundle carries the passes")
+    check(bundle["correctness"]["passed"] is True
+          and bundle["differential"]["passed"] is True,
+          "evidence bundle carries the strict records")
     check("independent_verification" not in bundle,
-          "null verifier assembles to no verification record")
+          "absent verifier assembles to no verification record")
     runner.walk_to_record(record)
     verdict = runner.attempt_integrate(record)
     check(verdict["integrated"] is False,
@@ -144,17 +162,26 @@ def test_experiment_end_to_end(runner, record):
     check(any("independent verification" in m
               for m in verdict["missing"]),
           "refusal names the missing independent verification")
+    signed = verifier.request_verification(
+        artifact_path, CURRENT_SOURCE_COMMIT,
+        "independent_recompute",
+        key_path=runner.agent.verifier_key_path)
+    check(signed["passed"] is True
+          and signed["artifact_sha256"] == artifact_sha,
+          "verifier service returns a signed passing record")
     runner.write_file(record, "evidence-b.json", json.dumps({
-        "correctness_pass": True, "differential_pass": True,
-        "independent_verifier": "auditor-b", "exp017": None}))
+        "correctness": crec, "differential": dict(crec),
+        "independent_verification": signed, "exp017": None}))
     bundle = runner.assemble_evidence(record)
-    check(bundle["independent_verification"]["author"]
-          == "auditor-b",
-          "second evidence file supplies the verifier")
+    check(bundle["independent_verification"]["verifier_id"]
+          == verifier.VERIFIER_ID,
+          "second evidence file supplies the verifier record")
     verdict = runner.attempt_integrate(record)
     check(verdict["integrated"] is True
           and record.state == INTEGRATED,
-          "complete synthetic bundle passes the integrate gate")
+          "complete strict bundle passes the integrate gate")
+    ok, detail = runner.verify_ledger(record.loop_id)
+    check(ok, f"evidence ledger chain verifies ({detail})")
 
 
 # Scheduler --------------------------------------------------------
