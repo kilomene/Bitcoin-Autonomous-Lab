@@ -1756,3 +1756,125 @@ census, gates, sessions and analysis under
 exp044/RAW_RESULTS/.
 
 Next unreserved ID: EXP-047.
+
+## EXP-047 record (2026-11-16)
+
+EXP-047 (NOVA-ER-0007, register X-096: cross-backend
+differential fuzzing at scale). Predeclared campaign
+(seed 47047) through the production ComputeEngine seam on
+the AMD EPYC 9D25 host, backends v512dual, v512, shani,
+avx2, c, cpu (CUDA absent, no GPU). Batch campaign
+completed at full predeclared scale with zero mismatches:
+4,615,011 digests per native backend, every one
+byte-identical to the hashlib reference, 46,150,110 direct
+pairwise comparisons among the five native backends
+(69,225,165 pairwise relations counting the reference
+relations), across random headers, boundary nonces,
+unaligned spans, partial batches and spans ending exactly
+at 2^32; the largest single differential campaign in the
+programme (prior maxima 648,000 and 491,520). VERIFIED as
+a correctness result; no performance claim. The search
+campaign then FAILED under its predeclared failure rule
+at its first case (S_FULL-00): search_first_counted on
+v512 returned nonce 2083236893 where the predeclared
+criterion S-C required the span minimum 2083204125.
+Critical finding, characterized and reproduced (minimal
+repro returns the exact campaign nonce on call 0): the
+production search winner is first-publisher-wins by
+design (mining/cpu/bal_search.h bal_ctx_publish over
+bal_partition thread spans; all five native search ABIs
+share it), so which genuine hit a multithreaded native
+search returns is scheduling-dependent. Characterization
+(1,242 search calls): non-minimum genuine returns on all
+five native backends (22 to 130 of 200 at density 1;
+present at 2^-8 and 2^-16), always exactly another span's
+first nonce, eliminated at one thread; zero wrong
+digests, zero false hits, zero false misses anywhere;
+batch_search hit sets exact on every executed surface.
+The minimum-hit invariant is an ESTABLISHED NEGATIVE;
+the cpu backend and single-threaded search do return the
+minimum. Production impact: none on mining correctness
+(returned candidates are independently verified before
+submission; any genuine hit is a valid candidate); a
+caller needing the minimum must use batch_search
+enumeration or one thread. Not executed after the stop:
+the remaining search cases (including the T_SOLO ladder)
+and the Gate 3 malformed-input set, recorded as
+unverified. No production file modified; live miner
+untouched (shares accepted 586 to 587). Full record:
+exp047/EXP047_REPORT.md; manifest, batch results,
+mismatch record, characterization and repro under
+exp047/RAW_RESULTS/.
+
+Completion campaign (2026-11-16, same seed and host):
+the unexecuted remainder was executed in full under a
+corrected S-C criterion predeclared in
+exp047/EXP047_COMPLETION_REPORT.md (found-flag agreement
+plus hit genuineness judged; minimum identity recorded as
+a statistic, never pass/fail). Search ladder: all 30
+cases, 17,694,720 nonces per backend per surface, 390
+surface checks, 108 search_first_counted calls, zero
+found-flag disagreements, zero false hits, zero false
+misses, zero wrong digests; empty-set agreement at the
+exact solo density (T_SOLO, difficulty 0.02, zero
+reference hits in 8,388,608 nonces per backend as
+expected); boundary first-hit calls returned the named
+nonces on all six backends. Minimum-identity statistics:
+cpu 16 of 16 minimum; native backends 6 to 13 of 16
+minimum with every non-minimum return a genuine hit
+(first-publisher-wins, as characterized). Gate 3 executed
+as campaign items: G1 to G14 ValueError uniformly on all
+six engines, G15/G16 refused on all five native backends,
+zero deviations, PASS. EXP-047 roll-up: batch VERIFIED,
+search VERIFIED under the corrected criterion, Gate 3
+PASS; the original minimum-identity criterion stands as
+an ESTABLISHED NEGATIVE, and whether to add a minimum
+reduction to production search or accept and document
+the semantics is left to a future gated decision. No
+production file modified; live miner untouched (shares
+accepted 587 to 589). Completion records under
+exp047/RAW_RESULTS/ (completion_manifest.json,
+completion_search_results.json,
+completion_sc_statistics.json,
+completion_gate3_results.json).
+
+Next unreserved ID: EXP-048.
+
+## EXP-048 record (2026-11-16)
+
+EXP-048 (NOVA-ER-0008: category F end-to-end measurement
+at production difficulty for the solo and pool
+pipelines, extending EXP-040 which measured the GBT
+pipeline only). Harness-side wrapping only, zero
+production changes: production SoloServer (vardiff
+disabled, the production configuration) and a local
+harness pool stub, both mined by the production client
+path (StratumClient, ComputeEngine v512dual,
+mainnet_live loop shape) against the regtest node at the
+production share difficulty 0.02. Scenarios per
+pipeline: A empty, B loaded (501 transactions), C
+amplified (search target divided by 2^2 in the compute
+proxy; 2^24 on the share target is arithmetically
+infeasible), plus solo D with vardiff enabled on
+production defaults, separately labelled. 136 timed
+runs, 0 failed, every run exactly one Core-accepted
+block passing the EXP-036 gate. Non-search overhead
+medians per block: solo 97.0 ms empty, 152.4 ms loaded,
+115.6 ms amplified, 89.3 ms vardiff-on; pool 55.9 ms
+empty, 210.7 ms loaded, 97.7 ms amplified; against
+EXP-040's GBT 43.5 / 206.3 / 49.5 ms, the same band.
+Hypothesis verdict: same-order overheads SUPPORTED;
+share handling the largest stage SUPPORTED broadly
+(the server submit path inside the verdict wait) and
+REFUTED narrowly (validate plus EXP-036 verify is only
+about 2 to 5 ms per share; the mass is submitblock and
+chain confirmation); amplified method transfers with
+zero production changes SUPPORTED with the stated
+factor adaptation. Counted-hashes accounting probe
+recorded (the AVX-512 counted attempts are the parallel
+search's own accounting, not a positional census).
+Live miner untouched (share census 589/8 before, 600/8
+after). Full record: research/sha256d/exp048/
+EXP048_REPORT.md and RAW_RESULTS/.
+
+Next unreserved ID: EXP-049.
