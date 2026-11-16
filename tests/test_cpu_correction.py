@@ -315,8 +315,7 @@ def check_benchmarks():
     eng = ComputeEngine(requested="c")
     rows = {}
     for threads in (1, 2, 4):
-        ge.C_THREADS = threads
-        e = ComputeEngine(requested="c")
+        e = ComputeEngine(requested="c", threads=threads)
         count = 1 << 20
         t0 = time.perf_counter()
         hit, att, secs = e.search_first_counted(bytes(80), 1, 0, count)
