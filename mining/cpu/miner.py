@@ -64,14 +64,13 @@ def benchmark(seconds_per_path=2.0):
     eng_py = ComputeEngine(requested="cpu")
     results["python_hashlib_engine"] = eng_py.benchmark()
 
-    # Raw library throughput by thread count, called directly.
-    import gpu.engine as ge
+    # Raw library throughput by thread count: the count is
+    # constructor-scoped on each throwaway engine (Stage 7:
+    # the former gpu.engine module global is gone).
     if eng_c._c_lib:
         for threads in (1, 2, 4):
-            ge.C_THREADS = threads
-            e = ComputeEngine(requested="c")
+            e = ComputeEngine(requested="c", threads=threads)
             results[f"c_midstate_raw_{threads}thr"] = e.benchmark()
-        ge.C_THREADS = 2
     # hashlib single loop reference.
     t0 = time.time()
     n = 0
@@ -92,7 +91,6 @@ def tune_threads(count=1 << 22):
     contention, which the measurements show directly."""
     import ctypes
 
-    import gpu.engine as ge
     eng = ComputeEngine()
     if not eng._c_lib or not hasattr(eng._c_lib, "bal_c_search"):
         return None, {}
@@ -108,7 +106,6 @@ def tune_threads(count=1 << 22):
                          ctypes.byref(nonce), dig)
         rates[threads] = count / (time.time() - t0)
     best = max(rates, key=rates.get)
-    ge.C_THREADS = best
     return best, rates
 
 
@@ -126,6 +123,13 @@ class CpuMiner:
             # supports it and the C library otherwise.
             self.compute = ComputeEngine(requested="v512")
         self.tuning = tune_threads() if tune else (None, {})
+        if self.tuning[0] is not None:
+            # The tuned peak applies to THIS miner's engine
+            # instance (Stage 7: instance-scoped count; the
+            # historical code published it through a module
+            # global that this engine then read at call time).
+            self.compute.c_threads = self.tuning[0]
+            self.compute.c_threads_tuned = True
         self.engine = MiningEngine(rpc, payout_address, self.compute,
                                    batch_size=batch_size)
         self.rpc = rpc
