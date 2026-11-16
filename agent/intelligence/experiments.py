@@ -145,7 +145,16 @@ class ExperimentRunner:
         with the rejection citation when the hypothesis
         matches a REJECTED research memory entry; the record
         is left at the hypothesise state in that case.
+        Raises modes.ModeRefusal when the load-shedding mode
+        sheds experiment work (Brownout or Critical): no new
+        experiment runs start in those modes.
         """
+        modes = getattr(self.agent, "modes", None)
+        if modes is not None:
+            modes.require_allowed(
+                "experiment",
+                detail="create_experiment refused by the "
+                       "load-shedding mode")
         stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
         experiment_id = f"exp-{stamp}-{uuid.uuid4().hex[:6]}"
         sandbox = os.path.join(self.agent.sandbox_root,
@@ -430,6 +439,18 @@ class ExperimentRunner:
             raise TypeError(
                 "argv must be a non-empty list of strings; "
                 "shell strings are refused")
+        # Load-shedding wind-down (Stage 7): the mode is
+        # re-checked at every command boundary, so an
+        # experiment in flight when the mode sheds stops at
+        # its next command instead of running on.
+        modes = getattr(self.agent, "modes", None)
+        if modes is not None:
+            modes.require_allowed(
+                "experiment",
+                detail="run_command refused by the "
+                       "load-shedding mode; in-flight "
+                       "discretionary work winds down at this "
+                       "command boundary")
         sandbox = self.sandbox_of(record)
         self.agent.checker.require("run_benchmark")
         idx = self._run_counts[record.loop_id] + 1
