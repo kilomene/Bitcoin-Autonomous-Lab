@@ -225,7 +225,7 @@ def main():
     # measured rate, so a fresher template preempts the search
     # within about a second instead of after a long fixed chunk.
     import math
-    probe_rate = gpu_engine.LAST_PROBE_RATE
+    probe_rate = engine.last_probe_rate
     if probe_rate > 0:
         span_size = 1 << max(20, min(24, int(math.log2(probe_rate))))
     else:
