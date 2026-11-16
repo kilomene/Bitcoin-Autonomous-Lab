@@ -64,6 +64,26 @@ system), plus tests proving the controller cannot act outside
 the permission registry, plus the standing post-integration
 audit.
 
+Status (2026-11-16, Stage 7 and Stage 8): DONE. The wiring
+was built in Stage 7 (agent/intelligence/controller.py, the
+production MiningController extending the autopilot; the
+Stage 7 independent audit passed with notes, zero defects),
+and Stage 8 demonstrated it end to end: an agent-directed
+regtest mining operation started, observed, fault-tested
+and stopped entirely through the permission-gated interface
+and the controller, against an isolated autopilot instance
+running the production MiningEngine path (report:
+research/EXTREME_RESEARCH/STAGE8_AUTONOMOUS_DEMONSTRATION.md).
+The original text above is kept as the record of what was
+asked. Two controller operations remain honestly refused
+rather than wired: select_backend (the production miner has
+no backend pin surface) and refresh_job (job supply is
+push-driven inside the miner); adjust_workers is
+restart-required only. Exercising the controller against
+the live mainnet stack remains a separate owner decision:
+Stage 8 touched an isolated instance only, and the live
+stack ran undisturbed throughout.
+
 ### F4. Candidate verification inside the GBT cycle
 
 What: either wire mining/candidate_verify.py into
