@@ -81,9 +81,44 @@ SOLO_VARDIFF_DEFAULTS = {
     "decay_factor": SOLO_VARDIFF_DECAY_FACTOR,
 }
 
+# Pool endpoint health policy parameters (EXP-050 integration
+# of register R-26, portfolio NOVA-ER-0010). The policy object
+# itself lives in mining/endpoint_health.py; these are its
+# declared operating point. Disabled by default: until an
+# operator enables it here AND names at least one fallback,
+# the pool leg is exactly today's single endpoint with the
+# client's same-endpoint retry and the autopilot restart as
+# the outer backstop. With "enabled" true, the primary is
+# still the resolved pool endpoint above; "fallbacks" are
+# additional {"host": ..., "port": ...} endpoints tried in
+# order after it. error_threshold is the poclbm-style
+# tolerance count: consecutive connection failures against
+# one endpoint before failover. failback_interval_s is the
+# timed retry of the primary; damping_window_s with
+# max_failbacks_per_window bounds failbacks inside the
+# window, so a flapping primary cannot flap the session.
+POOL_HEALTH_DEFAULTS = {
+    "enabled": False,
+    "fallbacks": [],
+    "error_threshold": 3,
+    "failback_interval_s": 300.0,
+    "damping_window_s": 1800.0,
+    "max_failbacks_per_window": 1,
+    "probe_timeout_s": 5.0,
+}
+
 DEFAULT_CONFIG = {
     "mode": "pool",
     "pool": {"host": POOL_HOST, "port": POOL_PORT},
+    "pool_health": {
+        "enabled": False,
+        "fallbacks": [],
+        "error_threshold": 3,
+        "failback_interval_s": 300.0,
+        "damping_window_s": 1800.0,
+        "max_failbacks_per_window": 1,
+        "probe_timeout_s": 5.0,
+    },
     "solo": {"host": SOLO_HOST, "port": SOLO_PORT,
              "share_difficulty": SOLO_SHARE_DIFFICULTY,
              "vardiff": dict(SOLO_VARDIFF_DEFAULTS)},
@@ -105,6 +140,52 @@ def solo_vardiff_config(cfg=None):
         for key, val in vd.items():
             if key in out and val is not None:
                 out[key] = val
+    return out
+
+
+def pool_health_config(cfg=None):
+    """The merged pool health policy settings from an
+    endpoint config (defaults when cfg is None or carries
+    no pool_health section). Pure data;
+    mining/mainnet_live.py turns it into an
+    EndpointHealthPolicy when "enabled" is true and the
+    endpoint mode is "pool"."""
+    out = dict(POOL_HEALTH_DEFAULTS)
+    out["fallbacks"] = []
+    if cfg is None:
+        cfg = load_config()
+    section = cfg.get("pool_health") if isinstance(cfg, dict) else None
+    if isinstance(section, dict):
+        for key, val in section.items():
+            if key in out and val is not None:
+                out[key] = val
+    return out
+
+
+def pool_policy_endpoints(cfg, primary_host, primary_port):
+    """The ordered endpoint list for the health policy: the
+    resolved primary first, then each well-formed fallback
+    from the pool_health section, in config order, with
+    duplicates of the primary dropped. Malformed fallback
+    entries are skipped, never fatal: a bad fallback line
+    must not stop mining on the primary."""
+    out = [(str(primary_host), int(primary_port))]
+    health = pool_health_config(cfg)
+    fallbacks = health.get("fallbacks")
+    if isinstance(fallbacks, list):
+        for item in fallbacks:
+            if not isinstance(item, dict):
+                continue
+            host, port = item.get("host"), item.get("port")
+            if not host or port is None:
+                continue
+            try:
+                port = int(port)
+            except (TypeError, ValueError):
+                continue
+            ep = (str(host), port)
+            if ep not in out:
+                out.append(ep)
     return out
 
 
