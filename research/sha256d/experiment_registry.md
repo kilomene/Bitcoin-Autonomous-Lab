@@ -1616,6 +1616,46 @@ D10 closure explicitly carried to Stage 6
 two-client interference on one server, the rate-stepped
 stability campaign, any other host.
 
+Integration update (2026-11-16): INTEGRATED. R-12 is now
+production code, integrated exactly along the DESIGN.md
+section 9 path. VarDiffController, the per-connection
+state, per-job difficulty snapshots, the bounded 8-job
+history, stale and duplicate accounting and the full
+adjustment log live in mining/solo_server.py behind the
+optional SoloServer vardiff parameter (None restores the
+pre-integration behaviour exactly, and is the rollback
+surface). mining/endpoint_config.py carries the vardiff
+parameters alongside SOLO_SHARE_DIFFICULTY, and
+mining/solo_mainnet.py builds the controller when the
+endpoint config enables it; the config default is
+disabled, so the armed solo cutover keeps today's
+fixed-difficulty behaviour until an operator enables
+vardiff after the independent audit. D10 is closed in the
+same change: the SoloServer constructor default is
+removed, and the endpoint config value 0.02 is the single
+source of the initial difficulty. Production suite
+tests/test_solo_vardiff.py (make test-solo-vardiff, 59
+checks, all passing 2026-11-16 on AMD EPYC 9D25): the
+prototype's 41 checks ported to the production classes;
+the Gate 2 differential against a pristine copy of the
+pre-integration solo_server.py, taken from remote HEAD
+3ebbaeb2 and pinned as tests/fixtures/
+solo_server_pre_integration.py (jobs, decisions and
+counters identical with vardiff off); Gate 3 adversarial
+(oscillation injection, rate step, stale and duplicate
+floods); the EXP-036 separation shown at unit and server
+level (the network verdict is independent of the share
+target); Gate 5 (job refresh and recovery with vardiff
+live); Gate 6 regtest blocks accepted by Core through
+the vardiff-active path and through the pinned default
+path (the recorded run mined blocks 1658 to 1679 on the
+best chain). See research/sha256d/phase6b/
+PRODUCTION_INTEGRATION_LOG.md, Entry 5. An independent
+post-integration audit is owed before vardiff is enabled
+on the live cutover. Still not verified: anything on
+mainnet, two-client interference on one server, the
+rate-stepped stability campaign, any other host.
+
 Next unreserved ID: EXP-046.
 
 ## EXP-046 record (2026-11-16)
