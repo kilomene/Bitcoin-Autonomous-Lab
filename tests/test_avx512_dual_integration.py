@@ -314,7 +314,7 @@ def test_candidate_sets(eng):
         assert st["candidate_count"] == len(want), st
         assert st["verification_hashes"] == len(want), st
         assert st["backend_hashes"] == predict_miss_backend(
-            count, engine_mod.C_THREADS), st
+            count, eng.c_threads), st
     print("ok candidate sets: batch_search candidate sets "
           "equal the independent hashlib recount at "
           "mainnet-like density and at about 2^-12; "
@@ -323,7 +323,7 @@ def test_candidate_sets(eng):
 
 
 def test_search_gates(eng):
-    threads = engine_mod.C_THREADS
+    threads = eng.c_threads
     hit, attempted, _s = eng.search_first_counted(
         GENESIS, DIFF1, GENESIS_NONCE - 3, 100000)
     assert hit and hit[0] == GENESIS_NONCE
