@@ -14,6 +14,12 @@ Pins:
   minimum entry count, honest unparsed accounting, and known
   rejected items (EXP-014 K+W folding, EXP-015 bitslicing)
   found and reported rejected.
+- Integration registry overlay (Stage 7, D6 fix): the distinct
+  INTEGRATED ids the memory reports equal the INTEGRATED set
+  of the Stage 0 registry, computed live on both sides; named
+  integrated items report INTEGRATED; rejected items are never
+  upgraded; the loop refuses both a rejected hypothesis and an
+  already-integrated one, each with its citation.
 - Task registry persistence, dependency gating and the
   evidence gate for done.
 - Interface operations against the REAL repository state:
@@ -21,7 +27,10 @@ Pins:
   files (or reports not-running honestly), inspect_backends
   returns the shipped dispatch order, candidate verification
   delegates to mining/candidate_verify.py, and start/stop are
-  permission-checked but not wired to production.
+  permission-checked; since Stage 7 the default controller is
+  the production MiningController, so this suite pins the
+  explicitly unwired (controller=False) refusal instead of
+  invoking live control.
 - Strategy gap arithmetic: 20.6 MH/s is about 0.00412 percent
   of the 500 GH/s objective.
 - Optimisation loop transition rules: the rejected-hypothesis
@@ -169,6 +178,88 @@ def test_memory():
     return mem
 
 
+def test_memory_integration(mem):
+    """D6 fix: the integration registry overlay. Both sides of
+    the count are computed live: the Stage 0 registry JSON is
+    read here, never a hardcoded number."""
+    stage0_path = os.path.join(
+        ROOT, "research", "EXTREME_RESEARCH",
+        "EXPERIMENT_REGISTRY.json")
+    with open(stage0_path, "r", encoding="utf-8") as f:
+        stage0 = json.load(f)
+    stage0_integrated = sorted(
+        e["id"] for e in stage0["entries"]
+        if str(e.get("status") or "").upper() == "INTEGRATED")
+    check(len(stage0_integrated) >= 1,
+          "Stage 0 registry itself records integrations")
+    check(mem.integrated_ids() == stage0_integrated,
+          "memory INTEGRATED ids equal the Stage 0 INTEGRATED "
+          f"set ({len(stage0_integrated)} ids, computed live)")
+    check(sorted(mem.integration_records) == stage0_integrated,
+          "derived integration registry matches the Stage 0 "
+          "source it was derived from")
+    # Named integrated items report INTEGRATED (the ones the
+    # Stage 0 source records as integrated).
+    for eid, label in (("EXP-026", "v512dual backend"),
+                       ("EXP-025", "template cache"),
+                       ("EXP-022", "flags batch routing"),
+                       ("R-12", "vardiff")):
+        e = mem.lookup(eid)
+        check(e is not None and e.status == "INTEGRATED",
+              f"{eid} ({label}) reports INTEGRATED")
+    e25 = mem.lookup("EXP-025")
+    check(any("mining/engine.py" in t for t in e25.integrated_into),
+          "EXP-025 carries its production target "
+          "(mining/engine.py)")
+    e12 = mem.lookup("R-12")
+    check(any("solo_server" in t for t in e12.integrated_into),
+          "R-12 carries its production target "
+          "(mining/solo_server.py)")
+    # Rejected items are never upgraded by the overlay.
+    for eid in ("EXP-014", "EXP-015"):
+        e = mem.lookup(eid)
+        check(e is not None and e.status == "REJECTED",
+              f"{eid} still reports REJECTED after the overlay")
+    e19 = [e for e in mem.entries if e.entry_id == "EXP-019"]
+    check(any(e.status == "REJECTED" for e in e19)
+          and not any(e.status == "INTEGRATED" for e in e19),
+          "EXP-019 (carry-save schedule) keeps its REJECTED "
+          "record and is not upgraded")
+    hit = mem.was_integrated(["dualmask"])
+    check(hit is not None and hit.entry_id == "EXP-026",
+          "was_integrated finds EXP-026 for DualMask")
+    check(mem.was_integrated(["zzz-no-such-keyword-zzz"]) is None,
+          "was_integrated returns None for an undecided idea")
+    # Loop gate: rejected refusal still fires with its citation,
+    # and an already-integrated hypothesis is now refused as
+    # integrated instead of being re-proposed as new work.
+    loop = OptimisationLoop(memory=mem)
+    rec = loop.new_record("L-REJ2", "fold K+W once more",
+                          keywords=["k+w", "folding"],
+                          implementation_author="agent-a")
+    loop.advance(rec)
+    exc = raises(LoopRefusal, lambda: loop.advance(rec),
+                 "rejected hypothesis still cannot leave "
+                 "hypothesise")
+    check(exc.citation is not None
+          and exc.citation["entry_id"] == "EXP-014"
+          and exc.citation["status"] == "REJECTED",
+          "rejected refusal still carries the EXP-014 citation")
+    rec = loop.new_record("L-INT", "ship DualMask search",
+                          keywords=["dualmask"],
+                          implementation_author="agent-a")
+    loop.advance(rec)
+    exc = raises(LoopRefusal, lambda: loop.advance(rec),
+                 "already-integrated hypothesis cannot leave "
+                 "hypothesise")
+    check(exc.citation is not None
+          and exc.citation["entry_id"] == "EXP-026"
+          and exc.citation["status"] == "INTEGRATED",
+          "integrated refusal carries the EXP-026 citation")
+    check(rec.state == "hypothesise",
+          "integrated refusal leaves the state unchanged")
+
+
 def test_planning(tmp):
     path = os.path.join(tmp, "tasks.json")
     reg = TaskRegistry(path)
@@ -268,9 +359,25 @@ def test_interface(tmp):
     sel = iface.select_backend("hashlib")
     check(sel.eligible and sel.selected == "hashlib",
           "hashlib pin is always eligible")
-    raises(NotImplementedError, lambda: iface.start_mining(),
-           "start_mining is not wired to production in "
-           "Milestone 1")
+    # Stage 7: the default controller is the real production
+    # MiningController now. The Milestone 1 unwired behaviour
+    # is preserved on an explicitly unwired interface
+    # (controller=False) and is what is pinned here; invoking
+    # the default controller against the live stack is the
+    # controller suite's isolated-instance job, never this
+    # suite's.
+    from agent.intelligence.controller import MiningController
+    check(isinstance(iface.resolved_controller,
+                     MiningController),
+          "default interface controller is the production "
+          "MiningController (Stage 7 wiring)")
+    iface_unwired = MiningInterface(
+        l2, audit, local_dir=os.path.join(ROOT, ".local"),
+        controller=False)
+    raises(NotImplementedError,
+           lambda: iface_unwired.start_mining(),
+           "explicitly unwired interface raises "
+           "NotImplementedError for start_mining")
     cp_none = iface.checkpoint_status()
     check(cp_none.exists is False and cp_none.note,
           "checkpoint_status without a path explains itself")
@@ -424,6 +531,7 @@ def main():
     test_permissions()
     test_audit(tmp)
     mem = test_memory()
+    test_memory_integration(mem)
     test_planning(tmp)
     test_interface(tmp)
     test_strategy(mem)
