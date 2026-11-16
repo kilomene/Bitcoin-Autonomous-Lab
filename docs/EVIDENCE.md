@@ -2,7 +2,7 @@
 
 Every public claim this lab makes traces to one of:
 
-1. A test suite in `tests/` that anyone can run (`make test-all`, 36 targets; count updated 2026-11-15. Caveat: test-rtl needs iverilog, absent on this VM after replacements, so that target fails for environment reasons).
+1. A test suite in `tests/` that anyone can run (`make test-all`, 37 targets; count updated 2026-11-15. Caveat: test-rtl needs iverilog, absent on this VM after replacements, so that target fails for environment reasons).
 2. A session evidence file in `evidence/` (JSONL, timestamped UTC).
 3. A third party record: the pool's acceptance messages in the session
    log, the public-pool dashboard for the lab address, and the Bitcoin
