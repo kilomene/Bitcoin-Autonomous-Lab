@@ -223,3 +223,31 @@ rule is a CI entirely above 1.0, met in every session.
   rate, an AVX2-only host at about 1.25x, and the
   fallback ladder no longer has a cliff between v512
   and C.
+
+## Appendix note (2026-11-16, appended by EXP-045)
+
+Section 4 above records the AVX2 batch discrepancy
+against EXP-032 (1.252x here against 1.409x there,
+non-overlapping intervals) as "recorded, not resolved".
+EXP-045 (NOVA-ER-0002, research/sha256d/exp045/
+EXP045_REPORT.md) has since resolved it, in favour of
+the attribution this report already gave: session
+conditions. EXP-045 crossed harness (direct ctypes vs
+the ComputeEngine.batch_search seam) with library
+(research-built vs production-built .so) in one
+EXP-017 campaign, measured production C inside every
+cell, and added a direct library head-to-head. The
+compiled kernel code is instruction-identical between
+the two libraries; the head-to-head is 0.976x [0.930,
+1.025], not significant; the harness moves the ratio
+by at most about 2 percent; both campaigns used the
+identical libbal_batch.so bytes. All four cells landed
+at 1.274x to 1.315x, between the two historical
+figures. No verdict or figure in this report changes:
+the AVX2 tier remains a VERIFIED IMPROVEMENT over
+production C in every campaign. What changes is only
+the status of the discrepancy, from unresolved to
+resolved as a conditions effect, and the reading of
+the point estimates: each is correct under its own
+campaign's session mix, and none is a condition-free
+constant of the kernel.
