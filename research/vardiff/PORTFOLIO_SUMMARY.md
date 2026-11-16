@@ -86,3 +86,48 @@ evidence above, with the live-evidence caveat stated.
 - Rollback posture is unchanged and verified: pinned mode
   is production-identical by construction (it delegates to
   the production submit_share) and by differential test.
+
+## Appendix, 2026-11-16: integrated into production
+
+Status update only; everything above is the prototype
+record and is unchanged. R-12 was integrated into
+production on 2026-11-16 (Stage 6, item 2), exactly along
+the DESIGN.md section 9 path this summary pointed to:
+VarDiffController and the per-connection machinery now
+live in mining/solo_server.py behind the optional
+SoloServer vardiff parameter, the parameters live in
+mining/endpoint_config.py, and mining/solo_mainnet.py
+wires the controller when the endpoint config enables it.
+Discrepancy D10 is closed in the same change: the
+constructor default is gone and the endpoint config value
+0.02 is the single source of the initial difficulty. The
+endpoint config defaults vardiff to disabled, so the
+armed solo cutover keeps today's fixed-difficulty
+behaviour until an operator enables it after the
+independent post-integration audit, which remains owed.
+
+Production evidence: tests/test_solo_vardiff.py (make
+test-solo-vardiff), 59 of 59 checks passed on 2026-11-16
+on AMD EPYC 9D25: the 41 prototype checks ported to the
+production classes, the Gate 2 differential against a
+pristine pre-integration copy of solo_server.py from
+remote HEAD 3ebbaeb2 (identical jobs, decisions and
+counters with vardiff off), Gate 3 adversarial, the
+EXP-036 separation at unit and server level, Gate 5 with
+vardiff live, and Gate 6 regtest blocks accepted by Core
+through both the vardiff-active and pinned default paths
+(blocks 1658 to 1679 on the best chain in the recorded
+run). Two live convergence instances are declared at
+decisive settings (a 60 s target for the fast client, a
+heavier duty cycle for the slow client), for a recorded
+reason: re-run on this VM on 2026-11-16 under load
+average about 16, the prototype's own suite fails its
+original two convergence checks while the production
+server behaves identically to the prototype, so the
+original instances were calibrated to lighter contention
+than this VM currently offers. Full record:
+research/sha256d/phase6b/PRODUCTION_INTEGRATION_LOG.md,
+Entry 5. Still not verified, unchanged from above:
+anything on mainnet, two-client interference on one
+server, the rate-stepped stability campaign, any other
+host.
