@@ -19,12 +19,31 @@ The optimisation loop uses was_rejected() to refuse re-proposing
 an idea the record has already rejected: a hypothesis whose
 keywords all appear in a REJECTED entry's text is treated as
 already decided.
+
+Integration status is the one exception to the narrative parse
+(Stage 7 fix for discrepancy D6). Integration facts live in
+prose addenda the parser cannot weigh, so the parse reported
+zero INTEGRATED entries while the Stage 0 reconciliation
+registry verified integrations in source. The memory therefore
+consults the derived machine-readable integration registry
+(agent/intelligence/integrations.py) after parsing: it is
+authoritative for STATUS ONLY, and only in one direction. An
+entry the registry records as integrated reports INTEGRATED
+unless the narrative parse says REJECTED, which is never
+overridden; every other field still comes from the parse, and
+entries absent from the registry keep their parsed status
+exactly. Registry ids the narrative sources never mention
+(register rows, phase hypotheses) are indexed as their own
+entries so lookups by id work for them too.
 """
 
 import json
 import os
 import re
 from dataclasses import dataclass, field
+
+from .integrations import (DEFAULT_INTEGRATION_REGISTRY,
+                           load_integration_registry)
 
 STATUSES = ("NEW", "UNDER_INVESTIGATION", "EXPERIMENTAL",
             "PROVEN", "INTEGRATED", "REJECTED", "DEFERRED")
@@ -60,6 +79,7 @@ class MemoryEntry:
     text: str
     expected_benefit: float = None
     kind: str = "experiment"
+    integrated_into: tuple = ()
 
     def matches_all(self, keywords):
         hay = (self.entry_id + " " + self.title + " " +
@@ -216,11 +236,16 @@ def _parse_json_registry(path):
 class ResearchMemory:
     """Searchable index over the lab's research record."""
 
-    def __init__(self, md_sources=None, json_source=None):
+    def __init__(self, md_sources=None, json_source=None,
+                 integration_source="default"):
         self.md_sources = list(md_sources) if md_sources is not None \
             else list(DEFAULT_SOURCES)
         self.json_source = json_source if json_source is not None \
             else DEFAULT_JSON_SOURCE
+        if integration_source == "default":
+            integration_source = DEFAULT_INTEGRATION_REGISTRY
+        self.integration_source = integration_source
+        self.integration_records = {}
         self.entries = []
         self.unparsed_count = 0
         self.missing_sources = []
@@ -250,6 +275,44 @@ class ResearchMemory:
                     self._add(entries)
                 except (OSError, ValueError):
                     self.unparsed_count += 1
+        self._apply_integration_registry()
+
+    def _apply_integration_registry(self):
+        """Overlay the derived integration registry onto the
+        narrative parse. Status only, one direction: a parsed
+        entry whose id the registry records becomes INTEGRATED
+        unless its parse is REJECTED (never overridden), and
+        registry ids with no narrative entry are indexed from
+        the registry itself."""
+        path = self.integration_source
+        if not path:
+            return
+        if not os.path.isfile(path):
+            self.missing_sources.append(path)
+            return
+        try:
+            records = load_integration_registry(path)
+        except (OSError, ValueError):
+            self.unparsed_count += 1
+            return
+        self.integration_records = records
+        known = {e.entry_id for e in self.entries}
+        for e in self.entries:
+            rec = records.get(e.entry_id)
+            if rec is None:
+                continue
+            e.integrated_into = tuple(rec.integrated_into)
+            if e.status != "REJECTED":
+                e.status = "INTEGRATED"
+        for entry_id, rec in records.items():
+            if entry_id in known:
+                continue
+            self._add([MemoryEntry(
+                entry_id=entry_id, title=rec.title,
+                status="INTEGRATED", source=path,
+                text=(rec.title + "\n" + rec.measured_result),
+                expected_benefit=None, kind="integration",
+                integrated_into=tuple(rec.integrated_into))])
 
     def _add(self, entries):
         for e in entries:
@@ -311,6 +374,36 @@ class ResearchMemory:
             if e.status == "REJECTED" and e.matches_all(keywords):
                 return e
         return None
+
+    def was_integrated(self, keywords):
+        """The INTEGRATED entry whose text contains every
+        keyword, or None. The mirror of was_rejected(): a match
+        means the idea already shipped to production and must
+        not be re-proposed as new work."""
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        keywords = [str(k) for k in keywords if str(k).strip()]
+        if not keywords:
+            return None
+        for e in self.entries:
+            if e.status == "INTEGRATED" and e.matches_all(keywords):
+                return e
+        return None
+
+    def integrated_ids(self):
+        """Distinct entry ids reporting INTEGRATED. The memory
+        indexes one entry per source document, so an experiment
+        can appear once per registry that mentions it; this is
+        the per-experiment count, comparable to the Stage 0
+        registry's entry count."""
+        return sorted({e.entry_id for e in self.entries
+                       if e.status == "INTEGRATED"})
+
+    def integration_record(self, entry_id):
+        """The IntegrationRecord for an id, or None."""
+        if entry_id is None:
+            return None
+        return self.integration_records.get(str(entry_id).upper())
 
     def by_status(self, status):
         return [e for e in self.entries if e.status == status]
