@@ -52,7 +52,7 @@ Manual reference (what the installer runs, for operators who
 want the pieces separately): scripts/setup-bitcoin-core.sh
 (Bitcoin Core 28.1, SHA256SUMS verified, only needed for the
 optional local node), python3 mining/cpu/build.py,
-make test-all (36 targets, all must print PASSED; environment caveat: test-rtl needs iverilog, which is absent on this VM after replacements, so that one target fails for environment reasons, not code),
+make test-all (37 targets, all must print PASSED; environment caveat: test-rtl needs iverilog, which is absent on this VM after replacements, so that one target fails for environment reasons, not code),
 bash scripts/autopilot.sh start, and on systemd machines
 bash scripts/autopilot.sh install-service.
 Rules for agents: never commit credentials or keys (node configs live in .local/,
@@ -218,13 +218,13 @@ The lab hunted for statistical structure that could bend the search, and measure
 - `dashboard/`: live stdlib web dashboard.
 - `research/`: the NOVA SHA-X research programme (research/sha256d with the experiment registries and the exp030 to exp043 trees, the Phase 001 genesis deconstruction under research/phase001, the Core and repository audits under research/bitcoin_core and research/bitcoin_reverse_engineering, and the Master Build records under research/master_build) plus the original statistics.py and probability.py modules.
 - `scripts/`: one-command installer (`install.sh`), network self-configuration (`network_setup.py`), autopilot control, peer pinning, Core setup.
-- `tests/`: 36 Makefile test targets (correctness, regtest, engine, PoW, GPU and GPU correction, mining, adversarial, deepening, CPU aspect and CPU correction, RTL, solo server, solo cutover, research, autopilot, block judgement, installer, the Task 003, 003.8 and 003.9 suites, AVX-512, AVX-512 dual, mainnet live, template cache, AVX-512 flags, EXP-034, EXP-036, EXP-037, EXP-038, probability percentiles, EXP-039, EXP-040, and the three agent intelligence suites: agent intelligence, agent awareness, agent operations).
+- `tests/`: 37 Makefile test targets (correctness, regtest, engine, PoW, GPU and GPU correction, mining, adversarial, deepening, CPU aspect and CPU correction, RTL, solo server, solo cutover, research, autopilot, block judgement, installer, the Task 003, 003.8 and 003.9 suites, AVX-512, AVX-512 dual, mainnet live, template cache, AVX-512 flags, EXP-034, EXP-036, EXP-037, EXP-038, probability percentiles, EXP-039, EXP-040, and the four agent suites: agent intelligence, agent awareness, agent operations, agent security).
 - `evidence/`: session logs and milestone evidence JSON.
 - `results/`, `docs/`: measured results and design documents.
 
 ## Testing
 
-`make test-all` runs 36 targets; all must print PASSED. Environment caveat: on this VM, test-rtl fails because iverilog is absent after VM replacements, a standing environment failure recorded across the programme, not a code failure. Highlights: the Python PoW engine is verified against hashlib, six real mainnet headers, and the entire live regtest chain; the C engine is verified against hashlib on thousands of consecutive nonces; the RTL and the gate netlist pass the same genesis testbench; the solo server test mines a real block through a real TCP Stratum session into a real node.
+`make test-all` runs 37 targets; all must print PASSED (count updated 2026-11-15). Environment caveat: on this VM, test-rtl fails because iverilog is absent after VM replacements, a standing environment failure recorded across the programme, not a code failure. Highlights: the Python PoW engine is verified against hashlib, six real mainnet headers, and the entire live regtest chain; the C engine is verified against hashlib on thousands of consecutive nonces; the RTL and the gate netlist pass the same genesis testbench; the solo server test mines a real block through a real TCP Stratum session into a real node.
 
 ## Mining status log
 
