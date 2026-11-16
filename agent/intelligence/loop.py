@@ -21,7 +21,11 @@ inspected. Two gates carry the mandate's hard rules:
   research): if the hypothesis keywords all match a REJECTED
   research memory entry, the transition is refused and the
   refusal carries the rejection citation. The agent must not
-  re-propose what the record has already decided.
+  re-propose what the record has already decided. The same
+  gate also refuses a hypothesis whose keywords all match an
+  INTEGRATED entry: work that already shipped to production
+  must not be re-proposed as new either (Stage 7, D6 fix;
+  this refusal is additive and weakens no existing gate).
 - Integrate gate (record evidence to integrated): the
   evidence bundle must contain a correctness pass, a
   differential pass, an independent verification record whose
@@ -34,6 +38,14 @@ inspected. Two gates carry the mandate's hard rules:
 
 Rollback is always available from the integrated and
 monitored states.
+
+A third, operational gate sits outside the evidence rules
+(Stage 7): when the loop is constructed with a mode_gate
+(the Agent facade passes the load-shedding ModeManager),
+transitions into the discretionary execution states are
+refused while the current mode sheds experiment work. The
+gate never weakens the evidence gates above and never
+affects mining.
 """
 
 import math
@@ -318,11 +330,19 @@ class OptimisationLoop:
     """
 
     def __init__(self, memory=None, checker=None, audit=None,
-                 verifier_key_path=None):
+                 verifier_key_path=None, mode_gate=None):
         self.memory = memory
         self.checker = checker
         self.audit = audit
         self.verifier_key_path = verifier_key_path
+        # Optional load-shedding gate (Stage 7, modes.py):
+        # callable(kind) -> bool. When it returns False for
+        # kind "experiment", transitions into the discretionary
+        # execution states (isolated implementation,
+        # correctness tests, controlled measurement) are
+        # refused. None (direct construction) means no mode
+        # gating, as before.
+        self.mode_gate = mode_gate
 
     def new_record(self, loop_id, hypothesis, keywords=None,
                    implementation_author="",
@@ -370,6 +390,15 @@ class OptimisationLoop:
                 "monitored")
         idx = CHAIN.index(record.state)
         nxt = CHAIN[idx + 1]
+        if nxt in (ISOLATED, CORRECTNESS_TESTS, MEASUREMENT) \
+                and self.mode_gate is not None \
+                and not self.mode_gate("experiment"):
+            raise LoopRefusal(
+                f"loop {record.loop_id}: transition into "
+                f"{nxt} refused by the load-shedding mode "
+                "gate; discretionary experiment work is shed "
+                "in the current mode (see modes.py). Mining "
+                "is unaffected.")
         if record.state == HYPOTHESISE and nxt == CHECK_PRIOR:
             self._check_not_rejected(record)
         if record.state == RECORD and nxt == INTEGRATED:
@@ -405,6 +434,22 @@ class OptimisationLoop:
                 f"{hit.entry_id}; re-proposing a rejected "
                 "idea is refused",
                 citation=citation)
+        was_integrated = getattr(self.memory, "was_integrated",
+                                 None)
+        if was_integrated is not None:
+            hit = was_integrated(record.keywords)
+            if hit is not None:
+                citation = {"entry_id": hit.entry_id,
+                            "title": hit.title,
+                            "status": hit.status,
+                            "source": hit.source}
+                raise LoopRefusal(
+                    f"loop {record.loop_id}: hypothesis matches "
+                    f"research memory entry {hit.entry_id}, "
+                    "which is already INTEGRATED in "
+                    "production; re-proposing integrated work "
+                    "as new is refused",
+                    citation=citation)
 
     def rollback(self, record, reason=""):
         """Always available from integrated and monitored
