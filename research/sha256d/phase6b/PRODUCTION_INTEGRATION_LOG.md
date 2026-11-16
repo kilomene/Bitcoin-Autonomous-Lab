@@ -812,3 +812,86 @@ State carried in at phase open, for continuity:
   DESIGN step 5 gate: vardiff stays disabled in the
   endpoint config until that audit has passed and an
   operator enables it.
+
+## Entry 6: EXP-050: endpoint health policy (register R-26) integrated into the pool leg (2026-11-16)
+
+- Nature: production integration of portfolio item
+  NOVA-ER-0010 (register R-26, NEW at Master Build). The
+  pool leg's failure handling was a single endpoint, the
+  Stratum reader loop's same-endpoint retry, and the
+  autopilot restart; the 2026-11-15 pool DNS outage is
+  the failure shape addressed. One unrelated change at a
+  time; the solo leg, the autopilot and every other path
+  are untouched.
+- The component: mining/endpoint_health.py,
+  EndpointHealthPolicy, a named and inspectable decision
+  object (name "ordered-failover-damped-failback",
+  version 1). Ordered endpoints, index 0 the primary;
+  note_error counts consecutive failures per current
+  endpoint ("retry" below the threshold, "failover" at
+  it, "exhausted" once at the transition on the last
+  endpoint, pointing back at the primary); note_success
+  clears the count and reports recovery from exhaustion;
+  failback is a probe-gated attempt due after
+  failback_interval_s, charged against a damping window
+  (at most max_failbacks_per_window per window), the
+  bound the poclbm precedent lacks. Pure decision logic:
+  no sockets, no threads, injectable clock; status() is
+  the inspectable snapshot, transitions are recorded.
+- Configuration: mining/endpoint_config.py gains the
+  pool_health section (POOL_HEALTH_DEFAULTS:
+  enabled false, fallbacks [], error_threshold 3,
+  failback_interval_s 300, damping_window_s 1800,
+  max_failbacks_per_window 1, probe_timeout_s 5),
+  pool_health_config() and pool_policy_endpoints()
+  (resolved primary first, malformed fallbacks skipped).
+  Defaults reproduce today's behaviour exactly: the
+  config is the switch, and the degenerate
+  single-endpoint configuration is the rollback.
+- The wiring: mining/stratum_client.py gains an optional
+  endpoint_policy attribute (None is the historical
+  behaviour), connect_initial() (startup: policy-ordered
+  attempts, exhaustion re-raises into the autopilot
+  backstop), policy retargeting inside the existing
+  reconnect loop, failback probes between reads, and
+  submits_unresolved_on_reset accounting (pending submit
+  ids are tracked from _send; a reset reports the ones
+  whose verdicts can never arrive, as their own
+  category, EXP-037 rule). mining/mainnet_live.py builds
+  the policy in pool mode only when enabled, logs
+  endpoint_policy_enabled, and carries policy.status()
+  in its periodic status events. Defect found and fixed
+  in this integration: pending registration originally
+  sat after _send in submit(), so a fast verdict's
+  discard could precede the add and strand a phantom
+  pending id; registration now happens inside _send,
+  before the bytes leave, and the Gate 3 harness's first
+  run is the evidence (phantom unresolved report on a
+  healthy drop, gone after the fix).
+- Gates: 1, 2, 4 and 6 do not apply (no hash path, no
+  benchmark claim, no consensus surface). Gate 3 fault
+  injection against local stubs
+  (research/sha256d/exp050/exp050_fault_injection.py,
+  RAW_RESULTS/gate3_results.json): 7 of 7 scenarios
+  passed (startup failover, startup exhaustion, mid-job
+  failover in 0.084 s against a 4.0 s job interval,
+  single failback on recovery, flapping primary held to
+  1 failback per damping window, mid-session exhaustion
+  with honest recovery, unresolved accounting with zero
+  double submissions). Gate 5: isolated instance (byte
+  copies, own .local) of production mainnet_live through
+  start, primary death, failover, an accepted share on
+  the fallback, failback, and stop by signal, alive
+  throughout. Suites: test-exp050 40/40 (make
+  test-exp050, appended to test-all),
+  test-mainnet-live, test-solo, test-solo-vardiff 59/59,
+  all passing 2026-11-16 on AMD EPYC 9D25. Live miner
+  untouched: share census 609 accepted / 8 rejected
+  before, 613 / 8 after (the delta is the live miner's
+  own shares).
+- Post-integration audit: NOT performed by the author of
+  this integration; an independent audit is the required
+  next step (owner rule, 2026-11-14). The policy stays
+  disabled in the live endpoint config until that audit
+  has passed and an operator enables it with a real
+  fallback named.
