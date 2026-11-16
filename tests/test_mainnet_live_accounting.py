@@ -86,6 +86,74 @@ def test_fallback_counts_only_what_result_proves():
           "(51), miss counts 0, span size never used")
 
 
+def _desc(backend):
+    """A ComputeEngine.describe() shaped dict with a distinct
+    sentinel reason per backend, so a test can tell exactly
+    which backend's probe record a line quoted."""
+    return {
+        "backend": backend,
+        "native_impl": None,
+        "v512_reason": "V512 PROBE REASON",
+        "v512dual_reason": "DUAL PROBE REASON",
+        "shani_reason": "SHANI PROBE REASON",
+        "avx2_reason": "AVX2 PROBE REASON",
+        "cuda_context_reason": "CUDA CONTEXT REASON",
+        "fallback_reason": "FALLBACK REASON",
+    }
+
+
+def test_backend_reason_names_selected_backend():
+    # D9 (Stage 0 reconciliation, fixed in Stage 6): the
+    # session backend line must name the SELECTED backend and
+    # quote its own probe record. The pre-fix code labelled
+    # every non-dual backend "AVX-512 MB" and quoted the v512
+    # probe's reason for shani, avx2 and C sessions.
+    label, reason = mainnet_live.backend_reason(_desc("v512dual"))
+    assert (label, reason) == ("AVX-512 DualMask",
+                               "DUAL PROBE REASON"), (label, reason)
+    label, reason = mainnet_live.backend_reason(_desc("v512"))
+    assert (label, reason) == ("AVX-512 MB",
+                               "V512 PROBE REASON"), (label, reason)
+    label, reason = mainnet_live.backend_reason(_desc("shani"))
+    assert (label, reason) == ("SHA-NI streams",
+                               "SHANI PROBE REASON"), (label, reason)
+    label, reason = mainnet_live.backend_reason(_desc("avx2"))
+    assert (label, reason) == ("AVX2 MB",
+                               "AVX2 PROBE REASON"), (label, reason)
+    label, reason = mainnet_live.backend_reason(_desc("cuda"))
+    assert (label, reason) == ("CUDA",
+                               "CUDA CONTEXT REASON"), (label, reason)
+    label, reason = mainnet_live.backend_reason(_desc("c"))
+    assert label == "C batch", label
+    assert "AVX-512" not in reason and "V512" not in reason, reason
+    for backend in ("shani", "avx2", "c", "cpu"):
+        label, reason = mainnet_live.backend_reason(_desc(backend))
+        assert label != "AVX-512 MB", (backend, label)
+        assert reason != "V512 PROBE REASON", (backend, reason)
+    print("ok backend reason (D9): every backend's line names "
+          "the selected backend and quotes its own probe record")
+
+
+def test_backend_reason_matches_real_describe():
+    own_field = {
+        "v512dual": "v512dual_reason",
+        "v512": "v512_reason",
+        "shani": "shani_reason",
+        "avx2": "avx2_reason",
+        "cuda": "cuda_context_reason",
+    }
+    for requested in ("auto", "c"):
+        desc = ComputeEngine(requested=requested).describe()
+        label, reason = mainnet_live.backend_reason(desc)
+        field = own_field.get(desc["backend"])
+        if field is not None:
+            assert reason == desc[field], (
+                requested, desc["backend"], reason, desc[field])
+        print(f"ok backend reason (real describe, {requested}): "
+              f"backend {desc['backend']} labelled {label!r} "
+              f"with its own probe record")
+
+
 def main():
     auto = ComputeEngine()
     test_early_exit_counts_attempts_not_span(auto, "auto")
@@ -94,6 +162,8 @@ def main():
     test_early_exit_counts_attempts_not_span(eng_c, "c")
     test_full_miss_counts_span_equals_attempts(eng_c, "c")
     test_fallback_counts_only_what_result_proves()
+    test_backend_reason_names_selected_backend()
+    test_backend_reason_matches_real_describe()
     print("ALL MAINNET LIVE ACCOUNTING TESTS PASSED")
     return 0
 
