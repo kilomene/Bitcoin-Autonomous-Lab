@@ -1270,16 +1270,19 @@
   {
    "id": "R-26",
    "hypothesis": "Endpoint health policy as a named object: ordered endpoints, N errors before failover, timed failback",
-   "status": "NEW",
+   "status": "INTEGRATED",
    "baseline": "single endpoint, autopilot restart on failure",
-   "measured_result": "New; not started",
+   "measured_result": "INTEGRATED by EXP-050 (2026-11-16): EndpointHealthPolicy in mining/endpoint_health.py, parameters in mining/endpoint_config.py POOL_HEALTH_DEFAULTS (error_threshold 3, failback_interval_s 300, damping_window_s 1800, max 1 failback per window), wired into mining/stratum_client.py and mining/mainnet_live.py behind the config switch (disabled by default; the degenerate single-endpoint configuration is the rollback). Gate 3 fault injection and Gate 5 isolated-instance proof passed; see research/sha256d/exp050/EXP050_REPORT.md. Not yet enabled on the live stack; no real second endpoint is configured.",
    "independently_reproduced": "no",
    "reproduced_by": null,
    "evidence": [
-    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md",
+    "research/sha256d/exp050/EXP050_REPORT.md",
+    "mining/endpoint_health.py"
    ],
    "unresolved": [
-    "Failback damping counts need design"
+    "Live enablement awaits the independent audit and an operator decision",
+    "A real second endpoint for the pool leg"
    ]
   },
   {
@@ -1478,6 +1481,53 @@
     "First real post-VM-replacement run of the mode",
     "Tighter Gate 4 agreement under quiet conditions, and the unexplained consistent positive point estimates",
     "CUDA host behaviour of the mode"
+   ]
+  },
+  {
+   "id": "EXP-050",
+   "hypothesis": "A named endpoint health policy (ordered endpoints, N consecutive errors before failover, a timed failback retry of the primary, with damping) keeps the pool leg mining through endpoint failure and recovery without operator action and without failback flapping (portfolio NOVA-ER-0010, register R-26)",
+   "status": "PROVEN",
+   "baseline": "Single endpoint (public-pool.io via endpoint config); the Stratum reader loop retries that endpoint once a second forever and the autopilot restarts the miner process on failure; the 2026-11-15 pool DNS outage stopped the miner until supervision restarted it",
+   "measured_result": "New production module mining/endpoint_health.py (EndpointHealthPolicy), configured through mining/endpoint_config.py pool_health section and wired additively into mining/stratum_client.py and mining/mainnet_live.py; defaults disabled with no fallbacks, reproducing the single-endpoint behaviour exactly. Gate 3 fault injection (7 scenarios, all passed, local stubs, AMD EPYC 9D25): failover to the first fallback job in 0.084 s against a 4.0 s job interval; exactly one failback on recovery; a flapping primary (4 s up / 2.5 s down) earned exactly 1 failback in 26 s under a 60 s damping window; exhaustion reported once, recovery only when the primary returned; accounting submitted 4 = accepted 2 + rejected 0 + unresolved 2 as separate categories, zero double submissions. Gate 5: isolated instance of production mainnet_live through start, failover, accepted share on the fallback, failback, stop by signal. Suites: test-exp050 40/40, test-mainnet-live, test-solo, test-solo-vardiff 59/59. Live miner untouched (census 609/8 before, 613/8 after).",
+   "evidence": [
+    "research/sha256d/exp050/EXP050_REPORT.md",
+    "research/sha256d/exp050/RAW_RESULTS/",
+    "research/sha256d/exp050/exp050_fault_injection.py",
+    "mining/endpoint_health.py",
+    "tests/test_exp050_endpoint_health.py"
+   ],
+   "evidence_limitation": "All fault injection ran against local stubs on this VM; no real second endpoint exists in the live config and the policy is disabled there, so failover against the real public-pool.io and live enablement are unmeasured. Single host (AMD EPYC 9D25).",
+   "independently_reproduced": "no",
+   "reproduced_by": "Not yet independently audited; authored and executed under Directive 5 Stage 9 with raw results retained for audit. An independent audit gate applies to this production change before any push, and before the policy is enabled live.",
+   "unresolved": [
+    "Failover against the real public-pool.io endpoint",
+    "Behaviour with a real second endpoint (none is configured live)",
+    "Live enablement of the policy (operator decision, after the independent audit)",
+    "The Intel Xeon Platinum 8321HC host (host-gated)"
+   ]
+  },
+  {
+   "id": "EXP-051",
+   "hypothesis": "A bounded prefetch queue between the template engine and the search, keyed to the EXP-025 layered identity with a starvation counter, removes most of the prepare-side bubble at template transitions at regtest and solo difficulties; at mainnet difficulty the effect is nil and nothing is claimed there (portfolio NOVA-ER-0011, register R-33)",
+   "status": "PROVEN",
+   "baseline": "Synchronous template resolution in MiningEngine.mine_cycle: every cycle pays the GBT fetch and the full EXP-025 prepare on the critical path before search resumes (EXP-040 priced the loaded stages at GBT 38.0 ms and prepare 19.7 ms of a 206.3 ms non-search overhead per loaded regtest block)",
+   "measured_result": "New production module mining/prefetch.py (PrefetchQueue, PrefetchFeed) wired into MiningEngine.mine_cycle behind opt-in use_prefetch=False (disabled default byte-for-byte historical, the rollback surface). The feed longpolls and prepares the next template through the EXP-025 cache off the critical path; serve requires the entry's previousblockhash to still be the node's best block and its layered identity, recomputed from scratch, to match the prepared identity, else the entry is dropped (counted by reason) and the cycle falls back synchronously. Gate 3 adversarial suite tests/test_exp051_prefetch.py all passing with ZERO stale serves (identity confusion refused at queue and engine level, stale drop after an external block, superseded, overflow, duplicate, rapid tip changes, disabled default). Gate 4 category F (84 timed runs, 0 failed, all EXP-036 verified, AMD EPYC 9D25 under load 9 to 16): loaded scenario B median non-search overhead 389.7 ms synchronous vs 167.3 ms prefetch (57.1 percent reduction vs the predeclared 15 percent margin, H2 PASS); served fraction in B 1.0 with (gbt + prepare) at 0.0 ms median in served runs (H3 PASS); campaign counters enqueued 62, served 42, starved 6 (the session warm-ups), superseded 16, identity and stale drops 0. Gate 6: queue-served regtest blocks accepted by Core and EXP-036 verified. Inherited suites re-run: test-exp034, test-exp036, test-template-cache, test-exp037, test-mining, test-exp040 all passed; test-engine (intelligence suite, outside the change's import graph) failed three times on its full-sync assertion while external blocks landed on the shared chain, recorded as environment interference.",
+   "evidence": [
+    "research/sha256d/exp051/EXP051_REPORT.md",
+    "research/sha256d/exp051/PREDECLARATION.md",
+    "research/sha256d/exp051/RAW_RESULTS/",
+    "mining/prefetch.py",
+    "tests/test_exp051_prefetch.py"
+   ],
+   "evidence_limitation": "All measurements are the AMD EPYC 9D25 host under heavy contention (load average 9 to 16, a concurrent audit for part of the work); absolute overhead levels are far above EXP-040's quieter-window figures and only the interleaved arm-against-arm comparison carries the verdict. The solo server seam was declared out of scope, not measured.",
+   "independently_reproduced": "no",
+   "reproduced_by": "Not yet independently audited; authored and executed under Directive 5 Stage 9 with raw results retained for audit. An independent post-integration audit is owed before any push.",
+   "unresolved": [
+    "Mainnet difficulty effect (claimed nil by the hypothesis, unmeasured)",
+    "The solo server seam (mining/solo_server.py JobRefresher; declared out of scope, would be a redesign of a different interface)",
+    "The Intel Xeon Platinum 8321HC host (host-gated)",
+    "Long-run feed soaking (days of longpoll cycling, node restarts mid-longpoll)",
+    "make test-engine (intelligence suite) on a quiet shared chain"
    ]
   }
  ]
