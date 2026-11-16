@@ -123,6 +123,37 @@ def record_share_result(recorder, accepted, worker, backend):
                     worker=worker, backend=backend)
 
 
+def backend_reason(desc):
+    """(label, reason) for the session backend line: the label
+    names the SELECTED backend and the reason is that backend's
+    own probe record, read from the per-backend field
+    gpu/engine.py already maintains on the describe() dict
+    (v512dual_reason, v512_reason, shani_reason, avx2_reason,
+    cuda_context_reason). Stage 6 fix for Stage 0 discrepancy
+    D9: the previous inline labelling read desc["v512_reason"]
+    under an "AVX-512 MB" label for every backend that was not
+    v512dual or v512, so a shani, avx2 or C session line named
+    the wrong probe. The C tier has no probe-reason field of
+    its own; its backend value is set only after the library
+    loads and its digests match the Python recount in
+    ComputeEngine._try_c, which is what its line states."""
+    backend = desc["backend"]
+    if backend == "v512dual":
+        return "AVX-512 DualMask", desc.get("v512dual_reason")
+    if backend == "v512":
+        return "AVX-512 MB", desc.get("v512_reason")
+    if backend == "shani":
+        return "SHA-NI streams", desc.get("shani_reason")
+    if backend == "avx2":
+        return "AVX2 MB", desc.get("avx2_reason")
+    if backend == "cuda":
+        return "CUDA", desc.get("cuda_context_reason")
+    if backend == "c":
+        return "C batch", ("selected: C library loaded and "
+                           "self-test digests matched")
+    return "pure Python", "no native backend selected"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--duration", type=int, default=3600)
@@ -169,15 +200,7 @@ def main():
 
     engine = ComputeEngine()
     desc = engine.describe()
-    if desc["backend"] == "v512dual":
-        reason_label = "AVX-512 DualMask"
-        reason = desc.get("v512dual_reason")
-    elif desc["backend"] == "v512":
-        reason_label = "AVX-512 MB"
-        reason = desc["v512_reason"]
-    else:
-        reason_label = "AVX-512 MB"
-        reason = desc["v512_reason"]
+    reason_label, reason = backend_reason(desc)
     backend_line = (f"compute backend: {desc['backend']} "
                     f"(native impl: {desc['native_impl']}; "
                     f"{reason_label}: {reason})")
