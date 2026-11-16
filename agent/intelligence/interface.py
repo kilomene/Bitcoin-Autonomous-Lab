@@ -15,12 +15,19 @@ surfaces, reused and never rebuilt:
 - checkpoint frontier: mining/work_checkpoint.py.
 
 Every operation passes the permission check and writes an audit
-record. Milestone 1 boundary: NO operation here starts, stops
-or restarts the live miner, autopilot or node. start/stop exist
-as L2 specifications executed only through an injectable
-controller callable; the default controller raises
-NotImplementedError, so the permission path is fully testable
-while production stays untouched.
+record. Stage 7 wiring: start/stop/restart, worker adjustment
+and recovery are L2 operations executed through the production
+MiningController (agent/intelligence/controller.py), which
+extends the existing autopilot, verifies every postcondition
+from the autopilot's own published state, and reports failure
+honestly. The controller is the interface's DEFAULT: with no
+controller argument, a MiningController over this interface's
+local_dir is constructed. The injectable seam stays for tests:
+pass a callable(action) for the legacy seam, a MiningController
+for a specific checkout, or controller=False for an explicitly
+unwired interface (whose controlled operations raise
+NotImplementedError after the permission check and audit
+record, exactly as in Milestone 1).
 
 Telemetry honesty: when the heartbeat file is missing or stale,
 inspect_status says so and reports running=False. It never
@@ -159,9 +166,9 @@ def _read_json(path):
         return None
 
 
-def _default_engine_factory(requested="auto"):
+def _default_engine_factory(requested="auto", threads=None):
     from gpu.engine import ComputeEngine
-    return ComputeEngine(requested=requested)
+    return ComputeEngine(requested=requested, threads=threads)
 
 
 def _engine_selected_name(engine):
@@ -184,9 +191,13 @@ class MiningInterface:
     evidence-count.json (default the repo .local).
     engine_factory: callable(requested) -> ComputeEngine-like
     object; injectable for tests.
-    controller: callable(action) for start/stop; the default
-    raises NotImplementedError (Milestone 1 wires no live
-    control).
+    controller: the operational controller for the L2
+    controlled operations. None (the default) constructs the
+    production MiningController over local_dir; False leaves
+    the interface explicitly unwired (controlled operations
+    raise NotImplementedError); a MiningController instance
+    is used as given; a callable(action) is the legacy
+    injectable seam.
     """
 
     def __init__(self, checker, audit, local_dir=None,
@@ -197,7 +208,26 @@ class MiningInterface:
         self.engine_factory = engine_factory or \
             _default_engine_factory
         self.controller = controller
+        self._controller_resolved = None
         self._engines = {}
+
+    def _resolve_controller(self):
+        """The controller the controlled operations execute
+        through, built lazily so constructing an interface
+        for read-only use stays side-effect free."""
+        if self._controller_resolved is not None:
+            return self._controller_resolved
+        ctl = self.controller
+        if ctl is None:
+            from .controller import MiningController
+            ctl = MiningController(
+                repo_root=_REPO_ROOT, local_dir=self.local_dir)
+        self._controller_resolved = ctl
+        return ctl
+
+    @property
+    def resolved_controller(self):
+        return self._resolve_controller()
 
     # Internal helpers -------------------------------------------
     def _gate(self, name, inputs_summary):
@@ -464,21 +494,32 @@ class MiningInterface:
                    outcome=resp.selected)
         return resp
 
-    def _controlled(self, name, action):
+    def _controlled(self, name, action, **kwargs):
         level = self._gate(name, {"action": action})
-        if self.controller is None:
+        if self.controller is False:
             self._done(name, level, {"action": action},
                        outcome="not_implemented",
-                       detail=("Milestone 1 wires no live "
-                               "control; inject a controller "
-                               "to execute"))
+                       detail=("this interface was constructed "
+                               "explicitly unwired "
+                               "(controller=False); inject a "
+                               "controller to execute"))
             raise NotImplementedError(
-                f"{name}: Milestone 1 does not wire live "
-                "mining control; the operation is specified "
-                "and permission-checked, and executes only "
-                "through an injected controller")
-        result = self.controller(action)
-        self._done(name, level, {"action": action})
+                f"{name}: this MiningInterface is explicitly "
+                "unwired (controller=False); the operation is "
+                "specified and permission-checked, and "
+                "executes only through a controller")
+        ctl = self._resolve_controller()
+        if callable(ctl) and not hasattr(ctl, action):
+            # Legacy injectable seam: callable(action).
+            result = ctl(action)
+            self._done(name, level, {"action": action})
+            return result
+        method = getattr(ctl, action)
+        result = method(**kwargs) if kwargs else method()
+        outcome = getattr(result, "status", "ok")
+        self._done(name, level, {"action": action},
+                   outcome=outcome,
+                   detail=getattr(result, "detail", None))
         return result
 
     def start_mining(self):
@@ -486,3 +527,18 @@ class MiningInterface:
 
     def stop_mining(self):
         return self._controlled("stop_mining", "stop")
+
+    def restart_mining(self):
+        return self._controlled("restart_mining", "restart")
+
+    def adjust_workers(self, count):
+        return self._controlled(
+            "adjust_workers", "adjust_workers", count=count)
+
+    def refresh_job(self):
+        return self._controlled("refresh_job", "refresh_job")
+
+    def trigger_recovery(self, correctness_failure=False):
+        return self._controlled(
+            "trigger_recovery", "recover",
+            correctness_failure=bool(correctness_failure))
