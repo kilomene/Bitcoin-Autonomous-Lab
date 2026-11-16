@@ -186,9 +186,21 @@ Further limitations:
   persisted as one JSON file. It implements no network protocol
   and claims no multi-machine behaviour.
 - The experiment runner's gate pass would still not be a
-  production integration; and its evidence assembly trusts the
-  schema of evidence JSON files written inside the sandbox
-  (conservative merging, but the files are the experiment's own).
+  production integration. (Updated 2026-11-15, Autonomous
+  Mining Brain Prompt 1: evidence assembly no longer trusts
+  the sandbox files' schema. The integrate gate applies a
+  strict verification-record schema, and independent
+  verification must be a record signed by the separate
+  verifier service, agent/intelligence/verifier.py, whose
+  HMAC key the experimental sandbox cannot read. Experiments
+  now run in a real operating-system sandbox,
+  agent/intelligence/sandbox.py, and every run is chained
+  into an append-only evidence ledger outside the sandbox.
+  One measured host limitation stands: this VM's systemd
+  scope cgroup properties are accepted but do not enforce,
+  so memory and task caps are enforced by rlimits and a
+  runner-side process-tree watchdog instead. See
+  research/autonomous_brain/PROMPT1_SECURITY_REPORT.md.)
 - The awareness layer's node read can take most of a cycle's
   overhead when the node is in initial block download (19.40 s of
   a 32.80 s active overhead in the demonstration) and can time
