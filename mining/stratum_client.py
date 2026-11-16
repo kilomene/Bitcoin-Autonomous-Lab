@@ -201,14 +201,37 @@ class StratumClient:
         # MiningStatistics without the client depending on the
         # statistics module.
         self.on_share_result = None
+        # Optional endpoint health policy (EXP-050, R-26):
+        # when a consumer attaches an
+        # mining.endpoint_health.EndpointHealthPolicy here,
+        # reconnects and failback follow it (ordered failover
+        # after a consecutive-error threshold, damped failback
+        # to the primary). Default None is the historical
+        # behaviour exactly: same-endpoint retry forever, with
+        # the autopilot restart as the outer backstop.
+        self.endpoint_policy = None
+        # mining.submit ids still awaiting a verdict on this
+        # connection. A share is submitted exactly once; if
+        # the connection dies first, _reset_session reports
+        # these ids as unresolved rather than letting the
+        # submitted count and the verdict counts drift apart
+        # unexplained (EXP-050, EXP-037 separated counters).
+        self._pending_submits = set()
         self.stop_flag = False
         self._tip_ntime = {}  # prevhash -> highest ntime accepted
 
-    def _send(self, method, params):
+    def _send(self, method, params, track_pending=False):
         with self.lock:
             mid = self.next_id
             self.next_id += 1
             self.methods_by_id[mid] = method
+            if track_pending:
+                # Registered before the bytes leave: a fast
+                # verdict can only be processed after the
+                # send, so its discard in _handle can never
+                # race ahead of this add and leave a phantom
+                # pending id behind (EXP-050).
+                self._pending_submits.add(mid)
         msg = {"id": mid, "method": method, "params": params}
         self.sock.sendall((json.dumps(msg) + "\n").encode())
         return mid
@@ -340,6 +363,7 @@ class StratumClient:
                 if ok:
                     self.authorized.set()
             elif method == "mining.submit":
+                self._pending_submits.discard(mid)
                 accepted = bool(msg.get("result"))
                 self.ev.log("share_result", id=mid,
                             accepted=accepted,
@@ -366,14 +390,187 @@ class StratumClient:
             job["ntime"],
             "%08x" % nonce,
         ]
-        mid = self._send("mining.submit", params)
+        mid = self._send("mining.submit", params,
+                         track_pending=True)
         self.ev.log("submit", id=mid, job_id=job["job_id"],
                     extranonce2=extranonce2, ntime=job["ntime"],
                     nonce="%08x" % nonce)
         return mid
 
+    def _policy_note_error(self):
+        """Feed one connection failure to the endpoint health
+        policy (EXP-050) and act on its decision at once: a
+        "failover" retargets this client to the next ordered
+        endpoint, an "exhausted" transition is logged with
+        the policy pointing back at the primary (the
+        historical retry target; the autopilot restart
+        remains the outer backstop). Returns the decision
+        string, or None when no policy is attached."""
+        policy = self.endpoint_policy
+        if policy is None:
+            return None
+        frm = (self.host, self.port)
+        action = policy.note_error()
+        if action == "failover":
+            self.host, self.port = policy.current
+            self.ev.log("endpoint_failover",
+                        from_host=frm[0], from_port=frm[1],
+                        to_host=self.host, to_port=self.port,
+                        failovers=policy.total_failovers)
+        elif action == "exhausted":
+            self.host, self.port = policy.current
+            self.ev.log("endpoint_policy_exhausted",
+                        endpoints=["%s:%d" % ep
+                                   for ep in policy.endpoints],
+                        action="retrying primary; autopilot "
+                               "restart remains the backstop")
+        return action
+
+    def _policy_note_success(self):
+        """Feed a successful connection to the policy; a
+        success that ends an exhausted episode is logged as
+        the recovery it is."""
+        policy = self.endpoint_policy
+        if policy is None:
+            return
+        info = policy.note_success()
+        if info["was_exhausted"]:
+            self.ev.log("endpoint_policy_recovered",
+                        host=self.host, port=self.port)
+
+    def connect_initial(self):
+        """First connection of a session. Without a policy
+        this is connect(), unchanged: a failure raises and
+        the process exits into the autopilot backstop. With
+        a policy (EXP-050), each failure is fed to it, a
+        failover decision retargets the next attempt at
+        once, a same-endpoint retry waits one second, and
+        exhaustion re-raises the last error, so startup
+        failure with every endpoint down is still the
+        historical process exit, never a silent hang."""
+        if self.endpoint_policy is None:
+            self.connect()
+            return
+        while True:
+            try:
+                self.connect()
+                self._policy_note_success()
+                return
+            except (ConnectionError, OSError, TimeoutError) as exc:
+                action = self._policy_note_error()
+                if action == "exhausted":
+                    raise
+                if action == "failover":
+                    continue
+                time.sleep(1)
+
+    def _probe_endpoint(self, host, port, timeout_s):
+        """One throwaway Stratum subscribe handshake against
+        a candidate endpoint, for failback (EXP-050). True
+        only when the endpoint accepts the connection and
+        answers mining.subscribe with a result. The probe
+        authorizes nothing and submits nothing."""
+        try:
+            sock = socket.create_connection((host, port),
+                                            timeout=timeout_s)
+        except OSError:
+            return False
+        try:
+            sock.settimeout(timeout_s)
+            msg = {"id": 1, "method": "mining.subscribe",
+                   "params": ["BitcoinAutonomousLab-probe/0.1.0"]}
+            sock.sendall((json.dumps(msg) + "\n").encode())
+            buf = b""
+            deadline = time.time() + timeout_s
+            while b"\n" not in buf and time.time() < deadline:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    return False
+                buf += chunk
+            resp = json.loads(buf.split(b"\n", 1)[0])
+            return bool(resp.get("result"))
+        except (OSError, ValueError):
+            return False
+        finally:
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+    def _maybe_failback(self):
+        """Damped failback to the primary endpoint (EXP-050).
+
+        Called between reads while connected to a
+        non-primary endpoint. When the policy says an
+        attempt is due, the primary is probed; only a probe
+        that answers moves the session. A failed probe
+        restarts the failback interval, and the policy's
+        damping window bounds how often a flapping primary
+        can pull the session back."""
+        policy = self.endpoint_policy
+        if policy is None or policy.on_primary:
+            return
+        if not self.authorized.is_set():
+            return
+        if not policy.failback_due():
+            return
+        host, port = policy.primary
+        if not self._probe_endpoint(host, port,
+                                    policy.probe_timeout_s):
+            policy.note_probe_failed()
+            self.ev.log("endpoint_failback_probe_failed",
+                        host=host, port=port)
+            return
+        frm = (self.host, self.port)
+        policy.note_failback()
+        self.host, self.port = policy.current
+        self.ev.log("endpoint_failback",
+                    from_host=frm[0], from_port=frm[1],
+                    to_host=host, to_port=port,
+                    failbacks=policy.total_failbacks)
+        self._reset_session()
+        self._reconnect()
+
+    def _reconnect(self):
+        """Re-establish the session after a drop, retrying
+        once a second until success or a stop request.
+        Without a policy the retries aim at the same
+        endpoint forever (the historical behaviour). With a
+        policy (EXP-050), each failed attempt is fed to it
+        and a failover decision retargets the next attempt
+        at once, with no sleep: failover speed is the point."""
+        while not self.stop_flag:
+            try:
+                self.connect()
+                self.ev.log(
+                    "reconnected",
+                    pool=f"{self.host}:{self.port}")
+                self._policy_note_success()
+                return
+            except (ConnectionError, OSError,
+                    TimeoutError) as exc:
+                self.ev.log("reconnect_failed",
+                            error=str(exc))
+                if self._policy_note_error() == "failover":
+                    continue
+                time.sleep(1)
+
     def _reset_session(self):
-        """Drop all per-connection state before a reconnect."""
+        """Drop all per-connection state before a reconnect.
+
+        Submits still awaiting a verdict on the dying
+        connection are reported first (EXP-050): each was
+        submitted exactly once, its verdict will never
+        arrive, and the evidence says so, as its own
+        category, instead of leaving the submitted counter
+        and the accepted/rejected counters silently
+        irreconcilable (EXP-037: categories are never
+        summed, and never silently dropped either)."""
+        if self._pending_submits:
+            self.ev.log("submits_unresolved_on_reset",
+                        count=len(self._pending_submits),
+                        ids=sorted(self._pending_submits)[:50])
+            self._pending_submits = set()
         if self.sock is not None:
             try:
                 self.sock.close()
@@ -396,29 +593,25 @@ class StratumClient:
         is reset and re-established with a one second retry
         until it succeeds or a stop is requested, so the
         workforce is back on a fresh template in seconds
-        instead of waiting for a full process restart.
+        instead of waiting for a full process restart. With
+        an endpoint health policy attached (EXP-050), the
+        drop itself and every failed reconnect are fed to
+        the policy (failover retargets the reconnect, damped
+        failback runs between reads); without one, every
+        behaviour below is the historical one.
         """
         while not self.stop_flag:
             try:
                 self.poll_once()
+                self._maybe_failback()
             except (ConnectionError, OSError) as exc:
                 if self.stop_flag:
                     return
                 self.ev.log("connection_error", error=str(exc),
                             action="reconnecting")
                 self._reset_session()
-                while not self.stop_flag:
-                    try:
-                        self.connect()
-                        self.ev.log(
-                            "reconnected",
-                            pool=f"{self.host}:{self.port}")
-                        break
-                    except (ConnectionError, OSError,
-                            TimeoutError) as exc2:
-                        self.ev.log("reconnect_failed",
-                                    error=str(exc2))
-                        time.sleep(1)
+                self._policy_note_error()
+                self._reconnect()
 
 
 def main():
