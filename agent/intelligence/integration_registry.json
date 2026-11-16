@@ -1,0 +1,354 @@
+{
+ "registry": "agent-integration-registry/1",
+ "derived_from": "research/EXTREME_RESEARCH/EXPERIMENT_REGISTRY.json",
+ "rule": "Every Stage 0 entry with status INTEGRATED. Authoritative for integration status only; never overrides a REJECTED narrative parse.",
+ "entries": [
+  {
+   "id": "EXP-022",
+   "title": "Y-084: flags-only MB batch via mask registers (early-exit batch without materialising digests) speeds the batch path",
+   "status": "INTEGRATED",
+   "integrated_into": [
+    "gpu/engine.py (_try_v512flags, _vf_batch_flagged)",
+    "mining/cpu/bal_avx512_flags.c"
+   ],
+   "evidence": [
+    "research/sha256d/extreme_optimization/EXPERIMENT_REGISTRY.md",
+    "gpu/engine.py (_try_v512flags, _vf_batch_flagged)",
+    "mining/cpu/bal_avx512_flags.c"
+   ],
+   "measured_result": "Pooled 1.441x [1.261, 1.645] under EXP-017, batch scope only; 491,520 differentials with zero mismatches; regtest block 985"
+  },
+  {
+   "id": "EXP-025",
+   "title": "A layered dsha256 identity makes template caching safe against stale serves and validation bypasses",
+   "status": "INTEGRATED",
+   "integrated_into": [
+    "mining/engine.py (TemplateCache, template_identity, build_candidate)"
+   ],
+   "evidence": [
+    "research/sha256d/phase6b/EXP025_CACHE_CORRECTNESS.md",
+    "mining/engine.py (TemplateCache, template_identity, build_candidate)"
+   ],
+   "measured_result": "Repaired design passes 19 of 19 adversarial cases and 1,320 randomised differentials byte-identical; regtest block 826 (research), block 912 through the integrated path. Steps500 candidate-construction rate pooled 23.02x (a construction rate, never a hash rate); family500 pooled 1.083x not verified"
+  },
+  {
+   "id": "EXP-026",
+   "title": "Combined designs (C2 DualMask: EXP-018 residency plus EXP-024 opmask compare) beat production search",
+   "status": "INTEGRATED",
+   "integrated_into": [
+    "gpu/engine.py (v512dual backend)",
+    "mining/cpu/bal_avx512_dual.c"
+   ],
+   "evidence": [
+    "research/sha256d/phase6b/EXP026_AVX512_EXECUTION.md",
+    "gpu/engine.py (v512dual backend)",
+    "mining/cpu/bal_avx512_dual.c"
+   ],
+   "measured_result": "C2 pooled 1.718x vs production search and 1.444x vs its strongest ingredient, significant in every session; 197,616 differentials with zero mismatches; regtest blocks 830 and 877. C1 TernMask established negative (pooled 0.764x vs its own ingredient). C3/C4/C5 killed at the cost model"
+  },
+  {
+   "id": "EXP-034",
+   "title": "Autonomous job and template engine: job construction exact against Core, extranonce spaces partitionable without collision",
+   "status": "INTEGRATED",
+   "integrated_into": [
+    "mining/solo_server.py",
+    "mining/engine.py (extranonce_space)",
+    "tests/test_exp034_job_template.py"
+   ],
+   "evidence": [
+    "research/sha256d/exp034/JOB_TEMPLATE_ENGINE.md",
+    "mining/solo_server.py",
+    "mining/engine.py (extranonce_space)"
+   ],
+   "measured_result": "Real defect found and fixed in production: SoloServer.refresh_job applied a full-coinbase extranonce offset to the stripped coinbase, corrupting the served scriptSig by 2 bytes on witness templates; fix at mining/solo_server.py line 270 (stripped.index). Job construction verified against Core (engine block 1105, solo block 1104, coinbase value 39,079,798 sats). Extranonce collision confirmed then fixed with opt-in MiningEngine extranonce_space, default (0, 64) byte-identical to historical behaviour; disjoint spaces verified; 7 out-of-range spaces refused. 21 checks in tests/test_exp034_job_template.py"
+  },
+  {
+   "id": "EXP-036",
+   "title": "Exact candidate verification and block submission: integer-only verdicts, chain-confirmed acceptance",
+   "status": "INTEGRATED",
+   "integrated_into": [
+    "mining/candidate_verify.py",
+    "tests/test_exp036_verification.py"
+   ],
+   "evidence": [
+    "research/sha256d/exp036/BLOCK_SUBMISSION_DESIGN.md",
+    "mining/candidate_verify.py",
+    "tests/test_exp036_verification.py"
+   ],
+   "measured_result": "mining/candidate_verify.py in production: hashlib plus pure-Python agreement required, integer check_pow with Core SetCompact semantics, no float operations in the file; solo submitblock None no longer treated as success; pool and solo paths both route through verify_candidate; regtest blocks 1028 and 1029 through the fixed paths"
+  },
+  {
+   "id": "EXP-037",
+   "title": "Mining statistics and probability engine: whole-log evidence census, separated counters, adopted probability formulas",
+   "status": "INTEGRATED",
+   "integrated_into": [
+    "mining/autopilot.py (EvidenceCounter)",
+    "mining/mining_statistics.py",
+    "mining/probability.py",
+    "tests/test_probability_percentiles.py"
+   ],
+   "evidence": [
+    "research/sha256d/exp037/",
+    "mining/autopilot.py (EvidenceCounter)",
+    "mining/mining_statistics.py",
+    "mining/probability.py",
+    "tests/test_probability_percentiles.py"
+   ],
+   "measured_result": "EvidenceCounter streams the whole log once then incrementally, persisting offset, counts and fingerprint atomically; mining/mining_statistics.py holds all directive section-10 categories as separated counters with no combined total (pinned by test); mining/probability.py adopts expected_hashes(D) = D x 2^32 and prob_at_least_one = 1 - exp(-R t / (D x 2^32)), anchor-pinned and cross-checked against exact rational arithmetic. Phase 002 step 4 added the percentile family (quantile, median, percentile, exact-Fraction forms, period probabilities) with 73 checks, and wired statistics into mainnet_live.py, stratum_client.py (optional hook) and MiningEngine (optional parameter)"
+  },
+  {
+   "id": "EXP-038",
+   "title": "Autonomous mining operations: exact work checkpointing that can never record unfinished work as completed",
+   "status": "INTEGRATED",
+   "integrated_into": [
+    "mining/work_checkpoint.py",
+    "mining/engine.py (checkpoint_path)",
+    "tests/test_exp038_checkpoint.py",
+    "agent/autonomous.py"
+   ],
+   "evidence": [
+    "research/sha256d/exp038/",
+    "mining/work_checkpoint.py",
+    "mining/engine.py (checkpoint_path)",
+    "tests/test_exp038_checkpoint.py"
+   ],
+   "measured_result": "mining/work_checkpoint.py records an exact (extranonce, nonce) frontier keyed by the EXP-025 layered identity plus extranonce space plus curtime basis; the frontier advances only after a batch returns without a hit. MiningEngine gains opt-in checkpoint_path (default None); agent/autonomous.py is the only production caller"
+  },
+  {
+   "id": "EXP-039",
+   "title": "Integrate the EXP-032 verified AVX2 and SHA-NI kernels as production dispatch tiers below AVX-512",
+   "status": "INTEGRATED",
+   "integrated_into": [
+    "gpu/engine.py (_try_shani, _try_avx2)",
+    "mining/cpu/bal_avx2_mb.c",
+    "mining/cpu/bal_shani_streams.c",
+    "mining/cpu/bal_fallback_probe.c",
+    "gpu/engine.py"
+   ],
+   "evidence": [
+    "research/sha256d/exp039/EXP039_REPORT.md",
+    "research/sha256d/exp039/EXP039_AUDIT.md",
+    "gpu/engine.py (_try_shani, _try_avx2)",
+    "mining/cpu/bal_avx2_mb.c",
+    "mining/cpu/bal_shani_streams.c",
+    "mining/cpu/bal_fallback_probe.c"
+   ],
+   "measured_result": "Dispatch is now CUDA, v512dual, v512, shani, avx2, C, hashlib (gpu/engine.py, verified in source). 124,351 batch digests per kernel byte-identical through the ComputeEngine seam; regtest blocks shani 1293 and avx2 1294. EXP-017 verdicts: batch avx2 vs C pooled 1.252x [1.185, 1.322], shani vs C pooled 2.812x [2.573, 3.095]; search avx2 vs C pooled 1.300x [1.217, 1.390], shani vs C pooled 2.887x [2.646, 3.154]; all verified improvements"
+  },
+  {
+   "id": "EXP-030-PHASE-E",
+   "title": "Programme phase E: autonomous job and template engine (executed as EXP-034)",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/sha256d/exp034/JOB_TEMPLATE_ENGINE.md"
+   ],
+   "measured_result": "See EXP-034: solo coinbase corruption defect fixed in production; extranonce spaces integrated"
+  },
+  {
+   "id": "EXP-030-PHASE-F",
+   "title": "Programme phase F: exact candidate verification and block submission (executed as EXP-036)",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/sha256d/exp036/BLOCK_SUBMISSION_DESIGN.md"
+   ],
+   "measured_result": "See EXP-036: candidate_verify.py in production on both submission paths"
+  },
+  {
+   "id": "PHASE001-H-1",
+   "title": "Midstate reuse: compute the chunk-1 compression once per template and reuse it for every nonce (the optimisation the 2009 miner skipped)",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/phase001/MATHEMATICAL_OPTIMIZATION_HYPOTHESES.md",
+    "research/phase001/SHA256D_RECONSTRUCTION.md"
+   ],
+   "measured_result": "Proven identity and exact optimisation; in production in every NOVA kernel (64 of 192 rounds removed per candidate)"
+  },
+  {
+   "id": "PHASE001-H-5",
+   "title": "Padding precomputation for the fixed-length header blocks",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/phase001/MATHEMATICAL_OPTIMIZATION_HYPOTHESES.md"
+   ],
+   "measured_result": "Proven identity and exact optimisation; closed, present in both the 0.1.3 analysis and production kernels"
+  },
+  {
+   "id": "R-01",
+   "title": "Compute the chunk-1 midstate once per template and reuse it for every nonce (cpuminer lineage)",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: Phase 001 H-1; production since the first C backend; re-verified by EXP-023 and EXP-025"
+  },
+  {
+   "id": "R-02",
+   "title": "Precompute the nonce-independent prefix of chunk 2 (rounds 0 to 2) once per template",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: registry H-03 line and the EXP-023 family; present in production kernels (the 67 of 192 conventional ceiling)"
+  },
+  {
+   "id": "R-03",
+   "title": "Pre-extend the message schedule for nonce-independent words",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: EXP-016 (W18 is the first nonce-dependent expanded word); production"
+  },
+  {
+   "id": "R-04",
+   "title": "Multi-way interleaved batch hashing (4-way and 8-way forms)",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: EXP-011, EXP-026 (DualMask integrated), EXP-032, EXP-039 (AVX2 tier integrated)"
+  },
+  {
+   "id": "R-05",
+   "title": "Cheap first-word screen with the exact full 256-bit target test as the only authority",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: EXP-036 verify_candidate, integer only; screens exist in production search masks (EXP-024, EXP-026)"
+  },
+  {
+   "id": "R-06",
+   "title": "Return candidate nonces only from the search device, never bulk digests",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: EXP-024 and EXP-026 mask search, integrated as v512dual"
+  },
+  {
+   "id": "R-07",
+   "title": "Runtime CPU feature probing with per-tier backends behind one scan interface",
+   "status": "INTEGRATED",
+   "integrated_into": [
+    "gpu/engine.py"
+   ],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: EXP-028 and EXP-039 (flag-free probe; dispatch CUDA, v512dual, v512, shani, avx2, C, hashlib, verified in gpu/engine.py source)"
+  },
+  {
+   "id": "R-08",
+   "title": "Long-poll work refresh with per-thread restart flags so stale work is abandoned inside a span",
+   "status": "INTEGRATED",
+   "integrated_into": [
+    "mining/engine.py"
+   ],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: production GBT longpoll monitoring in mining/engine.py; autopilot watchdog at 1 s poll"
+  },
+  {
+   "id": "R-10",
+   "title": "Fixed registry of immutable jobs, cloned on read, results resolved to jobs by id (Bitaxe lineage)",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: EXP-030 matrix M04/M05 decisions; EXP-034 job and template engine with generation-tagged identity"
+  },
+  {
+   "id": "R-12",
+   "title": "Adapt share difficulty toward a target share interval with hysteresis (vardiff)",
+   "status": "INTEGRATED",
+   "integrated_into": [
+    "mining/solo_server.py",
+    "mining/endpoint_config.py",
+    "tests/test_solo_vardiff.py"
+   ],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md",
+    "research/sha256d/phase6b/PRODUCTION_INTEGRATION_LOG.md",
+    "research/EXTREME_RESEARCH/STAGE6_VARDIFF_AUDIT.md"
+   ],
+   "measured_result": "Integrated into production 2026-11-16 (Stage 6 item 2): VarDiffController in mining/solo_server.py, configuration in mining/endpoint_config.py, defaults DISABLED so the armed cutover keeps fixed difficulty until an operator enables it; D10 closed in the same change (constructor default 0.01 removed, endpoint config SOLO_SHARE_DIFFICULTY 0.02 is the single source). Suite tests/test_solo_vardiff.py 59/59; independent audit PASS WITH NOTES, zero defects (research/EXTREME_RESEARCH/STAGE6_VARDIFF_AUDIT.md)."
+  },
+  {
+   "id": "R-13",
+   "title": "Coordinator re-verifies every worker candidate exactly before submission; workers never submit directly",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: EXP-036 verification component on both production submission paths; EXP-035 coordinator design adopts it for the fleet"
+  },
+  {
+   "id": "R-16",
+   "title": "Detect stale work and refuse to submit stale shares by default",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: EXP-034 template identity, EXP-036 submit classification, solo cutover server-side verification counts"
+  },
+  {
+   "id": "R-17",
+   "title": "Stage non-clean job updates and swap at a search boundary instead of tearing live work",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: EXP-025 cache identity discipline and EXP-034 safe job replacement in production code"
+  },
+  {
+   "id": "R-18",
+   "title": "Per-worker counters in fixed time windows as the only hashrate source",
+   "status": "INTEGRATED",
+   "integrated_into": [],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: EXP-037 EvidenceCounter and separated statistics with no combined total, in production"
+  },
+  {
+   "id": "R-19",
+   "title": "Backend self-test against known vectors at selection and worker start; refuse on failure",
+   "status": "INTEGRATED",
+   "integrated_into": [
+    "gpu/engine.py"
+   ],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: production hashlib self-test at dispatch (256-nonce check) in gpu/engine.py; EXP-039 D-1 guarded probes; EXP-028 simulated capability profiles"
+  },
+  {
+   "id": "R-20",
+   "title": "A separate supervisor that never mines, and a miner that never supervises itself",
+   "status": "INTEGRATED",
+   "integrated_into": [
+    "mining/autopilot.py"
+   ],
+   "evidence": [
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+   ],
+   "measured_result": "Already covered: mining/autopilot.py plus the outer keeper cron layering, proven live by repeated restarts (most recently the 2026-11-15 systemd recovery)"
+  }
+ ]
+}
