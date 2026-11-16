@@ -2374,3 +2374,40 @@ after). Full record: research/sha256d/exp048/
 EXP048_REPORT.md and RAW_RESULTS/.
 
 Next unreserved ID: EXP-049.
+
+## EXP-049 record (2026-11-16)
+
+EXP-049 (NOVA-ER-0009, register R-35: offline benchmark
+mode in the production binary). New production module
+mining/bench_mode.py: one command (python3
+mining/bench_mode.py) prints the host profile and a
+category E rate through the production ComputeEngine
+search path on a fixed work unit (header bytes(range(80)),
+target 1, 262,144 hashes, byte-identical to the
+scheduler's R-35 unit). The safety property is structural:
+the module imports only the standard library plus
+gpu.engine, so its code path contains no endpoint
+resolution, no Stratum client and no submission symbols;
+a dedicated module was chosen over a mainnet_live.py flag
+because mainnet_live imports the Stratum client at module
+level. Gates: 1/2 self-check on every invocation (1,024
+batch digests byte-identical to hashlib, genesis candidate
+verified against the known hash and target, zero
+mismatches); Gate 3 four ways (AST scan, import closure,
+socket-rigged run, strace run with zero network syscalls;
+endpoint config hash unchanged); Gate 5 clean-environment
+run from a foreign cwd; Gate 4 paired campaign against
+Scheduler._measure (3 sessions, 60 pairs, randomized
+AB/BA, criterion predeclared in the report before the
+run): pooled mean log ratio +0.178, bootstrap CI95
+[-0.062, +0.418] contains 0, AGREEMENT VERIFIED at that
+width (point estimates consistently positive, unexplained,
+recorded as an observation). Suites: test-exp049 20/20,
+test-gpu, test-mainnet-live, test-engine all passed. Live
+miner untouched (share census 602/8 before, 604/8 after).
+UNVERIFIED: the Intel Xeon 8321HC host, a literal fresh VM
+replacement run, tighter agreement under quiet conditions,
+CUDA hosts. Full record: research/sha256d/exp049/
+EXP049_REPORT.md and RAW_RESULTS/.
+
+Next unreserved ID: EXP-050.
