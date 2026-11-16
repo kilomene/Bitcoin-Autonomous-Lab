@@ -15,6 +15,7 @@ autonomous agent enforces the regtest-only default.
 
 import logging
 import struct
+import threading
 import time
 
 from blockchain.transactions import btc_to_sats
@@ -22,6 +23,7 @@ from gpu.engine import ComputeEngine
 from mining.mining_statistics import (FrontierAccountant,
                                       MiningStatistics)
 from mining.pow import coinbase_subsidy, merkle_root, dsha256
+from mining.prefetch import PrefetchFeed, PrefetchQueue
 from mining.work_checkpoint import WorkCheckpoint
 
 log = logging.getLogger("bal.mining.engine")
@@ -444,27 +446,37 @@ class TemplateCache:
         self.prepares = 0
         self.hits = 0
         self.identity_checks = 0
+        # EXP-051: the prefetch feed prepares templates from
+        # its own thread while the mining thread prepares on
+        # the synchronous path; the lock keeps the
+        # check-then-store sequence and the counters exact
+        # under that concurrency. Semantics are unchanged for
+        # single-threaded callers.
+        self._lock = threading.Lock()
 
     def get(self, family, template):
-        identity = template_identity(family, template)[0]
-        self.identity_checks += 1
-        key = (family.family_key, identity)
-        if key in self.by_identity:
-            self.hits += 1
-            return self.by_identity[key], True
-        prep = PreparedTemplate(family, template)
-        assert prep.identity == identity
-        self.by_identity[key] = prep
-        while len(self.by_identity) > self.max_entries:
-            self.by_identity.pop(next(iter(self.by_identity)))
-        self.prepares += 1
-        return prep, False
+        with self._lock:
+            identity = template_identity(family, template)[0]
+            self.identity_checks += 1
+            key = (family.family_key, identity)
+            if key in self.by_identity:
+                self.hits += 1
+                return self.by_identity[key], True
+            prep = PreparedTemplate(family, template)
+            assert prep.identity == identity
+            self.by_identity[key] = prep
+            while len(self.by_identity) > self.max_entries:
+                self.by_identity.pop(next(iter(self.by_identity)))
+            self.prepares += 1
+            return prep, False
 
 
 class MiningEngine:
     def __init__(self, rpc, payout_address, compute=None, batch_size=65536,
                  use_template_cache=True, extranonce_space=(0, 64),
-                 checkpoint_path=None, statistics=None):
+                 checkpoint_path=None, statistics=None,
+                 use_prefetch=False, prefetch_depth=2,
+                 prefetch_fetcher=None):
         self.rpc = rpc
         self.payout = payout_address
         self.compute = compute or ComputeEngine()
@@ -528,15 +540,98 @@ class MiningEngine:
                            else MiningStatistics())
         self._accountant = FrontierAccountant(self.statistics)
         self._stats_recorder = self._accountant.recorder
+        self._family_lock = threading.Lock()
+        # EXP-051 prefetch queue (opt-in, register R-33): a
+        # bounded queue of prepared templates filled by a
+        # background GBT longpoll feed (mining/prefetch.py),
+        # served at mine_cycle transitions only after the
+        # EXP-025 identity recomputation and a best-block tip
+        # check. Default use_prefetch=False is exactly the
+        # historical behaviour and is the rollback surface:
+        # no queue is constructed, no feed thread exists, and
+        # mine_cycle resolves its template synchronously as
+        # before. The queue is only ever consulted on the
+        # steps fast path (template cache on, build_candidate
+        # not overridden); on any other shape it stays inert.
+        # prefetch_fetcher, when given, replaces the feed's
+        # longpoll fetch (longpollid -> template); the default
+        # is this engine's wait_template. The category F
+        # harness uses it to give the feed its own RPC
+        # connection so stage timing stays on the mining
+        # thread.
+        self.use_prefetch = use_prefetch
+        self.prefetch_fetcher = prefetch_fetcher
+        self.prefetch_queue = None
+        self._prefetch_feed = None
+        if use_prefetch:
+            self.prefetch_queue = PrefetchQueue(
+                max_entries=prefetch_depth,
+                recorder=lambda category:
+                    self._stats_recorder.record(category))
 
     def cache_family(self):
         """The engine's TemplateFamily, built lazily on the
         first cached build (one validateaddress and one
         getblockchaininfo round trip, then held for the
-        engine's life, keyed into every cache identity)."""
+        engine's life, keyed into every cache identity).
+        EXP-051: construction is lock-guarded because the
+        prefetch feed thread can race the mining thread to
+        the first build; the family is a pure function of
+        (rpc answers, payout), so either build is the same
+        family."""
         if self._cache_family is None:
-            self._cache_family = TemplateFamily(self.rpc, self.payout)
+            with self._family_lock:
+                if self._cache_family is None:
+                    self._cache_family = TemplateFamily(
+                        self.rpc, self.payout)
         return self._cache_family
+
+    # ------------------------------------------------ EXP-051
+
+    def _prefetch_usable(self):
+        """The queue is consulted only where the EXP-025
+        steps fast path applies: template cache enabled and
+        build_candidate not overridden by a caller or
+        subclass. Everywhere else the prefetch machinery is
+        inert and mine_cycle is the historical code path."""
+        return (self.use_prefetch and self.use_template_cache
+                and "build_candidate" not in self.__dict__
+                and type(self).build_candidate
+                is MiningEngine.build_candidate)
+
+    def _prefetch_try_serve(self):
+        """One queue serve attempt at a template transition.
+        Records exactly one prefetch_served or
+        prefetch_starved in the separated statistics (inside
+        PrefetchQueue.serve). Returns (template, prepared)
+        or None."""
+        return self.prefetch_queue.serve(
+            self.cache_family(), self.rpc.get_best_block_hash)
+
+    def _prefetch_note_current(self, template, prep):
+        """Start the feed on first use and tell it which
+        template this cycle is mining, so its longpoll chain
+        tracks the live one."""
+        if prep is None or not self._prefetch_usable():
+            return
+        feed = self._prefetch_feed
+        if feed is None:
+            fetch = self.prefetch_fetcher
+            if fetch is None:
+                fetch = lambda lp: self.wait_template(lp)  # noqa: E731
+            feed = PrefetchFeed(self.prefetch_queue, fetch,
+                                self.prepare_template)
+            self._prefetch_feed = feed
+            feed.start()
+        feed.note_current(template, prep.identity)
+
+    def close_prefetch(self):
+        """Stop the prefetch feed thread (the queue and its
+        counters remain inspectable). Safe to call when
+        prefetch was never enabled or never started."""
+        if self._prefetch_feed is not None:
+            self._prefetch_feed.stop()
+            self._prefetch_feed = None
 
     def prepare_template(self, template):
         """Verify a template's full layered identity and return
@@ -674,7 +769,22 @@ class MiningEngine:
         batch_count(self.batch_size, start) to the backend, never
         the raw configured batch size, so the final batch of a
         nonce-space walk stays inside the 32-bit space."""
-        template = self.get_template()
+        # Template resolution. EXP-051: with the prefetch
+        # queue enabled and usable, one serve attempt comes
+        # first (identity recomputed and tip verified inside
+        # PrefetchQueue.serve; exactly one served/starved
+        # counter is recorded). A served template skips the
+        # GBT fetch and the prepare entirely; anything else
+        # falls through to the synchronous resolution below,
+        # which is the historical behaviour byte-for-byte.
+        template = None
+        prep = None
+        if self._prefetch_usable():
+            got = self._prefetch_try_serve()
+            if got is not None:
+                template, prep = got
+        if template is None:
+            template = self.get_template()
         started = time.perf_counter()
         total_hashes = 0
         batches = 0
@@ -687,12 +797,13 @@ class MiningEngine:
         # steps, so no sibling serve is involved. When
         # build_candidate is overridden, the override is called
         # per round exactly as before this integration.
-        prep = None
-        if (self.use_template_cache
+        if prep is None and (self.use_template_cache
                 and "build_candidate" not in self.__dict__
                 and type(self).build_candidate
                 is MiningEngine.build_candidate):
             prep, _was_hit = self.prepare_template(template)
+        if self.use_prefetch:
+            self._prefetch_note_current(template, prep)
         en_first, en_count = self.extranonce_space
         # EXP-038 checkpoint resume: with a checkpoint enabled,
         # a previous process may already have examined part of
