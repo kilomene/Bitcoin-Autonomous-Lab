@@ -318,7 +318,7 @@ def test_differentials(eng, eng_v):
 
 
 def test_candidate_sets_and_boundaries(eng, eng_v):
-    threads = engine_mod.C_THREADS
+    threads = eng.c_threads
     # batch_search end to end at four densities, with
     # accounting parity against the independent
     # prediction and the preserved ABIs.
@@ -491,7 +491,8 @@ def main():
     test_forced_fallbacks(supported)
     test_objdump_census()
     if supported:
-        eng_v = ComputeEngine(requested="v512")
+        eng_v = ComputeEngine(requested="v512",
+                              threads=eng.c_threads)
         assert eng_v.backend == "v512", eng_v.describe()
         test_differentials(eng, eng_v)
         test_candidate_sets_and_boundaries(eng, eng_v)
