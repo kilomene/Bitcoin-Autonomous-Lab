@@ -192,7 +192,50 @@ def main():
     print(endpoint_line, flush=True)
     ev.log("endpoint_selected", host=pool_host, port=pool_port,
            mode=endpoint_mode)
-    client.connect()
+    # Endpoint health policy (EXP-050, R-26): pool mode only,
+    # and only when the operator enabled it in the endpoint
+    # config. The policy owns failover/failback decisions;
+    # this process still owns exactly one client, and the
+    # autopilot restart remains the outer backstop. Disabled
+    # (the default) or solo mode: policy stays None and every
+    # behaviour below is the historical one.
+    policy = None
+    if endpoint_mode == "pool":
+        from mining.endpoint_config import (pool_health_config,
+                                            pool_policy_endpoints)
+        health = pool_health_config(endpoint_cfg)
+        if health["enabled"]:
+            from mining.endpoint_health import EndpointHealthPolicy
+            policy = EndpointHealthPolicy(
+                pool_policy_endpoints(endpoint_cfg, pool_host,
+                                      pool_port),
+                error_threshold=health["error_threshold"],
+                failback_interval_s=health["failback_interval_s"],
+                damping_window_s=health["damping_window_s"],
+                max_failbacks_per_window=
+                    health["max_failbacks_per_window"],
+                probe_timeout_s=health["probe_timeout_s"])
+            client.endpoint_policy = policy
+            policy_line = (
+                f"endpoint health policy: {policy.name} over "
+                + ", ".join(f"{h}:{p}" for h, p in policy.endpoints)
+                + f" (error threshold {policy.error_threshold}, "
+                  f"failback interval "
+                  f"{policy.failback_interval_s:g}s, damping "
+                  f"window {policy.damping_window_s:g}s, max "
+                  f"{policy.max_failbacks_per_window} failback "
+                  f"per window)")
+            print(policy_line, flush=True)
+            ev.log("endpoint_policy_enabled",
+                   policy=policy.name,
+                   endpoints=[f"{h}:{p}" for h, p
+                              in policy.endpoints],
+                   error_threshold=policy.error_threshold,
+                   failback_interval_s=policy.failback_interval_s,
+                   damping_window_s=policy.damping_window_s,
+                   max_failbacks_per_window=
+                       policy.max_failbacks_per_window)
+    client.connect_initial()
     threading.Thread(target=client.reader_loop, daemon=True).start()
     if not client.authorized.wait(timeout=30):
         print("authorization failed"); return 3
@@ -336,10 +379,14 @@ def main():
                 f.write(f"MAINNET LIVE MINING\n{line}\n"
                         f"worker={user}\npool={pool_host}:{pool_port}\n"
                         f"{endpoint_line}\n{backend_line}\n")
+            status_extra = {}
+            if policy is not None:
+                status_extra["endpoint_policy"] = policy.status()
             ev.log("status", hashes=total_hashes, rate=rate, best=best,
                    submitted=submitted,
                    statistics=stats.snapshot()["totals"],
-                   statistics_errors=recorder.errors)
+                   statistics_errors=recorder.errors,
+                   **status_extra)
     print("duration complete", flush=True)
     return 0
 
