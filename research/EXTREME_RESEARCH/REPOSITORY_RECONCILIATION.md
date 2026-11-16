@@ -505,7 +505,11 @@ every backend that is not v512dual, including shani, avx2 and C.
 On a host where a fallback tier is selected, the session log
 line would misname the reason source. It does not affect
 selection or accounting; it is a logging defect found by
-inspection.
+inspection. Status: FIXED 2026-11-16 (Stage 6, item 1): the
+session line now takes its label and reason from a
+backend_reason helper that reads the selected backend's own
+probe record; see research/sha256d/phase6b/
+PRODUCTION_INTEGRATION_LOG.md, Entry 4.
 
 D10. Solo share difficulty is stated two ways. The SoloServer
 constructor default in mining/solo_server.py is
@@ -514,7 +518,13 @@ config and register row R-12 describe the fixed solo share
 difficulty as 0.02. The running solo leg takes its value from
 the endpoint config, so 0.02 is the operative figure; the
 constructor default is a latent inconsistency, not the live
-value.
+value. Status: FIXED 2026-11-16 (Stage 6, item 2): the
+constructor default is removed; with no explicit difficulty
+and no vardiff controller, SoloServer now resolves its share
+difficulty from the endpoint config
+(mining/endpoint_config.py, SOLO_SHARE_DIFFICULTY = 0.02),
+which is the single source; see research/sha256d/phase6b/
+PRODUCTION_INTEGRATION_LOG.md, Entry 5.
 
 ## 7. Standing limitations recorded by this audit
 
