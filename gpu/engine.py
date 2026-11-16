@@ -219,38 +219,46 @@ M_LIB_PATH = os.path.join(ROOT, ".local", "cpu", "libbal_shani.so")
 # streams 4, the EXP-032 design point (H-01 streams-4).
 SHANI_STREAMS = 4
 import os as _os
-# Full-workforce thread count for the C search. An explicit
-# BAL_C_THREADS always wins. Otherwise the engine measures the
-# machine it is running on once (tune_c_threads below) and runs
+# Full-workforce thread count for the native searches. The
+# count is INSTANCE-scoped on ComputeEngine (self.c_threads):
+# an explicit constructor threads argument always wins, then
+# an explicit BAL_C_THREADS environment value, otherwise the
+# engine measures the machine it is running on once per
+# instance (tune_c_threads below and its siblings) and runs
 # at that machine's own measured peak: every agent's box is
-# different, and full workforce means the maximum of the machine
-# under the miner, not a number copied from another agent's VM.
+# different, and full workforce means the maximum of the
+# machine under the miner, not a number copied from another
+# agent's VM. DEFAULT_C_THREADS is the immutable pre-probe
+# default. Nothing in this module mutates shared state at
+# runtime: the former module globals for the thread count,
+# its tuned flag and the probe rate are gone, and the tuned
+# count and probe rate live on the engine instance as
+# c_threads, c_threads_tuned and last_probe_rate.
 _C_THREADS_ENV = _os.environ.get("BAL_C_THREADS")
-C_THREADS = int(_C_THREADS_ENV) if _C_THREADS_ENV else 2
-C_THREADS_TUNED = _C_THREADS_ENV is not None
-LAST_PROBE_RATE = 0.0  # H/s measured by the last auto-tune probe
+_ENV_C_THREADS = int(_C_THREADS_ENV) if _C_THREADS_ENV else None
+DEFAULT_C_THREADS = _ENV_C_THREADS if _ENV_C_THREADS is not None else 2
 
 
 def tune_c_threads(engine):
-    """Measure this machine and set C_THREADS to its peak.
+    """Measure this machine and set engine.c_threads to its peak.
 
     Probes several thread counts with the real C search over a
     fixed nonce range and keeps the fastest. Runs once per
-    process; any failure leaves the safe default in place.
+    engine instance; any failure leaves the safe default in
+    place.
     """
-    global C_THREADS, C_THREADS_TUNED, LAST_PROBE_RATE
-    if C_THREADS_TUNED:
-        return C_THREADS
-    C_THREADS_TUNED = True
+    if engine.c_threads_tuned:
+        return engine.c_threads
+    engine.c_threads_tuned = True
     if getattr(engine, "backend", None) != "c" or not hasattr(
             engine._c_lib, "bal_c_search"):
-        return C_THREADS
+        return engine.c_threads
     try:
         header = bytes(range(80))
         target_le = (1).to_bytes(32, "little")
         probe = 1 << 20
         cpus = os.cpu_count() or 2
-        best_n, best_rate = C_THREADS, 0.0
+        best_n, best_rate = engine.c_threads, 0.0
         for n in sorted({1, 2, 4, cpus, cpus * 2}):
             if n < 1 or n > 32:
                 continue
@@ -263,38 +271,38 @@ def tune_c_threads(engine):
             dt = time.time() - t0
             if rc in (0, 1) and dt > 0 and probe / dt > best_rate:
                 best_n, best_rate = n, probe / dt
-        C_THREADS = best_n
-        LAST_PROBE_RATE = best_rate
+        engine.c_threads = best_n
+        engine.last_probe_rate = best_rate
         print(f"full-workforce: C search threads auto-tuned to "
               f"{best_n} on this machine "
               f"(probe {best_rate:,.0f} H/s)", flush=True)
     except Exception:
         pass
-    return C_THREADS
+    return engine.c_threads
 
 
 def tune_v512_threads(engine):
     """Measure this machine for the AVX-512 backend and set
-    C_THREADS (the thread argument of every native counted
-    call) to its peak, mirroring tune_c_threads: probes several
-    thread counts with the real counted MB search over a fixed
-    nonce range and keeps the fastest. Runs once per process;
-    any failure leaves the safe default in place. Also records
-    LAST_PROBE_RATE so span sizing in the live miner reflects
-    the selected backend's real rate."""
-    global C_THREADS, C_THREADS_TUNED, LAST_PROBE_RATE
-    if C_THREADS_TUNED:
-        return C_THREADS
-    C_THREADS_TUNED = True
+    engine.c_threads (the thread argument of every native
+    counted call) to its peak, mirroring tune_c_threads:
+    probes several thread counts with the real counted MB
+    search over a fixed nonce range and keeps the fastest.
+    Runs once per engine instance; any failure leaves the
+    safe default in place. Also records
+    engine.last_probe_rate so span sizing in the live miner
+    reflects the selected backend's real rate."""
+    if engine.c_threads_tuned:
+        return engine.c_threads
+    engine.c_threads_tuned = True
     if getattr(engine, "backend", None) != "v512" or not hasattr(
             engine._v_lib, "bal_v_search2"):
-        return C_THREADS
+        return engine.c_threads
     try:
         header = bytes(range(80))
         target_le = (1).to_bytes(32, "little")
         probe = 1 << 20
         cpus = os.cpu_count() or 2
-        best_n, best_rate = C_THREADS, 0.0
+        best_n, best_rate = engine.c_threads, 0.0
         for n in sorted({1, 2, 4, cpus, cpus * 2}):
             if n < 1 or n > 32:
                 continue
@@ -311,38 +319,37 @@ def tune_v512_threads(engine):
             dt = time.time() - t0
             if rc in (0, 1) and dt > 0 and probe / dt > best_rate:
                 best_n, best_rate = n, probe / dt
-        C_THREADS = best_n
-        LAST_PROBE_RATE = best_rate
+        engine.c_threads = best_n
+        engine.last_probe_rate = best_rate
         print(f"full-workforce: AVX-512 search threads auto-tuned "
               f"to {best_n} on this machine "
               f"(probe {best_rate:,.0f} H/s)", flush=True)
     except Exception:
         pass
-    return C_THREADS
+    return engine.c_threads
 
 
 def tune_v512dual_threads(engine):
     """Measure this machine for the AVX-512 DualMask backend
-    and set C_THREADS to its peak, mirroring
+    and set engine.c_threads to its peak, mirroring
     tune_v512_threads: probes several thread counts with the
     real counted DualMask search over a fixed nonce range
-    and keeps the fastest. Runs once per process; any
-    failure leaves the safe default in place. Also records
-    LAST_PROBE_RATE so span sizing in the live miner
-    reflects the selected backend's real rate."""
-    global C_THREADS, C_THREADS_TUNED, LAST_PROBE_RATE
-    if C_THREADS_TUNED:
-        return C_THREADS
-    C_THREADS_TUNED = True
+    and keeps the fastest. Runs once per engine instance;
+    any failure leaves the safe default in place. Also
+    records engine.last_probe_rate so span sizing in the
+    live miner reflects the selected backend's real rate."""
+    if engine.c_threads_tuned:
+        return engine.c_threads
+    engine.c_threads_tuned = True
     if getattr(engine, "backend", None) != "v512dual" or not hasattr(
             engine._vd_lib, "bal_vd_search2"):
-        return C_THREADS
+        return engine.c_threads
     try:
         header = bytes(range(80))
         target_le = (1).to_bytes(32, "little")
         probe = 1 << 20
         cpus = os.cpu_count() or 2
-        best_n, best_rate = C_THREADS, 0.0
+        best_n, best_rate = engine.c_threads, 0.0
         for n in sorted({1, 2, 4, cpus, cpus * 2}):
             if n < 1 or n > 32:
                 continue
@@ -359,14 +366,14 @@ def tune_v512dual_threads(engine):
             dt = time.time() - t0
             if rc in (0, 1) and dt > 0 and probe / dt > best_rate:
                 best_n, best_rate = n, probe / dt
-        C_THREADS = best_n
-        LAST_PROBE_RATE = best_rate
+        engine.c_threads = best_n
+        engine.last_probe_rate = best_rate
         print(f"full-workforce: AVX-512 DualMask search threads "
               f"auto-tuned to {best_n} on this machine "
               f"(probe {best_rate:,.0f} H/s)", flush=True)
     except Exception:
         pass
-    return C_THREADS
+    return engine.c_threads
 
 
 def cpu_digest(header, nonce):
@@ -891,8 +898,32 @@ class ComputeEngine:
     def __init__(self, lib_path=LIB_PATH, requested="auto",
                  c_lib_path=C_LIB_PATH, v_lib_path=V_LIB_PATH,
                  vd_lib_path=VD_LIB_PATH, vf_lib_path=VF_LIB_PATH,
-                 a_lib_path=A_LIB_PATH, m_lib_path=M_LIB_PATH):
+                 a_lib_path=A_LIB_PATH, m_lib_path=M_LIB_PATH,
+                 threads=None):
         self.requested = requested
+        # Instance-scoped native thread count (Stage 7: it
+        # was a module global before this refactor). Resolution order,
+        # exactly the historical one: an explicit threads
+        # argument wins, then the BAL_C_THREADS environment
+        # value, then the default 2, which the backend probe
+        # below replaces with this machine's measured peak on
+        # this instance (c_threads_tuned records that the
+        # count is resolved, mirroring the old C_THREADS_TUNED).
+        if threads is not None:
+            if not _is_plain_int(threads):
+                raise TypeError(
+                    f"threads must be an int, got "
+                    f"{type(threads).__name__}")
+            if not (1 <= threads <= 32):
+                raise ValueError(
+                    f"threads must be within [1, 32], got "
+                    f"{threads}")
+            self.c_threads = threads
+            self.c_threads_tuned = True
+        else:
+            self.c_threads = DEFAULT_C_THREADS
+            self.c_threads_tuned = _ENV_C_THREADS is not None
+        self.last_probe_rate = 0.0
         self.backend = "cpu"
         self.fallback_reason = None
         self.device_count = 0
@@ -1023,7 +1054,7 @@ class ComputeEngine:
         hashes = ctypes.create_string_buffer(32 * count)
         flags = ctypes.create_string_buffer(count)
         target_le = target.to_bytes(32, "little")
-        rc = lib.bal_c_batch(header, start, count, C_THREADS, target_le,
+        rc = lib.bal_c_batch(header, start, count, self.c_threads, target_le,
                              hashes, flags)
         if rc != 0:
             return None
@@ -1189,7 +1220,7 @@ class ComputeEngine:
         flags = ctypes.create_string_buffer(count)
         target_le = target.to_bytes(32, "little")
         out_attempted = ctypes.c_uint64(0)
-        rc = lib.bal_m_batch2(header, start, count, C_THREADS,
+        rc = lib.bal_m_batch2(header, start, count, self.c_threads,
                               SHANI_STREAMS, target_le, hashes,
                               flags, ctypes.byref(out_attempted))
         if rc != 0:
@@ -1315,7 +1346,7 @@ class ComputeEngine:
         target_le = target.to_bytes(32, "little")
         out_attempted = ctypes.c_uint64(0)
         out_backend = ctypes.c_uint64(0)
-        rc = lib.bal_a_batch2(header, start, count, C_THREADS,
+        rc = lib.bal_a_batch2(header, start, count, self.c_threads,
                               target_le, hashes, flags,
                               ctypes.byref(out_attempted),
                               ctypes.byref(out_backend))
@@ -1437,7 +1468,7 @@ class ComputeEngine:
         target_le = target.to_bytes(32, "little")
         out_attempted = ctypes.c_uint64(0)
         out_backend = ctypes.c_uint64(0)
-        rc = lib.bal_v_batch2(header, start, count, C_THREADS,
+        rc = lib.bal_v_batch2(header, start, count, self.c_threads,
                               target_le, hashes, flags,
                               ctypes.byref(out_attempted),
                               ctypes.byref(out_backend))
@@ -1607,7 +1638,7 @@ class ComputeEngine:
         target_le = target.to_bytes(32, "little")
         out_attempted = ctypes.c_uint64(0)
         out_backend = ctypes.c_uint64(0)
-        rc = lib.bal_vd_batch2(header, start, count, C_THREADS,
+        rc = lib.bal_vd_batch2(header, start, count, self.c_threads,
                                target_le, hashes, flags,
                                ctypes.byref(out_attempted),
                                ctypes.byref(out_backend))
@@ -1724,7 +1755,7 @@ class ComputeEngine:
         out_attempted = ctypes.c_uint64(0)
         out_backend = ctypes.c_uint64(0)
         rc = lib.bal_v_batchf2(
-            header, 0, 256, C_THREADS,
+            header, 0, 256, self.c_threads,
             target.to_bytes(32, "little"), flagbits, None,
             ctypes.byref(out_attempted), ctypes.byref(out_backend))
         if rc != 0:
@@ -1762,7 +1793,7 @@ class ComputeEngine:
         target_le = target.to_bytes(32, "little")
         out_attempted = ctypes.c_uint64(0)
         out_backend = ctypes.c_uint64(0)
-        rc = lib.bal_v_batchf2(header, start, count, C_THREADS,
+        rc = lib.bal_v_batchf2(header, start, count, self.c_threads,
                                target_le, flagbits, digests,
                                ctypes.byref(out_attempted),
                                ctypes.byref(out_backend))
@@ -1875,7 +1906,7 @@ class ComputeEngine:
             out_digest = ctypes.create_string_buffer(32)
             target_le = target.to_bytes(32, "little")
             rc = self._vd_lib.bal_vd_search2(
-                header, start, count, C_THREADS, target_le,
+                header, start, count, self.c_threads, target_le,
                 ctypes.byref(out_nonce), out_digest,
                 ctypes.byref(out_attempted),
                 ctypes.byref(out_backend))
@@ -1923,7 +1954,7 @@ class ComputeEngine:
             out_digest = ctypes.create_string_buffer(32)
             target_le = target.to_bytes(32, "little")
             rc = self._v_lib.bal_v_search2(
-                header, start, count, C_THREADS, target_le,
+                header, start, count, self.c_threads, target_le,
                 ctypes.byref(out_nonce), out_digest,
                 ctypes.byref(out_attempted),
                 ctypes.byref(out_backend))
@@ -1967,7 +1998,7 @@ class ComputeEngine:
             out_digest = ctypes.create_string_buffer(32)
             target_le = target.to_bytes(32, "little")
             rc = self._m_lib.bal_m_search2(
-                header, start, count, C_THREADS, SHANI_STREAMS,
+                header, start, count, self.c_threads, SHANI_STREAMS,
                 target_le, ctypes.byref(out_nonce), out_digest,
                 ctypes.byref(out_attempted))
             if rc not in (0, 1):
@@ -2014,7 +2045,7 @@ class ComputeEngine:
             out_digest = ctypes.create_string_buffer(32)
             target_le = target.to_bytes(32, "little")
             rc = self._a_lib.bal_a_search2(
-                header, start, count, C_THREADS, target_le,
+                header, start, count, self.c_threads, target_le,
                 ctypes.byref(out_nonce), out_digest,
                 ctypes.byref(out_attempted),
                 ctypes.byref(out_backend))
@@ -2061,7 +2092,7 @@ class ComputeEngine:
             out_digest = ctypes.create_string_buffer(32)
             target_le = target.to_bytes(32, "little")
             rc = self._c_lib.bal_c_search2(
-                header, start, count, C_THREADS, target_le,
+                header, start, count, self.c_threads, target_le,
                 ctypes.byref(out_nonce), out_digest,
                 ctypes.byref(out_attempted))
             attempted = out_attempted.value
@@ -2108,7 +2139,7 @@ class ComputeEngine:
             out_digest = ctypes.create_string_buffer(32)
             target_le = target.to_bytes(32, "little")
             rc = self._c_lib.bal_c_search(header, start, count,
-                                          C_THREADS, target_le,
+                                          self.c_threads, target_le,
                                           ctypes.byref(out_nonce),
                                           out_digest)
             legacy_verification = 0
@@ -2132,7 +2163,7 @@ class ComputeEngine:
                     legacy_verification += rescan_attempted
             legacy_seconds = time.perf_counter() - t0
             self.last_search_stats = {
-                "backend": backend_used, "threads": C_THREADS,
+                "backend": backend_used, "threads": self.c_threads,
                 "start": start, "requested": count,
                 "requested_hashes": count,
                 "attempted": attempted, "counted": False,
@@ -2169,7 +2200,7 @@ class ComputeEngine:
         backend_hashes = acct["backend_hashes"]
         self.last_search_stats = {
             "backend": backend_used,
-            "threads": C_THREADS if backend_used in (
+            "threads": self.c_threads if backend_used in (
                 "c", "v512", "v512dual", "shani", "avx2")
             else 1,
             "start": start, "requested": count,
@@ -2808,7 +2839,9 @@ class ComputeEngine:
                 "shani-streams" if self.backend == "shani" else
                 "avx2-mb" if self.backend == "avx2" else
                 "openssl-c" if self.backend == "c" else None),
-            "c_threads": C_THREADS,
+            "c_threads": self.c_threads,
+            "c_threads_tuned": self.c_threads_tuned,
+            "last_probe_rate": self.last_probe_rate,
             "c_attempt_counting": bool(
                 self._c_lib and hasattr(self._c_lib, "bal_c_search2")),
             "cuda_context": bool(self._cuda_ctx),
