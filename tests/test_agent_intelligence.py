@@ -322,6 +322,26 @@ def test_strategy(mem):
           "bottleneck facts cite existing source files")
 
 
+_ART = "a" * 64
+_COMMIT = "18ff4eb070a066dec4424cf9cd4d8282fa9a38b3"
+
+
+def _vrec(verifier_id, method="differential_reference"):
+    """A strict-schema verification record (Prompt 1)."""
+    return {"passed": True, "verifier_id": verifier_id,
+            "artifact_sha256": _ART, "source_commit": _COMMIT,
+            "verification_method": method,
+            "timestamp": "2026-11-15T00:00:00Z"}
+
+
+def _signed_independent():
+    from agent.intelligence import verifier
+    key = verifier.load_key()
+    return verifier.sign_record(
+        _vrec(verifier.VERIFIER_ID,
+              method="independent_recompute"), key)
+
+
 def test_loop(mem):
     loop = OptimisationLoop(memory=mem)
     rec = loop.new_record("L-REJ", "fold K+W again",
@@ -348,16 +368,15 @@ def test_loop(mem):
     check("correctness pass" in exc.missing,
           "integrate refusal names the missing correctness pass")
     rec2.evidence.update({
-        "correctness": True,
-        "differential": True,
-        "independent_verification": {
-            "author": "agent-a", "pass": True}})
+        "correctness": _vrec("agent-a"),
+        "differential": _vrec("agent-a"),
+        "independent_verification": _vrec("agent-a")})
     exc = raises(LoopRefusal, lambda: loop.advance(rec2),
                  "self-verification is not independent")
     check(any("other" in m for m in exc.missing),
           "integrate refusal names the independence failure")
-    rec2.evidence["independent_verification"] = {
-        "author": "auditor-b", "pass": True}
+    rec2.evidence["independent_verification"] = \
+        _signed_independent()
     exc = raises(LoopRefusal, lambda: loop.advance(rec2),
                  "performance claim without EXP-017 verdict "
                  "is refused")
