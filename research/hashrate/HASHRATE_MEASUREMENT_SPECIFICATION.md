@@ -402,6 +402,41 @@ exact verification, measured on every accepted block:
 2.5 to 3.9 ms per candidate (a verification cost, part
 of category F, reported separately per section 1).
 
+Category F measured results, solo and pool pipelines
+(EXP-048, 2026-11-16, same host, contended single VM,
+regtest with the production share difficulty 0.02: the
+searched target is the share target, expected 8.59e7
+hashes per block; amplified variant divides the search
+target by 2^2; absolute pipeline figures, not ratios and
+not hash rates; medians over the cited runs, raw
+sessions in research/sha256d/exp048/RAW_RESULTS/): SOLO
+pipeline (production SoloServer, vardiff disabled, the
+production configuration): empty template, 24 runs,
+5.280 s end to end per accepted block, non-search
+overhead 97.0 ms per block (fraction 0.0184 of cycle
+time, the search stage carrying the production-difficulty
+mass); loaded template (501 transactions), 24 runs,
+6.046 s per block, overhead 152.4 ms (fraction 0.0283);
+amplified variant, 15 runs, 15.334 s per block, overhead
+115.6 ms (fraction 0.0054). Solo with vardiff enabled
+(production default parameters, separately labelled):
+10 runs, overhead 89.3 ms, no measurable vardiff cost.
+POOL pipeline (production client path against a local
+harness stub doing a real pool's per-block work; never
+the live pool): empty, 24 runs, 5.068 s per block,
+overhead 55.9 ms (fraction 0.0103); loaded, 24 runs,
+4.087 s per block, overhead 210.7 ms (fraction 0.0521);
+amplified, 15 runs, 8.829 s per block, overhead 97.7 ms
+(fraction 0.0096). End-to-end times are dominated by the
+geometric search at difficulty 0.02 and are not
+comparable to the EXP-040 GBT end-to-end times (different
+search mass by construction); the transferable figures
+are the overhead milliseconds. EXP-036 verification in
+EXP-048: 1.8 to 5.4 ms per candidate client-side, 1.8 to
+3.9 ms server-side, consistent with EXP-040. All 136
+timed runs ended in exactly one Core-accepted block;
+0 failed.
+
 Not in this table, by rule: the EXP-025 steps500 pooled
 23.02x (a candidate-construction ratio, section 1); the
 EXP-011 dual-batch session figure (raw record
@@ -417,10 +452,12 @@ exists; none has ever been measured).
   C: components only. D: strong protocol evidence. E:
   controlled search-arm evidence (EXP-032) plus labelled
   component measurements and live observations. F:
-  measured by EXP-040 (2026-11-15): end-to-end pipeline
-  cost per accepted block and its stage partition on
-  regtest, empty and loaded templates, plus an
-  amplified-target variant; see section 9.
+  measured by EXP-040 (2026-11-15, GBT pipeline) and
+  EXP-048 (2026-11-16, solo and pool pipelines at the
+  production share difficulty): end-to-end pipeline cost
+  per accepted block and its stage partition on regtest,
+  empty and loaded templates, plus amplified-target
+  variants; see section 9.
 - The targets (500 GH/s minimum, 140 TH/s larger) are
   system objectives. System counts derived from the rates
   in section 9 are arithmetic under stated assumptions
