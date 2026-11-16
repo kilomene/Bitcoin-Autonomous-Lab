@@ -1617,3 +1617,102 @@ two-client interference on one server, the rate-stepped
 stability campaign, any other host.
 
 Next unreserved ID: EXP-046.
+
+## EXP-046 record (2026-11-16)
+
+EXP-046 (NOVA-ER-0003: EXP-024b design C re-measurement
+against today's production search). EXP-024b verified
+design C (bal_v_msearcha2, libbal_m512.so) at pooled
+1.398x [1.242, 1.578] against the production search of
+2026-11-14 and certified it as a single-batch fallback
+form. Production search has since moved to v512dual
+(EXP-026). EXP-046 re-measured design C, byte-identical
+library (sha256 1566a9d2..., matching the EXP-024b gates
+record), against today's production libraries on the
+AMD EPYC 9D25 host: bal_vd_search2 (primary) and
+bal_v_search2 (secondary), EXP-017 protocol, density 0,
+12 sessions, 120 paired 65,536-hash blocks each,
+sessions rotated by round, live miner running and
+untouched (shares accepted 477 to 478). Gates first:
+786,432 batch differentials vs hashlib across the three
+libraries, candidate-set equivalence vs a hashlib
+recount at densities 0, 2^-16, 2^-8, 1 on 36 spans
+including nonce boundary spans, 2-thread accounting and
+genesis checks, uniform rc -2 refusal of spans crossing
+2^32; zero mismatches. Results (adjusted pooled):
+against v512dual at 1 thread 0.674x [0.590, 0.768],
+ESTABLISHED NEGATIVE (every session and pooled entirely
+below 0); against v512dual at 2 threads 0.750x [0.654,
+0.863], NOT SIGNIFICANT under the every-session rule
+(one session straddling, direction uniformly negative);
+against the current v512 build at 2 threads 1.366x
+[1.192, 1.569], NOT SIGNIFICANT (third session
+straddling). Control (maskC vs maskC) measured a pooled
+phantom of +0.170 log ratio in arm B's favour under
+this campaign's rising load (load1 4.11 to 20.28 at
+session starts), against EXP-024b's clean -0.045; the
+phantom flatters every maskC figure, leaves the
+secondary lead at about 1.15x net, and changes no
+formal tier. Verdict: design C holds no advantage
+against today's production search and is superseded by
+v512dual; its EXP-024b fallback certification is
+downgraded to a historically verified form against the
+library build of that date, not renewed against today's
+builds. No discards; no production file modified. Full
+record: exp046/EXP046_REPORT.md; gates, sessions and
+analysis under exp046/RAW_RESULTS/. (EXP-044 stands
+pre-committed to the -mtune scheduling study,
+NOVA-ER-0005, per the Extreme Research portfolio; it
+runs next.)
+
+## EXP-044 record (2026-11-16)
+
+EXP-044 (NOVA-ER-0005: -mtune scheduling variants of
+the v512 kernel, the study EXP-041 left open).
+EXP-041 found -mtune=znver3 cuts the standalone
+compress body's vector moves 64 to 33 at the same 29
+ALU per round but never timed it. EXP-044 rebuilt the
+production kernel source (mining/cpu/bal_avx512_mb.c)
+research-side with -mtune=znver3 and -mtune=znver4
+added to the kernel TU only, all other flags
+identical to production (the replica build with no
+extra flag is byte-identical to the production
+library, sha256 6dfd8d42...), and timed both against
+the production library on the AMD EPYC 9D25 host,
+EXP-017 protocol, batch scope (category D), 2
+threads, 9 sessions, 120 paired 65,536-hash blocks
+each, sessions rotated by round, live miner running
+and untouched (shares accepted 480 to 480). Census
+first: EXP-041's numbers reproduce exactly on the
+full production kernel (v_compress16: production 135
+insns / 64 moves / 29 ALU; znver3 and znver4 both
+113 / 33 / 29; full hot path v_compress16 + v_walk:
+production 4,987 insns / 163 moves, znver3 4,827 /
+132, znver4 4,695 / 132). Gates first: 786,432 batch
+differentials vs hashlib across the three libraries,
+candidate-set equivalence vs a hashlib recount at
+densities 0, 2^-16, 2^-8, 1 on 36 spans including
+nonce boundary spans, 2-thread accounting and
+genesis checks, uniform rc -2 refusal of spans
+crossing 2^32; zero mismatches. Results (adjusted
+pooled): znver3 1.075x [0.941, 1.223], NOT
+SIGNIFICANT (every session straddling); znver4
+0.966x [0.848, 1.099], NOT SIGNIFICANT (sessions
+disagreeing in sign). Control (base vs base)
+measured a pooled phantom of +0.1216 log (1.129x)
+favouring arm B, larger than znver3's entire point
+estimate (+0.0723); net of the phantom both point
+estimates are negative (descriptive only, no tier
+changed). Search scope not run under the predeclared
+rule (neither variant's batch point estimate
+positive and at or above the 0.1216 noise floor).
+Verdict: the move reduction is real in the emitted
+code and null at the rate level within this
+campaign's resolution; neither variant is a Stage 6
+integration candidate; production flags unchanged.
+No discards; no production file modified. Full
+record: exp044/EXP044_REPORT.md; build manifest,
+census, gates, sessions and analysis under
+exp044/RAW_RESULTS/.
+
+Next unreserved ID: EXP-047.
