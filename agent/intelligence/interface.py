@@ -225,6 +225,11 @@ class MiningInterface:
     # L1 operations ----------------------------------------------
     def inspect_status(self, request=None):
         name = "inspect_status"
+        if request is not None:
+            # Prompt 1, item D: an operational operation can
+            # never carry a shell or code payload.
+            from .permissions import assert_no_shell_payload
+            assert_no_shell_payload(name, request)
         level = self._gate(name, {})
         hb_path = os.path.join(self.local_dir, "heartbeat.json")
         ev_path = os.path.join(self.local_dir,
