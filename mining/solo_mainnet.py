@@ -35,7 +35,8 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from mining import endpoint_config
-from mining.solo_server import JobRefresher, SoloServer, SoloTCPServer
+from mining.solo_server import (JobRefresher, SoloServer,
+                                SoloTCPServer, VarDiffController)
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 STATUS_PATH = os.path.join(ROOT, ".local", "solo-status.json")
@@ -99,14 +100,40 @@ def main():
         f"headers {info['headers']}, ibd="
         f"{info.get('initialblockdownload')}")
 
-    solo = SoloServer(rpc, payout, share_difficulty=share_difficulty,
-                      expected_chain=EXPECTED_CHAIN)
+    # Vardiff (Stage 6): enabled only when the endpoint config
+    # says so (default off; see mining/endpoint_config.py). The
+    # controller's initial difficulty is the configured share
+    # difficulty, the single source D10 was closed on. With
+    # vardiff off the server is constructed exactly as before.
+    vd_cfg = endpoint_config.solo_vardiff_config(cfg)
+    if vd_cfg["enabled"]:
+        vardiff = VarDiffController(
+            target_interval=float(vd_cfg["target_interval"]),
+            floor=float(vd_cfg["floor"]),
+            ceiling=float(vd_cfg["ceiling"]),
+            initial=share_difficulty,
+            ema_alpha=float(vd_cfg["ema_alpha"]),
+            deadband=float(vd_cfg["deadband"]),
+            up_hysteresis_s=float(vd_cfg["up_hysteresis_s"]),
+            up_confirmations=int(vd_cfg["up_confirmations"]),
+            max_up_factor=float(vd_cfg["max_up_factor"]),
+            max_down_factor=float(vd_cfg["max_down_factor"]),
+            decay_after_s=float(vd_cfg["decay_after_s"]),
+            decay_factor=float(vd_cfg["decay_factor"]))
+        solo = SoloServer(rpc, payout, vardiff=vardiff,
+                          expected_chain=EXPECTED_CHAIN)
+    else:
+        vardiff = None
+        solo = SoloServer(rpc, payout,
+                          share_difficulty=share_difficulty,
+                          expected_chain=EXPECTED_CHAIN)
     server = SoloTCPServer((bind, port), solo)
     refresher = JobRefresher(solo, server.broadcast, log=log)
     refresher.start()
     write_status(solo, solo.node_info())
     log(f"solo server listening on {bind}:{port}, share "
-        f"difficulty {share_difficulty}, payout {payout}")
+        f"difficulty {share_difficulty}, payout {payout}, "
+        f"vardiff {'enabled' if vardiff is not None else 'off'}")
 
     stop = {"flag": False}
 
