@@ -1,0 +1,582 @@
+python3 tests/test_known_blocks.py
+ok: genesis header hashes to its known block hash
+ok: difficulty to target conversion
+ok: stratum header builder reproduces the genesis header exactly
+ok: mining.pow primitives (target, merkle, subsidy)
+ALL TESTS PASSED
+./bal-miner search 0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a29ab5f49ffff001d1dac2b7c 00000000ffff0000000000000000000000000000000000000000000000000000 2083236000 2000 4
+FOUND nonce=2083236893 hash=000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f hashes=1894 seconds=0.016 best_hash=000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f best_nonce=2083236893 winner_semantics=first-found
+python3 tests/test_regtest_integration.py
+ok: getblockchaininfo chain=regtest blocks=1445
+ok: wallet address bcrt1qmgtkww58e0gux25tmlmy0r7sf5kgwd56m7f9tt
+ok: generatetoaddress 12 blocks, height 1445 -> 1457
+ok: getblock tip height=1457 txs=1 linked to prev height=1456
+ok: getblockheader and getchaintips agree with the tip
+ALL REGTEST TESTS PASSED
+python3 tests/test_intelligence_engine.py
+RPC getblockchaininfo attempt 1/1 failed: <urlopen error [Errno 111] Connection refused>
+sync: node unreachable: Could not reach Bitcoin Core at 127.0.0.1:59999 after 1 attempts: <urlopen error [Errno 111] Connection refused>
+RPC getblockchaininfo attempt 1/1 failed: <urlopen error [Errno 111] Connection refused>
+sync: node unreachable: Could not reach Bitcoin Core at 127.0.0.1:59999 after 1 attempts: <urlopen error [Errno 111] Connection refused>
+RPC getblockchaininfo attempt 1/1 failed: <urlopen error [Errno 111] Connection refused>
+sync: node unreachable: Could not reach Bitcoin Core at 127.0.0.1:59999 after 1 attempts: <urlopen error [Errno 111] Connection refused>
+ok: chain prepared at height 1457
+ok: service synced 1458 blocks to tip 1457
+ok: mempool tx 3f14f1975b952f60... fee 2564 sats, vsize 141, entry fee agrees
+ok: block 1458 analysis: merkle verified, pow verified, fees agree at 2564 sats
+ok: unknown txid raises TxUnavailable with the node reason
+ok: decoderawtransaction round trip matches txid
+ok: data persists across store restart
+ok: reorg detected, 3 stored blocks dropped, store tip matches node tip
+ok: dead node reports disconnected, run loop does not crash
+ALL INTELLIGENCE ENGINE TESTS PASSED
+python3 tests/test_pow_engine.py
+ok: pure SHA-256 matches hashlib incl. padding edges and the FIPS million-byte vector
+ok: compact target decode, encode round trip, negative and overflow detection, difficulty
+ok: 6 real mainnet headers verified by the pure engine; tampered header rejected as high-hash
+ok: all 1461 live regtest headers cross-verified against Core (pure engine hash and PoW agree)
+ALL POW ENGINE TESTS PASSED
+python3 tests/test_gpu_compute.py
+ok: nvcc absent; build states report cuda_build unavailable and full build not ok; host build passed
+ok: host build of the CUDA SHA-256 source matches hashlib on all vectors (49907 target hits in 100k nonces)
+full-workforce: AVX-512 DualMask search threads auto-tuned to 8 on this machine (probe 19,528,213 H/s)
+ok: full-workforce thread count resolved: 8 threads
+ok: no GPU present; engine on v512dual backend with recorded CUDA reason: CUDA runtime error 35 (no usable NVIDIA device/driver)
+ok: batch bounds and header length enforced
+ok: batch search candidates verified; benchmark 1,047,187 H/s on backend v512dual
+ALL GPU COMPUTE TESTS PASSED
+python3 tests/test_gpu_correction.py
+ok: build states separated {'host_compiler': '/usr/bin/g++', 'host_build': 'ok', 'cuda_compiler': None, 'cuda_build': 'unavailable', 'cuda_library': None, 'runtime': 'runtime_error_35', 'device_count': None, 'execution_verified': False}; exit codes honest (host-only 0, full 1)
+ok: host midstate and circular paths genesis-exact and sample-exact vs hashlib; randomized mismatches 0; candidate bound/overflow exact (1021 found, cap 3); concurrent recording exact (40000 into cap 100)
+full-workforce: AVX-512 DualMask search threads auto-tuned to 1 on this machine (probe 10,028,678 H/s)
+ok: target boundaries (below, equal meets, above) exact
+ok: nonce boundaries 0xFFFFFFFE/0xFFFFFFFF handled, wrapping and empty ranges rejected
+ok: no device; engine honestly on v512dual, cuda-only mode fails clearly, context absent
+ok: benchmark harness: median 4,405,356 H/s, label: NOT a GPU measurement: fallback backend executed the work
+ALL GPU CORRECTION TESTS PASSED
+python3 tests/test_mining_engine.py
+full-workforce: AVX-512 DualMask search threads auto-tuned to 4 on this machine (probe 8,659,481 H/s)
+ok: 2 autonomous cycles accepted, tip 1460 -> 1462, last hash is node best block
+ok: segwit spend mined by the engine at height 1463 with fees 2564 sats
+ok: stats persisted ({'cycles': 3, 'accepted': 3, 'total_hashes': 96}); decision log has backend-selected and cycle-accepted entries
+ok: autonomous agent refuses mainnet without explicit opt in
+ALL MINING ENGINE TESTS PASSED
+python3 tests/test_adversarial.py
+full-workforce: AVX-512 DualMask search threads auto-tuned to 8 on this machine (probe 8,492,011 H/s)
+ok: template with corrupted txid rejected
+ok: template with missing tx data rejected
+ok: store treats hostile strings as data (parameterized)
+ok: negative, overflow, zero, above-limit targets and short headers all rejected with reason codes
+ok: witness stripper reproduces Core txids on a real segwit transaction
+ok: oversize compute batch refused
+ALL ADVERSARIAL TESTS PASSED
+python3 tests/test_deepening.py
+full-workforce: C search threads auto-tuned to 4 on this machine (probe 2,599,951 H/s)
+RPC getblockcount attempt 1/3 failed: <urlopen error [Errno 111] Connection refused>
+RPC getblockcount attempt 2/3 failed: <urlopen error [Errno 111] Connection refused>
+RPC getblockcount attempt 3/3 failed: <urlopen error [Errno 111] Connection refused>
+RPC getblockcount attempt 1/3 failed: <urlopen error [Errno 111] Connection refused>
+ok: C midstate backend selected, benchmark 551,467 H/s vs python 95,354 H/s, candidates verified
+ok: event-driven monitor woke on the new block and synced (wait cycle 1.4s incl 1s delayed mining)
+ok: GBT longpoll returned the next template at height 1467 after 1.1s
+ok: watch-only wallet saw the incoming 0.33 BTC payment; scantxoutset cross-check agrees (33000000 sats)
+ok: peer node synced the full chain (1467 blocks) and followed 2 newly mined blocks over P2P
+ok: dashboard serves live status (height 1469, backend v512dual) and the page
+ALL DEEPENING TESTS PASSED
+python3 tests/test_cpu_aspect.py
+full-workforce: C search threads auto-tuned to 8 on this machine (probe 2,670,858 H/s)
+ok: C batch library digests match hashlib on 4000 consecutive nonces
+benchmarks: {'backend_selected': 'v512dual', 'c_midstate_engine': '915,255', 'python_hashlib_engine': '203,060', 'c_midstate_raw_1thr': '1,569,169', 'c_midstate_raw_2thr': '730,034', 'c_midstate_raw_4thr': '1,393,824', 'python_hashlib_loop': '146,986'}
+ok: C midstate engine 915,255 H/s beats Python engine 203,060 H/s
+ok: CPU miner (backend c only) mined 2 blocks accepted by Core, tip 1469 -> 1471
+ALL CPU ASPECT TESTS PASSED
+python3 tests/test_cpu_correction.py
+ok [c]: genesis digest exact; 6000 randomized digests match hashlib across 30 random headers
+ok [c]: target equality meets, target minus one misses, batch2 attempt count exact
+ok [c]: nonce boundaries 0, 1, 0xFFFFFFFE, 0xFFFFFFFF, max-only range, end-of-space batch digests, crossing and oversized ranges rejected
+ok [c]: early-exit hit counted 4 actual attempts of 100000 requested; miss attempts equal range size at 1,2,3,4,7,16 threads
+ok [c]: 8 concurrent independent searches x6 reps, every winner nonce and digest uncorrupted
+ok [c]: pthread_create failure injection (fail after 0 and after 1) loses no work, winner intact
+ok [intrin]: genesis digest exact; 6000 randomized digests match hashlib across 30 random headers
+ok [intrin]: target equality meets, target minus one misses, batch2 attempt count exact
+ok [intrin]: nonce boundaries 0, 1, 0xFFFFFFFE, 0xFFFFFFFF, max-only range, end-of-space batch digests, crossing and oversized ranges rejected
+ok [intrin]: early-exit hit counted 4 actual attempts of 100000 requested; miss attempts equal range size at 1,2,3,4,7,16 threads
+ok [intrin]: 8 concurrent independent searches x6 reps, every winner nonce and digest uncorrupted
+ok [intrin]: pthread_create failure injection (fail after 0 and after 1) loses no work, winner intact
+ok [bal-miner]: genesis FOUND with actual hash count, max-nonce range exact, wrapping and invalid ranges rejected
+full-workforce: C search threads auto-tuned to 4 on this machine (probe 2,405,470 H/s)
+ok [engine]: backend 'c' with native attempt counting; genesis hit counted 4811 actual attempts of 100000 requested, miss counted exactly 30000; Python fallback identified as backend 'cpu'
+benchmarks (miss scan, counted attempts, this VM under its live load): 1 thr 1,307,967 H/s, 2 thr 1,178,084 H/s, 4 thr 2,555,897 H/s
+ALL CPU CORRECTION TESTS PASSED
+python3 tests/test_rtl_aspects.py
+Traceback (most recent call last):
+  File "/home/hatch/workspace/bitcoin-autonomous-lab/tests/test_rtl_aspects.py", line 59, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/hatch/workspace/bitcoin-autonomous-lab/tests/test_rtl_aspects.py", line 32, in main
+    assert rc == 0 and "ALL RTL TESTS PASSED" in out, out[-2000:]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: /bin/sh: 1: iverilog: not found
+
+make: *** [Makefile:42: test-rtl] Error 1
+EXIT:2
+
+=== CONTINUATION (same day, same host): make halted at test-rtl above because make stops at the first failing prerequisite. The 24 targets make never reached were run individually below, sequentially, in Makefile order, to complete the per-target table. ===
+
+### TARGET test-solo
+python3 tests/test_solo_server.py
+ok: worker subscribed, job 1 received
+full-workforce: AVX-512 DualMask search threads auto-tuned to 2 on this machine (probe 9,132,137 H/s)
+ok: solo-mined block accepted by Core at height 1472: 0000001ac3d3412a26e273c58495059c33280d3a0db26548c6a960ccb80cc442
+shares accepted 1, rejected 0
+ok: per-worker accounting (winner tracked with its block; malformed share rejected under the second worker's own name)
+ALL SOLO SERVER TESTS PASSED
+### TARGET test-solo EXIT:0
+
+### TARGET test-solo-cutover
+python3 tests/test_solo_cutover.py
+ok: refresh refused during initial block download
+ok: chain mismatch refused (node is on chain 'regtest' but this server is configured for 'main'; refusing to serve work)
+ok: refresh refused when the node is unreachable
+ok: job built from a synced node, witness commitment parsed and validated
+ok: malformed witness commitment raises, no slice
+ok: attach_witness inverts strip_witness exactly
+ok: cutover node_ready matches IBD-false, gap <= 2
+ok: solo_smoke verifies tip and difficulty live, and rejects wrong ones
+solo-server: subscribe refused: node in initial block download (blocks 10 of headers 900000); refusing to serve work
+ok: subscribe during IBD gets no job; session is refused
+ok: endpoint resolution (default, solo, env, CLI, corrupt) and set_mode round-trip
+ALL SOLO CUTOVER TESTS PASSED
+### TARGET test-solo-cutover EXIT:0
+
+### TARGET test-research
+python3 tests/test_research.py
+ok: chain winners follow the geometric law (median scaled nonce 1.00, theory 0.69, blocks 1472)
+full-workforce: C search threads auto-tuned to 8 on this machine (probe 2,492,589 H/s)
+ok: 500k fresh hashes uniform (bit fraction 0.5000, lag1 0.5003, worst byte chi2 p 0.007)
+ok: reduced-round bias collapses between 20 and 24 rounds (16r 0.492, 20r 0.084, 24r 0.0091, 64r 0.0089)
+ALL RESEARCH TESTS PASSED
+### TARGET test-research EXIT:0
+
+### TARGET test-autopilot
+python3 tests/test_autopilot.py
+default worker name: htch-runtime
+relaunch backoff: start 1.0s, cap 30.0s
+SKIP: a live autopilot owns this checkout (pid 4904); lock verified by its existence
+ALL AUTOPILOT TESTS PASSED
+### TARGET test-autopilot EXIT:0
+
+### TARGET test-judgement
+python3 tests/test_judgement.py
+ok: nbits decodes to the network target
+ok: well formed fresh template accepted
+ok: malformed and stale templates rejected with reasons
+{"ts": "2026-11-16T00:57:36.916125+00:00", "event": "job", "job_id": "job-1", "generation": 1, "prevhash": "abababababababababababababababababababababababababababababababab", "nbits": "170355ff", "ntime": "6afa5500", "clean_jobs": true, "branches": 2}
+{"ts": "2026-11-16T00:57:36.916345+00:00", "event": "template_validated", "job_id": "job-1", "generation": 1, "network_difficulty": 84375672270222.44}
+{"ts": "2026-11-16T00:57:36.916504+00:00", "event": "job", "job_id": "job-2", "generation": 2, "prevhash": "abababababababababababababababababababababababababababababababab", "nbits": "170355ff", "ntime": "6afa550a", "clean_jobs": false, "branches": 2}
+{"ts": "2026-11-16T00:57:36.916533+00:00", "event": "template_validated", "job_id": "job-2", "generation": 2, "network_difficulty": 84375672270222.44}
+{"ts": "2026-11-16T00:57:36.916566+00:00", "event": "template_rejected", "job_id": "job-3", "problems": ["prevhash is not 32 bytes of hex"]}
+{"ts": "2026-11-16T00:57:36.916599+00:00", "event": "template_rejected", "job_id": "job-4", "problems": ["ntime regressed for the same tip: stale template echo"]}
+{"ts": "2026-11-16T00:57:36.916624+00:00", "event": "template_duplicate", "job_id": "job-2"}
+ok: client accepts freshest valid template, rejects broken and stale ones, ignores duplicates, logs all
+ok: difficulty is the exact DIFF1 / value ratio
+{"ts": "2026-11-16T00:57:37.141487+00:00", "event": "connected", "pool": "127.0.0.1:33871"}
+{"ts": "2026-11-16T00:57:37.205535+00:00", "event": "subscribed", "extranonce1": "aabbccdd", "extranonce2_size": 4}
+{"ts": "2026-11-16T00:57:37.205748+00:00", "event": "authorize_result", "ok": true, "error": null}
+{"ts": "2026-11-16T00:57:37.205795+00:00", "event": "set_difficulty", "difficulty": 1}
+{"ts": "2026-11-16T00:57:37.205861+00:00", "event": "job", "job_id": "job-a", "generation": 1, "prevhash": "abababababababababababababababababababababababababababababababab", "nbits": "170355ff", "ntime": "6afa5501", "clean_jobs": true, "branches": 2}
+{"ts": "2026-11-16T00:57:37.205890+00:00", "event": "template_validated", "job_id": "job-a", "generation": 1, "network_difficulty": 84375672270222.44}
+{"ts": "2026-11-16T00:57:37.208170+00:00", "event": "connection_error", "error": "pool closed connection", "action": "reconnecting"}
+{"ts": "2026-11-16T00:57:37.210108+00:00", "event": "connected", "pool": "127.0.0.1:33871"}
+{"ts": "2026-11-16T00:57:37.221791+00:00", "event": "subscribed", "extranonce1": "aabbccdd", "extranonce2_size": 4}
+{"ts": "2026-11-16T00:57:37.221923+00:00", "event": "authorize_result", "ok": true, "error": null}
+{"ts": "2026-11-16T00:57:37.221976+00:00", "event": "set_difficulty", "difficulty": 1}
+{"ts": "2026-11-16T00:57:37.222065+00:00", "event": "job", "job_id": "job-b", "generation": 3, "prevhash": "abababababababababababababababababababababababababababababababab", "nbits": "170355ff", "ntime": "6afa5515", "clean_jobs": true, "branches": 2}
+{"ts": "2026-11-16T00:57:37.222101+00:00", "event": "template_validated", "job_id": "job-b", "generation": 3, "network_difficulty": 84375672270222.44}
+{"ts": "2026-11-16T00:57:37.222138+00:00", "event": "reconnected", "pool": "127.0.0.1:33871"}
+ok: dropped pool connection reconnects and work resumes on the new session's template
+ALL JUDGEMENT TESTS PASSED
+### TARGET test-judgement EXIT:0
+
+### TARGET test-installer
+python3 tests/test_installer.py
+ok: installer dry run describes build, network, smoke, service, activation
+ok: network probe reports structured verdicts, records no credentials, writes nothing when checking
+ALL INSTALLER TESTS PASSED
+### TARGET test-installer EXIT:0
+
+### TARGET test-task003
+python3 tests/test_task003_corrections.py
+ok 003.1: mutex harness: normal init/publish/destroy, init failure propagated and not marked initialized, destroy after failed init is a no-op, lock failure publishes nothing and records the error
+ok 003.1: both C libraries: mutex init failure returns -4 with no search started, lock failure returns -3 with no winner, and both recover when injection is removed
+ok 003.2: batch_count clamps the final batch for sizes 1, 65535, 1000000 and larger-than-remaining, ends exactly at 2^32, and rejects invalid starts and sizes
+ok 003.2: full nonce-space walk with batch_size 65535: 65538 batches, every nonce covered exactly once, no gap, no overlap, no out-of-range batch
+ok 003.2: full nonce-space walk with batch_size 1000000: 4295 batches, every nonce covered exactly once, no gap, no overlap, no out-of-range batch
+ok 003.2: full nonce-space walk with batch_size 3000000000: 2 batches, every nonce covered exactly once, no gap, no overlap, no out-of-range batch
+ok 003.3: bench slices disjoint and complete for 1, 2, 3, 4, 7, 64 workers (equal slices, last absorbs the sub-thread-count remainder), bench output separates unique space from own-slice repeats, search output states winner_semantics=first-found
+full-workforce: C search threads auto-tuned to 4 on this machine (probe 1,756,882 H/s)
+ok 003.4: corrupt digest and wrong nonce from the native backend both trigger a recorded CPU rescan that finds the true first hit with exact attempt accounting; hard failure propagates; the genuine native candidate needs no rescan
+ok 003.5: overflow recovery: below/at/above capacity and all-match targets return the exact CPU-recounted candidate set with no duplicates; forced overflows split only the overflowing sub-range (researched_hashes accounted separately); final-nonce boundary exact
+ok 003.6: production self-test passes a correct stub, rejects a corrupt-candidate stub and a diagnostic-only stub; on this GPU-less VM the engine does not select CUDA and cuda-only fails clearly
+ok 003.7/4: shared subtraction-based range validation 12 of 12 on the host build of the CUDA header; CPU and GPU-shared-source differential sampling matches hashlib on randomized headers including the final nonce
+ok 003.1/7: ASan+UBSan clean (batch, intrinsics, miner, mutex harness); TSan clean under setarch -R for the same four, including the new mutex failure paths
+ok perf: C search counted rates on this contended VM (live mainnet miner and node running): 1t 1,332,306 H/s, 2t 1,014,135 H/s, 4t 1,533,966 H/s; CPU candidate verification 3.4 us each; CUDA device throughput: none exists (no GPU)
+ok regtest: fresh block accepted through the corrected native CPU backend: height 1473 hash 31b15a7597b3f042d21bd426d2ffada66f92b2523e8fa0900f50a72b42d8ac98 submitblock null, best-block match, hashes 1
+ALL TASK 003 CORRECTION TESTS PASSED (regtest block 31b15a7597b3f042d21bd426d2ffada66f92b2523e8fa0900f50a72b42d8ac98 at height 1473)
+### TARGET test-task003 EXIT:0
+
+### TARGET test-task0038
+python3 tests/test_task0038_abi.py
+ok 003.8 host ABI: legacy bal_cuda_batch validation 14 of 14 on the host build of the shared header (null header/target/hashes/flags, zero count, thread bounds, range crossing, exactly-max batch accepted, one-over-max and count*32-overflow attempts rejected, checked multiplication overflow)
+ok 003.8 sanitizers: host_checks clean under ASan+UBSan and under TSan (setarch -R), including the new ABI validation cases
+ok 003.8 library ABI: rebuilt libbal_cuda.so rejects null pointers (-1), bad threads (-1), range crossing (-4), over-max and overflow-attempt counts (-6) before any CUDA operation; bal_cuda_ctx_create leaves the output pointer null on size (-5), argument (-1) and runtime (35) failures alike
+ok 003.8 Python API: CudaContext.search_complete rejects 29 invalid inputs plus a crossing range, each with ZERO backend calls and the parameter named; valid boundaries accepted (start 0, final nonce alone, the whole space ending exactly at 2^32, 32-byte little-endian targets as bytes and bytearray)
+ok 003.8 Python API: CudaContext.search rejects bad header, target, range, over-max count and bad threads with zero native calls; a valid call reports the five accounting fields; the constructor validates max_count
+ok 003.8 accounting: exact-capacity, one-over-capacity, forced multi-split overflow and a 65536 range all return the exact recounted candidate set with no duplicates; the five fields hold on every call and device_hashes == unique_coverage + researched_hashes (forced case: unique 1024, researched 7840, device 8864, splits 220, candidates 512); an always-overflowing backend raises explicitly at count 1 and 8; max_chunk caps single-shot sizes
+full-workforce: C search threads auto-tuned to 8 on this machine (probe 3,459,240 H/s)
+ok 003.8 fail-closed batch: corrupt C candidate, out-of-range C candidate and corrupt CUDA candidate are each counted, recorded, discarded with the whole enumeration, and the range is independently re-covered by the trusted rescan (exact candidate set, exact accounting, GPU device_hashes preserved separately); a CPU-fallback verification failure raises an explicit error instead of a false no-hit
+ok 003.8 regtest: fresh block accepted through the native CPU backend: height 1474 hash 2be5b68b6c0b90415a8c6c19b7c4dac753cd523c9e81996fe0be9cdb1b747099 submitblock null, best-block match
+ALL TASK 003.8 TESTS PASSED (regtest block 2be5b68b6c0b90415a8c6c19b7c4dac753cd523c9e81996fe0be9cdb1b747099 at height 1474; forced-overflow accounting {'sub_batches': 222, 'overflow_events': 220, 'overflow_splits': 220, 'researched_hashes': 7840, 'unique_coverage': 1024, 'device_hashes': 8864, 'backend_hashes': 8864, 'candidate_count': 512, 'requested_hashes': 1024, 'initial_search_seconds': 0.001743867000186583, 'recovery_search_seconds': 0.027282060009383713, 'search_seconds': 0.029025927009570296, 'kernel_ms_total': 0.0})
+### TARGET test-task0038 EXIT:0
+
+### TARGET test-task0039
+python3 tests/test_task0039_accounting.py
+full-workforce: AVX-512 DualMask search threads auto-tuned to 4 on this machine (probe 10,520,107 H/s)
+ok 003.9 cuda no-overflow: requested/unique/device/backend all exact, verification counted separately (0 candidates, 0 verification hashes)
+ok 003.9 cuda overflow: device 8864 = unique 1024 + researched 7840 across 220 splits; backend == device; 512 candidates cost exactly 512 verification hashes, counted nowhere else
+ok 003.9 multiple splits: all-match range of 64 resolved through 31 splits, device 384 = unique 64 + researched 320
+ok 003.9 cpu fallback: backend 2000, device 0 (no device work claimed), verification 1021 separate; CUDA identity correctly not applied
+ok 003.9 native C batch: backend 2000 counted exactly, device 0, one verification hash per presented candidate
+ok 003.9 full-range coverage: unique_coverage == requested == 4097 on a completed enumeration
+Traceback (most recent call last):
+  File "/home/hatch/workspace/bitcoin-autonomous-lab/tests/test_task0039_accounting.py", line 580, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/hatch/workspace/bitcoin-autonomous-lab/tests/test_task0039_accounting.py", line 565, in main
+    test_early_exit_accounting()
+  File "/home/hatch/workspace/bitcoin-autonomous-lab/tests/test_task0039_accounting.py", line 290, in test_early_exit_accounting
+    assert attempted < 100000 // 10, attempted
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 11149
+make: *** [Makefile:69: test-task0039] Error 1
+### TARGET test-task0039 EXIT:2
+
+### TARGET test-avx512
+python3 tests/test_avx512_integration.py
+full-workforce: C search threads auto-tuned to 8 on this machine (probe 2,046,488 H/s)
+ok dispatch: requested='v512' engine selects v512 via the CPUID probe; requested='c' still selects C alone
+ok incomplete-library fallback (D-1 regression): probe-only and search-less v512 libraries are rejected with the missing entry points named, the engine falls back to C and mines genesis, and the build smoke test returns its error instead of raising
+ok differentials: 196,608 randomized digests through the production v512 batch ABI match hashlib exactly, counted actuals exact
+ok candidate sets: batch_search candidate sets equal the independent hashlib recount on randomized headers and targets; accounting fields exact in kind
+ok search gates: genesis exact, early-exit wave accounting sound, candidate verified independently, final-nonce boundary exact, target equality meets and minus-one misses
+ok regtest: fresh block accepted through the production AVX-512 MB backend: height 1475 hash 5933c7959493c9824fd83252e4e0c4c3e36d0e9815dd6943e94541344fbc55ca submitblock null, best-block match
+ALL AVX512 INTEGRATION TESTS PASSED
+### TARGET test-avx512 EXIT:0
+
+### TARGET test-avx512dual
+python3 tests/test_avx512_dual_integration.py
+full-workforce: C search threads auto-tuned to 8 on this machine (probe 2,318,388 H/s)
+ok dispatch: auto engine selects v512dual via the CPUID probe; requested='v512' still selects the single-batch v512 backend and requested='c' still selects C alone
+ok forced fallbacks: probe failure, dual build failure and absent dual library each land on v512 and keep mining genesis; incomplete dual libraries are rejected with the missing entry points named (D-1 mirror) and the build smoke test returns its error instead of raising
+ok differentials: 197,616 digests through the production DualMask batch ABI match hashlib exactly, including sizes 15/16/17/31/32/33/63/64/65 and spans ending at 2^32
+ok candidate sets: batch_search candidate sets equal the independent hashlib recount at mainnet-like density and at about 2^-12; backend_hashes exactly the predicted dual-walker lane count
+ok search gates: genesis exact, dual-atomic accounting exact on misses at boundary sizes, candidate verified independently, final-nonce boundary exact, target equality meets and minus-one misses
+ok regtest: fresh block accepted through the production AVX-512 DualMask backend: height 1476 hash 16aba63139570d090efd41f24cafc51d379a22c4ab1a3a58f5437ac51b3f4769 submitblock null, best-block match
+ALL AVX512 DUAL INTEGRATION TESTS PASSED
+### TARGET test-avx512dual EXIT:0
+
+### TARGET test-mainnet-live
+python3 tests/test_mainnet_live_accounting.py
+full-workforce: AVX-512 DualMask search threads auto-tuned to 2 on this machine (probe 12,748,996 H/s)
+ok early exit (auto): counter advanced by 32, exactly the engine attempted count, not the 100000 nonce span
+ok full miss (auto): counter advanced by 30000 = span = attempted
+ok early exit (c): counter advanced by 2236, exactly the engine attempted count, not the 100000 nonce span
+ok full miss (c): counter advanced by 30000 = span = attempted
+ok fallback: no stats, hit counts start..winner (51), miss counts 0, span size never used
+ALL MAINNET LIVE ACCOUNTING TESTS PASSED
+### TARGET test-mainnet-live EXIT:0
+
+### TARGET test-template-cache
+python3 tests/test_template_cache.py
+ok G-A D1 middle_tx_changed: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A first_tx_changed: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A last_tx_changed: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A D3 tx_reordered: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A D2 witness_only_change_txid_fixed: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A coinbase_value_changed_valid: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A coinbase_value_changed_invalid: sibling refused, both paths raise, no new prepare
+ok G-A prevhash_changed: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A version_changed: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A bits_changed: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A D5 target_changed: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A D4 flags_changed: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A curtime_changed_per_build_input: served under same identity, byte-identical, no new prepare
+ok G-A tx_added: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A tx_removed: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A commitment_field_removed: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A D7 commitment_field_wrong: sibling refused, both paths raise, no new prepare
+ok G-A D6 fee_up_value_fixed: sibling refused, both paths raise, no new prepare
+ok G-A fee_moved_total_fixed: sibling refused, new entry prepared, byte-identical to uncached
+ok G-A: 19 adversarial cases pass (D1 to D7 included)
+ok G-B1 identical inputs reuse cache: prepares=1 hits=1, byte-identical
+ok G-B2 reused entry byte-identical over boundary extranonces
+ok G-B3 extranonce variation byte-identical (20)
+ok G-B4 steps shape: 1 prepare for 64 extranonce steps, all byte-identical
+ok G-B5 uncached fallback byte-identical, cache untouched
+ok G-C randomised differential campaign: 1320 (template, extranonce) cases byte-identical, cache prepares=11
+ok G-D txid_field_wrong: TemplateError on uncached, cached first serve, sibling serve and prepare
+ok G-D tx_data_missing: TemplateError on uncached, cached first serve, sibling serve and prepare
+ok G-D tx_txid_missing: TemplateError on uncached, cached first serve, sibling serve and prepare
+ok G-D coinbasevalue_mismatch: TemplateError on uncached, cached first serve, sibling serve and prepare
+ok G-D fee_up_value_fixed: TemplateError on uncached, cached first serve, sibling serve and prepare
+ok G-D commitment_wrong: TemplateError on uncached, cached first serve, sibling serve and prepare
+full-workforce: AVX-512 DualMask search threads auto-tuned to 8 on this machine (probe 10,701,156 H/s)
+ok G-E regtest: block accepted through the production MiningEngine with the template cache active (mine_cycle steps fast path): cache prepares=1 hits=0 identity_checks=1
+REGTEST height=1477 hash=69e32df71e51dc81f4f0a3b0160ccb146284fe0f994ce5b943cb808811dbcc66
+ALL TEMPLATE CACHE TESTS PASSED
+### TARGET test-template-cache EXIT:0
+
+### TARGET test-avx512flags
+python3 tests/test_avx512_flags_integration.py
+full-workforce: AVX-512 DualMask search threads auto-tuned to 8 on this machine (probe 11,597,062 H/s)
+ok selection: auto engine keeps v512dual for search and selects the flags batch; requested='v512' keeps v512 search and selects the flags batch
+ok pins: requested='c' and requested='cpu' select no flags path
+ok forced fallbacks: probe failure, incomplete library (missing entry point named, D-1 mirror), corrupted-source build failure, absent library and runtime flags failure each leave batch_search on the preserved materialised batch with exact candidate sets
+ok objdump census: zero unambiguous AVX-512DQ, VBMI or IFMA mnemonics in the built flags library (no vpmullq, vpermi2/vpermt2 families, vpmultishiftqb, vpmadd52 forms or vcvt*qq forms)
+ok differentials: 491,520 batch differentials through the production flags path match hashlib and the preserved production batch byte for byte on flagged digests and candidate sets (density 1 full-array comparison plus sparse densities)
+ok candidate sets and boundaries: batch_search candidate sets equal the hashlib recount at densities 0, 2^-16, 2^-8 and 1 with batch_path 'flags'; attempted/backend accounting identical across the flags, v512 and v512dual batch ABIs and equal to the independent prediction; sizes 15/16/17/31/32/33/63/64/65 and spans ending at 2^32 exact; target equality meets, minus one misses
+ok regtest: fresh block accepted through the production ComputeEngine: height 1478 hash 5626d8309af983d4448f58451e3df954e7722c6ca6f0a75859278ce6ff05b509; its header re-enumerated through the flags-routed batch_search returned the block nonce among 25123 verified candidates
+ALL AVX512 FLAGS INTEGRATION TESTS PASSED
+### TARGET test-avx512flags EXIT:0
+
+### TARGET test-exp036
+python3 tests/test_exp036_verification.py
+ok: boundary semantics are exact-integer; the float judgement cannot distinguish target from target + 1
+ok: genesis is a block candidate; mutated header is below target; share classification is separate
+ok: negative, overflow and above-limit targets are invalid; pow limits are per chain with a strict fallback
+ok: submitblock responses classified, verbatim kept by the caller
+ok: solo block verified exactly, submitted once, counted only when chain state confirms it as tip
+ok: overflow-target candidate rejected by exact verification; submitblock never called
+ok: header/job target mismatch rejected before submission
+solo-server: BLOCK NOT ACCEPTED at height 101: submitblock said None (accepted), chain state not-in-chain
+ok: submitblock None without chain confirmation is recorded as not accepted, not as a found block
+solo-server: BLOCK NOT ACCEPTED at height 101: submitblock said 'duplicate-invalid' (duplicate-invalid), chain state not-in-chain
+solo-server: BLOCK NOT ACCEPTED at height 101: submitblock said 'submitblock RPC failed: connection reset' (rpc-error), chain state unknown
+ok: rejection strings classified verbatim; RPC failure keeps the candidate record and counts no block
+ok: chain acceptance distinguishes tip, in-chain, fork and unknown blocks
+ok: regtest block through the fixed solo path is chain-verified at height 1479: 0095aca354cf03f6f28dafe8ad536afee683f21f0aa097095a18cd868cb32796
+ok: low-difficulty share rejected on the real node; no submission, tip unmoved
+ALL EXP-036 VERIFICATION TESTS PASSED
+### TARGET test-exp036 EXIT:0
+
+### TARGET test-exp034
+python3 tests/test_exp034_job_template.py
+ok A height_only_change: sibling refused, new entry, byte-identical to uncached
+ok A mintime_per_build_input: same identity, header time follows mintime on both paths
+ok A dwc_field_on_witnessless_template: new identity, identical bytes (safe over-keying)
+ok A dwc_string_padded_still_contains: sibling refused, new entry, byte-identical to uncached
+ok A target_string_case: new identity, identical bytes (representation keyed, safe over-keying)
+ok A unmodelled_core_fields_ignored: served under the same identity, byte-identical to uncached
+ok A coinbaseaux_missing: served under the same identity, byte-identical to uncached
+ok A cache_bound: cap 128 held over 330 prepares, oldest-first eviction, held entry survives eviction and stays byte-identical
+ok A held_object_mutation_boundary: version, prevhash and bits follow an in-place mutation of the held template; tx mutation does not move root or body (documented trust boundary, see report)
+ok A extranonce_stepping_anatomy: steps differ only via the coinbase and its merkle root
+ok A equal_content_sibling_served: deep-copy sibling serves under the prepared identity
+ok C1 two_engine_collision: two MiningEngine instances with the same payout build byte-identical candidates at all 64 extranonce rounds
+ok C2 separation_by_payout_only: a different payout address separates the spaces; nothing else does
+ok C3 engine_vs_solo_anatomy: engine scriptSig is height + /BAL/ + en4; solo scriptSig is height + /BAL/ + en1 + en2 (4 bytes longer, no collision with empty flags); the solo tag /BAL-solo/ never enters the coinbase
+ok C4 extranonce_space_fix: configured spaces are disjoint, union equals the default space, default is (0, 64), mine_cycle steps exactly the configured rounds, out-of-range spaces are refused
+ok D1 job_refresher: tip-hash keyed refresh, no refresh on time alone, age cap refreshes, superseded job ids are cancelled (unknown job)
+ok D2 engine_freshness: mid-cycle tip change does not invalidate in-flight work; the next cycle picks it up; version is never rolled inside a cycle
+ok D3 stratum_client_freshness: same-tip ntime regression rejected as stale echo; new prevhash with an older ntime accepted as new work; exact duplicate ignored
+ok B1 solo_branch_vs_full_root: branch depth 3 over 6 template txs; worker header byte-identical to server header
+ok B2 solo_block_vs_core: block at height 1480 accepted by Core; Core merkleroot and tx order match the job construction
+full-workforce: AVX-512 DualMask search threads auto-tuned to 8 on this machine (probe 11,180,432 H/s)
+ok B3 engine_block_vs_core: block at height 1481 accepted; Core merkleroot, tx order, coinbase value 9782554 sats and payout script all match the template construction (cache prepares=1)
+ALL EXP-034 JOB AND TEMPLATE TESTS PASSED
+### TARGET test-exp034 EXIT:0
+
+### TARGET test-exp037
+python3 tests/test_exp037_statistics.py
+ok: whole-log census counts 10 accepted / 3 rejected past the old window (old algorithm found 3); last_epoch from the dropped region
+ok: incremental append counted once, idle poll counts nothing twice
+ok: partial line held back, completed line counted
+ok: persisted offset survives a new counter instance
+ok: rotation to a new log recounts from zero
+ok: truncation below the offset recounts
+ok: corrupt state file falls back to a full recount
+ok: missing log counts zero
+ok: evidence_stats(path, state) keeps its contract
+ok: production log census 415 accepted matches an independent brute-force count
+ok: categories stay separate, per worker and per backend; unknown and negative records refused
+ok: windowed rates derive from counter samples only
+ok: probability formulas pinned to known values and identical to the research originals
+ok: BR-011 percentile and exact-target anchors hold, with the two 63.2 percent anchors pinned separately
+ok: frontier accountant separates unique coverage, actual computations and repeated work exactly, and a hit chunk earns no coverage
+ok: SafeRecorder swallows and counts every recording failure; mining never sees it
+ok: MiningEngine.mine_cycle records search accounting as it happens, and a checkpoint-less rescan lands in repeated_work, not in coverage
+ok: a mine_cycle block records candidates, blocks_submitted and blocks_accepted separately, with no coverage for the unfinished hit chunk
+ok: mainnet_live candidate and share-result recorders land in separated counters, per worker and per backend
+ok: StratumClient share verdicts reach the statistics through the hook as they happen; a failing or absent hook changes nothing
+ALL EXP-037 STATISTICS TESTS PASSED
+### TARGET test-exp037 EXIT:0
+
+### TARGET test-exp038
+python3 tests/test_exp038_checkpoint.py
+ok: budget-interrupted cycle checkpoints exactly the one completed round
+ok: restarted engine resumes at the frontier; the two processes' ranges are disjoint and complete
+ok: a completed space is not rescanned under the same template
+ok: a new template starts fresh, and says why
+ok: mid-round frontier resumes inside the round, at the exact nonce
+ok: checkpoint match rules, completion verdict, out-of-space and corrupt-file handling
+ok: without a checkpoint the engine rescans exactly as it always did, and results carry no checkpoint key
+ALL EXP-038 CHECKPOINT TESTS PASSED
+### TARGET test-exp038 EXIT:0
+
+### TARGET test-probability
+python3 tests/test_probability_percentiles.py
+ok 1: median == ln2 * mean at R=20600000.0 D=80000000000000.0
+ok 2: p90 == ln10 * mean at R=20600000.0 D=80000000000000.0
+ok 3: p95 == ln20 * mean at R=20600000.0 D=80000000000000.0
+ok 4: p99 == ln100 * mean at R=20600000.0 D=80000000000000.0
+ok 5: median is the 0.5 quantile at R=20600000.0 D=80000000000000.0
+ok 6: median == ln2 * mean at R=4294967296 D=1.0
+ok 7: p90 == ln10 * mean at R=4294967296 D=1.0
+ok 8: p95 == ln20 * mean at R=4294967296 D=1.0
+ok 9: p99 == ln100 * mean at R=4294967296 D=1.0
+ok 10: median is the 0.5 quantile at R=4294967296 D=1.0
+ok 11: median == ln2 * mean at R=500000.0 D=1234.5
+ok 12: p90 == ln10 * mean at R=500000.0 D=1234.5
+ok 13: p95 == ln20 * mean at R=500000.0 D=1234.5
+ok 14: p99 == ln100 * mean at R=500000.0 D=1234.5
+ok 15: median is the 0.5 quantile at R=500000.0 D=1234.5
+ok 16: CDF round trip q=0.5 at R=20600000.0 D=80000000000000.0: 0.4999999999999999
+ok 17: CDF round trip q=0.9 at R=20600000.0 D=80000000000000.0: 0.9
+ok 18: CDF round trip q=0.95 at R=20600000.0 D=80000000000000.0: 0.95
+ok 19: CDF round trip q=0.99 at R=20600000.0 D=80000000000000.0: 0.99
+ok 20: CDF round trip q=0.5 at R=4294967296 D=1.0: 0.5
+ok 21: CDF round trip q=0.9 at R=4294967296 D=1.0: 0.9
+ok 22: CDF round trip q=0.95 at R=4294967296 D=1.0: 0.95
+ok 23: CDF round trip q=0.99 at R=4294967296 D=1.0: 0.99
+ok 24: CDF round trip q=0.5 at R=12345.0 D=7.25: 0.5
+ok 25: CDF round trip q=0.9 at R=12345.0 D=7.25: 0.9
+ok 26: CDF round trip q=0.95 at R=12345.0 D=7.25: 0.95
+ok 27: CDF round trip q=0.99 at R=12345.0 D=7.25: 0.99
+ok 28: q = 0 refused
+ok 29: q = 1 refused
+ok 30: negative q refused
+ok 31: q above 1 refused
+ok 32: p = 0 refused
+ok 33: p = 100 refused
+ok 34: p above 100 refused
+ok 35: zero hashrate quantile is infinite
+ok 36: zero hashrate median is infinite
+ok 37: zero hashrate p99 is infinite
+ok 38: zero difficulty still refused in quantiles
+ok 39: expected_hashes_exact returns an exact Fraction
+ok 40: expected_hashes_exact(T1) == 2^256 / (T1 + 1) exactly
+ok 41: float(expected_hashes_exact(T1)) == 4295032833.000015 (got 4295032833.000015)
+ok 42: target 0 expects exactly 2^256 hashes
+ok 43: maximum target expects exactly 1 hash
+ok 44: the 2^32 identity is exact at the proof-of-work limit target 2^224 - 1, not at T1
+ok 45: negative target refused
+ok 46: target 2^256 refused
+ok 47: non-int target refused
+ok 48: exact / difficulty at T1 == 1.0000152590218967
+ok 49: difficulty-form anchor: 0.6321205588713845 == 0.6321205589 to 1e-9
+ok 50: exact-target anchor: 0.6321149454337636 == 0.6321149454 to 1e-9
+ok 51: difficulty form FAILS the exact anchor tolerance (the two anchors are not interchangeable)
+ok 52: exact form FAILS the difficulty anchor tolerance (the two anchors are not interchangeable)
+ok 53: exact-target probability is the smaller of the two, as the section 4 factor requires
+ok 54: zero hashes give zero probability (difficulty form)
+ok 55: zero hashes give zero probability (exact form)
+ok 56: negative hash count refused (difficulty)
+ok 57: negative hash count refused (exact)
+ok 58: non-int hash count refused (difficulty)
+ok 59: out-of-range target refused (exact prob)
+ok 60: maximum target: every hash succeeds, probability 1
+ok 61: target 0, one hash: probability exactly 2^-256
+ok 62: difficulty-form probability grows with N and stays below 1
+ok 63: N-trial and Poisson time forms agree to 1e-9 at one expected period (distinct models, 2^-33 apart)
+ok 64: period lengths are the model section 6 values
+ok 65: period day is prob_at_least_one over 86400 seconds
+ok 66: period week is prob_at_least_one over 604800 seconds
+ok 67: period month is prob_at_least_one over 2629800 seconds
+ok 68: period year is prob_at_least_one over 31557600 seconds
+ok 69: period ten_years is prob_at_least_one over 315576000 seconds
+ok 70: period day agrees with the pre-existing days helper
+ok 71: zero hashrate gives zero probability over a year
+ok 72: unknown period name refused
+ok 73: period names are exact (Day refused)
+ALL PROBABILITY PERCENTILE TESTS PASSED (73 checks)
+### TARGET test-probability EXIT:0
+
+### TARGET test-exp039
+python3 tests/test_exp039_fallback_integration.py
+full-workforce: AVX-512 DualMask search threads auto-tuned to 8 on this machine (probe 14,039,918 H/s)
+ok selection: auto engine backend is v512dual (unchanged dispatch above the new tiers); describe() reports both fallback tiers
+ok selection: requested='shani' selects the SHA-NI streams tier (CPUID probe confirms the SHA extensions and SSSE3, self-tests pass)
+ok selection: requested='avx2' selects the AVX2 multi-buffer tier (CPUID probe confirms AVX2, batch self-test passes)
+ok pins: requested='c' selects the C backend alone; neither fallback tier is entered
+ok forced fallbacks: for each tier, a probe-failure library (never entered), a symbol-incomplete library (missing entry point named, D-1 mirror; build smoke test agrees) and an absent library each leave the engine on the next tier down with the reason recorded and exact candidate sets
+ok objdump census: AVX2 library has ymm but zero zmm and zero mask registers; SHA-NI library has sha256rnds2 and zero ymm/zmm; both compiled probe objects contain no vector registers at all
+ok differentials (shani): 124351 batch digests through the ComputeEngine seam byte-identical to hashlib, including counts 1 to 17, unaligned starts and a span ending exactly at 2^32
+ok differentials (avx2): 124351 batch digests through the ComputeEngine seam byte-identical to hashlib, including counts 1 to 17, unaligned starts and a span ending exactly at 2^32
+ok candidate sets and search (shani): batch candidate sets identical to the hashlib recount at densities 0, 2^-16, 2^-8 and 1; planted-hit search returns the exact CPU digest; clean miss reports attempted == count with the tier's accounting invariant holding
+ok candidate sets and search (avx2): batch candidate sets identical to the hashlib recount at densities 0, 2^-16, 2^-8 and 1; planted-hit search returns the exact CPU digest; clean miss reports attempted == count with the tier's accounting invariant holding
+ok regtest (shani): fresh block accepted through the production ComputeEngine with the shani tier forced active: height 1482 hash 5b2c3ff9c6124b04580bc31af5139ab4fc642cd160c7d186ac0be96a071e2612
+ok regtest (avx2): fresh block accepted through the production ComputeEngine with the avx2 tier forced active: height 1483 hash 49538428502cb08d0dbc3a6fab8c60fc6c10b97e556ce02d42e866e07381a378
+EXP-039 fallback integration suite: ALL PASSED
+### TARGET test-exp039 EXIT:0
+
+### TARGET test-exp040
+python3 tests/test_exp040_category_f.py
+full-workforce: AVX-512 DualMask search threads auto-tuned to 2 on this machine (probe 19,395,502 H/s)
+  [A s0 run 0] accepted=True height=1485 wall=0.0176s hashes=32 failed=False
+  [A s0 run 1] accepted=True height=1486 wall=0.0119s hashes=32 failed=False
+  session file: /tmp/exp040-test-k6ek3rgu/session_A_0_20261116T010403Z.json
+ok: scenario A session: 2 runs accepted and EXP-036 verified, stage partition closes, tx_count 1
+  [B s0 run 0] accepted=True height=1490 wall=0.0817s hashes=32 failed=False
+  [B s0 run 1] accepted=True height=1491 wall=0.1788s hashes=32 failed=False
+  session file: /tmp/exp040-test-k6ek3rgu/session_B_0_20261116T010412Z.json
+ok: scenario B session: 2 runs accepted and EXP-036 verified, stage partition closes, tx_count 41
+ALL EXP-040 CATEGORY F TESTS PASSED
+### TARGET test-exp040 EXIT:0
+
+### TARGET test-agent-intelligence
+python3 tests/test_agent_intelligence.py
+full-workforce: AVX-512 DualMask search threads auto-tuned to 2 on this machine (probe 11,169,841 H/s)
+ALL AGENT INTELLIGENCE TESTS PASSED (86 checks)
+### TARGET test-agent-intelligence EXIT:0
+
+### TARGET test-agent-awareness
+python3 tests/test_agent_awareness.py
+ALL AGENT AWARENESS TESTS PASSED (51 checks)
+### TARGET test-agent-awareness EXIT:0
+
+### TARGET test-agent-operations
+python3 tests/test_agent_operations.py
+full-workforce: C search threads auto-tuned to 8 on this machine (probe 2,754,602 H/s)
+resources campaign: 240 trials passed, 4759 reassignments, completed coverage pairwise disjoint and union-consistent
+ALL AGENT OPERATIONS TESTS PASSED (10306 checks)
+### TARGET test-agent-operations EXIT:0
+
+### RERUN test-task0039 (single allowed rerun to separate flake from defect)
+python3 tests/test_task0039_accounting.py
+full-workforce: AVX-512 DualMask search threads auto-tuned to 8 on this machine (probe 30,234,397 H/s)
+ok 003.9 cuda no-overflow: requested/unique/device/backend all exact, verification counted separately (0 candidates, 0 verification hashes)
+ok 003.9 cuda overflow: device 8864 = unique 1024 + researched 7840 across 220 splits; backend == device; 512 candidates cost exactly 512 verification hashes, counted nowhere else
+ok 003.9 multiple splits: all-match range of 64 resolved through 31 splits, device 384 = unique 64 + researched 320
+ok 003.9 cpu fallback: backend 2000, device 0 (no device work claimed), verification 1021 separate; CUDA identity correctly not applied
+ok 003.9 native C batch: backend 2000 counted exactly, device 0, one verification hash per presented candidate
+ok 003.9 full-range coverage: unique_coverage == requested == 4097 on a completed enumeration
+ok 003.9 early-exit: genesis hit reports backend_hashes == counted attempts (far below the 100000 requested), unique_coverage == attempts, exactly 1 verification hash; miss counts exactly 30000 with zero verification work
+ok 003.9 early-exit rescan: backend 6, verification 1 + 1 rescan, device 0, coverage honestly marked unavailable after the rescan
+ok 003.9 fail-closed split: backend 2000, verification 3022 (1 presented + 2000 rescan + 1021 re-verifications), no double counting
+ok 003.9 HEADLINE benchmark: requested 1024 but actual backend computations 5120; benchmark reports 2560.0 H/s actual (old requested-count code would have reported 512.0), coverage 512.0/s separate, researched share 0.8 visible
+ok 003.9 benchmark integration: 2 batches requested 2048, actual device computations 10240 after 30 overflow splits; rate is based on the actual total
+ok 003.9 benchmark cpu: backend rate from actual CPU computations only; device totals exactly 0 with an explicit note
+ok 003.9 benchmark zero/failed: zero batches give all-zero stats; an invalid batch and a mid-run failure are marked failed with partial totals kept separate, and benchmark() raises explicitly
+ok 003.9 regtest: fresh block accepted through the native CPU backend: height 1492 hash 6bbb693273d86a7907aa26a1767c2a33f5a763dffab3b7fd791dc4ac38e5fe75 submitblock null, best-block match
+ALL TASK 003.9 TESTS PASSED (regtest block 6bbb693273d86a7907aa26a1767c2a33f5a763dffab3b7fd791dc4ac38e5fe75 at height 1492)
+RERUN_EXIT:0
