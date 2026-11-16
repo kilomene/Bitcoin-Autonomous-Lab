@@ -36,8 +36,12 @@ Rollback is always available from the integrated and
 monitored states.
 """
 
+import math
+import os
+import re
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 
 OBSERVE = "observe"
 HYPOTHESISE = "hypothesise"
@@ -85,39 +89,193 @@ class LoopRecord:
     evidence: dict = field(default_factory=dict)
     state: str = OBSERVE
     history: list = field(default_factory=list)
+    # Optional expected binding (Prompt 1): when set, every
+    # evidence record in the bundle must carry exactly this
+    # artifact hash and source commit.
+    artifact_sha256: str = ""
+    source_commit: str = ""
+
+
+# Strict evidence schema (Autonomous Mining Brain, Prompt 1,
+# item A). An evidence item is a verification record: a dict
+# with passed exactly Boolean True, a non-empty verifier_id, a
+# 64-char lowercase hex artifact_sha256, a non-empty
+# source_commit, a verification_method from this closed
+# allowlist, and an ISO-8601 parseable timestamp. Anything
+# else fails closed. Truthiness is never consulted: the string
+# "false", the string "true" and the integer 1 are all refused.
+ALLOWED_VERIFICATION_METHODS = frozenset({
+    "differential_reference",
+    "independent_recompute",
+    "statistical_replication",
+    "chain_acceptance",
+})
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _is_number(value):
+    return isinstance(value, (int, float)) and \
+        not isinstance(value, bool)
+
+
+def _valid_timestamp(value):
+    if not isinstance(value, str) or not value:
+        return False
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        datetime.fromisoformat(text)
+        return True
+    except ValueError:
+        return False
+
+
+def validate_evidence_record(value):
+    """Strict schema check for one verification record.
+    Returns a list of problems; empty means the record is
+    schema-valid AND passed is Boolean True."""
+    if not isinstance(value, dict):
+        return ["record is not a dict"]
+    problems = []
+    if "passed" not in value:
+        problems.append("passed field missing")
+    elif type(value["passed"]) is not bool:
+        problems.append("passed is not a Boolean")
+    elif value["passed"] is not True:
+        problems.append("passed is not True")
+    vid = value.get("verifier_id")
+    if not isinstance(vid, str) or not vid.strip():
+        problems.append("verifier_id missing or empty")
+    art = value.get("artifact_sha256")
+    if not isinstance(art, str) or not _HEX64.match(art):
+        problems.append(
+            "artifact_sha256 is not a 64-char lowercase hex "
+            "string")
+    commit = value.get("source_commit")
+    if not isinstance(commit, str) or not commit.strip():
+        problems.append("source_commit missing or empty")
+    method = value.get("verification_method")
+    if method not in ALLOWED_VERIFICATION_METHODS:
+        problems.append(
+            f"verification_method {method!r} not in the "
+            "allowlist")
+    if not _valid_timestamp(value.get("timestamp")):
+        problems.append("timestamp is not ISO-8601 parseable")
+    return problems
 
 
 def _passed(value):
-    """An evidence item counts as passed when it is True or a
-    dict with a truthy pass/passed/ok field."""
-    if value is True:
-        return True
-    if isinstance(value, dict):
-        for key in ("pass", "passed", "ok", "result"):
-            if key in value:
-                return bool(value[key]) and \
-                    value[key] != "fail"
-    return False
+    """Strict form: True only for a schema-valid verification
+    record whose passed field is Boolean True. (Prompt 1
+    replaced the previous truthiness check, under which a
+    dict like {"result": "false"} passed.)"""
+    return isinstance(value, dict) and \
+        not validate_evidence_record(value)
 
 
-def validate_integrate_evidence(record):
+def _default_verifier_key_path():
+    from . import verifier as _verifier
+    return _verifier.default_key_path()
+
+
+def _verify_independent_signature(record, key_path):
+    """Verify the HMAC signature on an independent
+    verification record against the verifier key file.
+    Returns a problem string, or None when the signature is
+    valid."""
+    from . import verifier as _verifier
+    path = key_path or _default_verifier_key_path()
+    if not os.path.isfile(path):
+        return ("independent verification signature cannot be "
+                "verified: verifier key file unavailable")
+    try:
+        key = _verifier.load_key(path)
+    except OSError as exc:
+        return (f"independent verification signature cannot "
+                f"be verified: verifier key unreadable ({exc})")
+    if not _verifier.verify_signature(record, key):
+        return ("independent verification signature invalid "
+                "or missing: the record was not produced by "
+                "the independent verifier service")
+    return None
+
+
+def validate_integrate_evidence(record, verifier_key_path=None):
     """The list of missing or inadequate evidence items for
-    the integrate gate; empty means the gate passes."""
+    the integrate gate; empty means the gate passes.
+
+    Strict schema (Prompt 1): correctness, differential and
+    independent verification must each be a valid verification
+    record (see validate_evidence_record). The independent
+    record must additionally carry a verifier_id different
+    from the implementation author and a valid HMAC signature
+    from the verifier service (see verifier.py); an unsigned
+    or author-signed record is refused. All records in the
+    bundle must bind the same artifact hash and source commit,
+    and must match the record's expected binding when one is
+    set. The EXP-017 verdict rejects NaN and infinity anywhere
+    and malformed confidence intervals."""
     missing = []
     ev = record.evidence or {}
-    if not _passed(ev.get("correctness")):
-        missing.append("correctness pass")
-    if not _passed(ev.get("differential")):
-        missing.append("differential pass")
+    for key, label in (("correctness", "correctness pass"),
+                       ("differential", "differential pass")):
+        item = ev.get(key)
+        if item is None:
+            missing.append(label)
+        else:
+            problems = validate_evidence_record(item)
+            if problems:
+                missing.append(
+                    f"{label} (invalid verification record: "
+                    f"{'; '.join(problems)})")
     indep = ev.get("independent_verification")
-    if not isinstance(indep, dict) or not indep.get("author"):
+    if not isinstance(indep, dict):
         missing.append("independent verification record")
-    elif indep.get("author") == record.implementation_author:
+    else:
+        problems = validate_evidence_record(indep)
+        if problems:
+            missing.append(
+                "independent verification record (invalid: "
+                + "; ".join(problems) + ")")
+        elif indep.get("verifier_id") == \
+                record.implementation_author:
+            missing.append(
+                "independent verification by an author other "
+                "than the implementation author")
+        else:
+            sig_problem = _verify_independent_signature(
+                indep, verifier_key_path)
+            if sig_problem:
+                missing.append(sig_problem)
+    # Bundle binding: every present record must agree on the
+    # artifact and the source commit, and must match the
+    # expected binding when the loop record carries one.
+    bound = []
+    for key in ("correctness", "differential",
+                "independent_verification"):
+        item = ev.get(key)
+        if isinstance(item, dict) and \
+                isinstance(item.get("artifact_sha256"), str) \
+                and isinstance(item.get("source_commit"), str):
+            bound.append((item["artifact_sha256"],
+                          item["source_commit"]))
+    if bound and len(set(bound)) > 1:
         missing.append(
-            "independent verification by an author other "
-            "than the implementation author")
-    elif not _passed(indep):
-        missing.append("independent verification pass")
+            "evidence binding mismatch: verification records "
+            "disagree on artifact_sha256 or source_commit")
+    expected_art = getattr(record, "artifact_sha256", "") or ""
+    expected_commit = getattr(record, "source_commit", "") or ""
+    if bound and expected_art and \
+            any(a != expected_art for a, _c in bound):
+        missing.append(
+            "evidence bound to a different artifact_sha256 "
+            "than the loop record expects")
+    if bound and expected_commit and \
+            any(c != expected_commit for _a, c in bound):
+        missing.append(
+            "evidence bound to a different source_commit "
+            "than the loop record expects")
     if record.performance_claim:
         verdict = ev.get("exp017_verdict")
         if not isinstance(verdict, dict):
@@ -127,19 +285,24 @@ def validate_integrate_evidence(record):
             ratio = verdict.get("pooled_ratio")
             ci_low = verdict.get("ci_low")
             ci_high = verdict.get("ci_high")
-            if not isinstance(sessions, int) or sessions < 3:
+            if type(sessions) is not int or sessions < 3:
                 missing.append(
                     "EXP-017 verdict with at least 3 sessions")
-            if not isinstance(ratio, (int, float)) \
-                    or ratio <= 1.0:
+            if not _is_number(ratio) \
+                    or not math.isfinite(ratio) or ratio <= 1.0:
                 missing.append(
-                    "EXP-017 pooled ratio above 1")
-            if not isinstance(ci_low, (int, float)) \
-                    or not isinstance(ci_high, (int, float)) \
+                    "EXP-017 pooled ratio above 1 (finite "
+                    "number required; NaN and infinity are "
+                    "rejected)")
+            if not _is_number(ci_low) \
+                    or not _is_number(ci_high) \
+                    or not math.isfinite(ci_low) \
+                    or not math.isfinite(ci_high) \
                     or ci_low <= 0 or ci_high < ci_low:
                 missing.append(
                     "EXP-017 confidence interval for the "
-                    "relative improvement entirely above 0")
+                    "relative improvement entirely above 0 "
+                    "(finite bounds, lower not above upper)")
     return missing
 
 
@@ -154,19 +317,24 @@ class OptimisationLoop:
     loop_advance operation.
     """
 
-    def __init__(self, memory=None, checker=None, audit=None):
+    def __init__(self, memory=None, checker=None, audit=None,
+                 verifier_key_path=None):
         self.memory = memory
         self.checker = checker
         self.audit = audit
+        self.verifier_key_path = verifier_key_path
 
     def new_record(self, loop_id, hypothesis, keywords=None,
                    implementation_author="",
-                   performance_claim=False):
+                   performance_claim=False,
+                   artifact_sha256="", source_commit=""):
         rec = LoopRecord(
             loop_id=loop_id, hypothesis=hypothesis,
             keywords=list(keywords or []),
             implementation_author=implementation_author,
-            performance_claim=bool(performance_claim))
+            performance_claim=bool(performance_claim),
+            artifact_sha256=artifact_sha256 or "",
+            source_commit=source_commit or "")
         rec.history.append({"ts": time.time(), "event": "created",
                             "state": rec.state})
         return rec
@@ -205,7 +373,8 @@ class OptimisationLoop:
         if record.state == HYPOTHESISE and nxt == CHECK_PRIOR:
             self._check_not_rejected(record)
         if record.state == RECORD and nxt == INTEGRATED:
-            missing = validate_integrate_evidence(record)
+            missing = validate_integrate_evidence(
+                record, verifier_key_path=self.verifier_key_path)
             if missing:
                 raise LoopRefusal(
                     f"loop {record.loop_id}: integrate gate "
