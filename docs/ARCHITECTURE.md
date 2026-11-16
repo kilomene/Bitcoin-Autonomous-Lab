@@ -18,6 +18,11 @@
    urllib; storage in later tasks uses sqlite3 from the standard
    library. No dependency is added without a reason recorded here.
    The CPU miner engine remains C with OpenSSL for SHA-NI speed.
+   (Update, 2026-11-15: that last sentence is superseded. Production
+   search has run the AVX-512 v512dual kernel since the EXP-026
+   integration, with the EXP-039 fallback tiers behind it; the
+   C/OpenSSL path is one fallback tier in the ComputeEngine
+   dispatch, not the engine.)
 4. **Secrets are generated locally, never stored in the repo.** The
    node manager creates a random RPC password on first setup and keeps
    it in .local/regtest/ (gitignored, 0600). Code reads credentials
@@ -48,22 +53,33 @@
   (live mainnet pool runner), autopilot.py (supervisor),
   candidate_verify.py (exact candidate verification, EXP-036),
   mining_statistics.py and probability.py (EXP-037),
-  work_checkpoint.py (EXP-038), wallet_gen.py (lab wallet
-  generation); cpu/ holds the kernels: bal_avx512_dual.c (the
-  production v512dual backend), bal_avx512_mb.c (v512),
-  bal_avx512_flags.c (flags batch), bal_batch.c (C batch backend),
+  work_checkpoint.py (EXP-038), endpoint_config.py (the pool vs
+  solo endpoint decision for the live runner), wallet_gen.py (lab
+  wallet generation); cpu/ holds the kernels: bal_avx512_dual.c
+  (the production v512dual backend), bal_avx512_mb.c (v512),
+  bal_avx512_flags.c (flags batch), bal_avx2_mb.c (the EXP-039
+  AVX2 fallback tier), bal_shani_streams.c plus bal_shani_core.h
+  (the EXP-039 SHA-NI streams tier), bal_batch.c (C batch backend),
   bal_miner.c and bal_sha_intrin.c (the earlier standalone C miner
-  and the SHA-NI intrinsics unit).
+  and the SHA-NI intrinsics unit), and the flag-free CPU probes
+  bal_fallback_probe.c and bal_avx512_probe.c.
 - gpu/: engine.py is the production ComputeEngine despite the
   historical directory name: it hosts the dispatch chain for every
   backend (CUDA when a real device passes the self-test, then
-  v512dual, v512, the C batch backend, then Python hashlib). The
-  CUDA package under gpu/cuda/ is real code, but this VM has no GPU
-  device, so no GPU backend is ever selected here.
-- agent/: interface.py, structured JSON answers from live RPC data,
-  including Regtest block generation.
-- dashboard/: status.py, a JSON snapshot CLI that a future web
-  dashboard will poll.
+  v512dual, v512, shani, avx2, the C batch backend, then Python
+  hashlib; dispatch order corrected 2026-11-15 to the EXP-039
+  order in gpu/engine.py). The CUDA package under gpu/cuda/ is
+  real code, but this VM has no GPU device, so no GPU backend is
+  ever selected here.
+- agent/: interface.py, structured JSON answers from live RPC
+  data, including Regtest block generation; autonomous.py, the
+  AutonomousMiner that runs GBT mining cycles through
+  mining/engine.py with the EXP-038 checkpoint enabled; and
+  intelligence/, the Master Build agent layer (see
+  docs/AUTONOMOUS_MINING_ARCHITECTURE.md).
+- dashboard/: status.py, a JSON snapshot CLI, and server.py, the
+  web dashboard server that already serves it (gather_status,
+  Handler, main).
 - tests/: correctness proofs against known mainnet data (genesis)
   plus live Regtest integration tests.
 - scripts/: setup and operational entry points.
