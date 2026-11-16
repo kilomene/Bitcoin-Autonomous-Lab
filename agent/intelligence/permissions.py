@@ -78,12 +78,28 @@ class ActionSpec:
     level: Level
     mutates_production: bool
     description: str
+    # Operational / experimental separation (Autonomous
+    # Mining Brain, Prompt 1, item D). kind is "operational"
+    # for the L1/L2 typed interface operations and
+    # "experimental" for the L3 sandbox operations. shell is
+    # always False: no spec in this registry may resolve to
+    # arbitrary shell or code execution. Operational
+    # operations execute only as typed MiningInterface
+    # methods; experimental operations may only target the
+    # experimental sandbox.
+    kind: str = "operational"
+    shell: bool = False
 
 
 def _spec(name, level, mutates, description):
-    return ActionSpec(name=name, level=Level(level),
-                      mutates_production=bool(mutates),
-                      description=description)
+    lvl = Level(level)
+    return ActionSpec(
+        name=name, level=lvl,
+        mutates_production=bool(mutates),
+        description=description,
+        kind=("experimental" if lvl == Level.L3
+              else "operational"),
+        shell=False)
 
 
 ACTION_REGISTRY = {spec.name: spec for spec in [
@@ -151,6 +167,43 @@ ACTION_REGISTRY = {spec.name: spec for spec in [
 def get_spec(name):
     """The ActionSpec for an operation name, or KeyError."""
     return ACTION_REGISTRY[name]
+
+
+_SHELL_PAYLOAD_KEYS = frozenset({
+    "command", "argv", "shell", "code", "script", "cmd",
+    "exec", "executable", "args"})
+
+
+def assert_no_shell_payload(name, payload):
+    """Refuse any attempt to carry a shell or code payload
+    through an operation (Prompt 1, item D). Operational
+    operations are typed interface calls only; experimental
+    operations run only inside the experimental sandbox
+    through the experiment runner's argv path. Neither may be
+    turned into arbitrary shell execution by attaching
+    command-like fields. payload may be None, a dict, or a
+    dataclass instance; returns the spec when clean."""
+    spec = ACTION_REGISTRY.get(name)
+    if spec is None:
+        raise PermissionError(
+            name, Level.L3, Level.L1,
+            "unknown operation; not in the action registry")
+    if payload is None:
+        return spec
+    if isinstance(payload, dict):
+        keys = set(payload)
+    else:
+        keys = set(vars(payload)) if hasattr(payload, "__dict__") \
+            else set()
+    bad = keys & _SHELL_PAYLOAD_KEYS
+    if bad:
+        raise PermissionError(
+            name, spec.level, spec.level,
+            f"operation {name!r} is kind={spec.kind} with "
+            f"shell=False; payload fields {sorted(bad)} would "
+            "turn it into arbitrary shell or code execution "
+            "and are refused")
+    return spec
 
 
 class PermissionChecker:
