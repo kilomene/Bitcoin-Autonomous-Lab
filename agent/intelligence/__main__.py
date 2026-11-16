@@ -42,10 +42,17 @@ def main(argv):
         window = float(argv[1]) if len(argv) > 1 else 30.0
         report = Awareness(agent).observe_cycle(window_s=window)
         print(json.dumps(report, indent=2, default=str))
+    elif cmd == "mode":
+        print(json.dumps(agent.mode(), indent=2, default=str))
+    elif cmd == "control-status":
+        from dataclasses import asdict as _asdict
+        result = agent.interface.resolved_controller.status()
+        print(json.dumps(_asdict(result), indent=2,
+                         default=str))
     else:
         print("usage: python3 -m agent.intelligence "
               "[status|machine|backends|gap <rate_hs>|"
-              "awareness [window_s]]",
+              "awareness [window_s]|mode|control-status]",
               file=sys.stderr)
         return 2
     return 0
