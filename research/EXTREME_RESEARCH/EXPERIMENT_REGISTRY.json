@@ -1634,6 +1634,32 @@
     "Live deployment of the tier in the production mining path (UNVERIFIED, not attempted)",
     "Effect on other hosts (all measurement is the AMD EPYC 9D25 host)"
    ]
+  },
+  {
+   "id": "EXP-058",
+   "hypothesis": "A PID loop driven by a measured error signal (the span completion interval) adapts worker count and span size on this contended VM more smoothly than the autopilot seam's step behaviour, without oscillation, with conservative gains selected from EXP-031 signals and the step policy retained as fallback (portfolio NOVA-ER-0018, register R-32).",
+   "status": "EXPERIMENTAL",
+   "baseline": "The production step behaviour in gpu/engine.py (tune_c_threads, tune_v512_threads, tune_v512dual_threads: probe candidate thread counts once, pick the peak, hold; EXP-031 recorded it choosing 2 threads in one run and 4 in another 30 seconds apart), modelled in code as mining/pid_control.py StepPolicy, plus the EXP-031 recorded signals (R1 mean 5,341,402 H/s; E(2) mean 1.922, E(4) mean 1.889; steal 1.4 to 2.7 percent insensitive to thread count; about 20 percent run-to-run variance at fixed configuration; about 2 effective CPUs under a 4 vCPU claim).",
+   "measured_result": "New additive component mining/pid_control.py at the autopilot seam, shipped DISABLED by default (enabled=False always returns the step-policy command; one configuration value is the rollback): cascaded PID loops on the span-interval error (inner velocity-form span loop, log2 span in [20, 26]; outer absolute-form worker loop on span saturation with a neutral zone, integer actuation in [1, 4] with 0.6 threshold and 6-sample dwell), gain-validated construction, and a latching step-policy fallback (signal loss, non-finite signal, oscillation, host distress). Gains recorded in the predeclaration from EXP-031 before any trial (span Kp 0.35 Ki 0.06 Kd 0.10; worker Kp 0.8 Ki 0.04 Kd 0). Gate 3 (seeded simulation against the disclosed EXP-031 plant fit, 160 samples per scenario, sigma 10 percent noise): nominal, step_down, ramp_down, burst_dip, signal_loss, gain_faults and host_distress scenarios met every predeclared stability bound (true interval error in band 0.986 to 1.000 in the capacity scenarios, zero PID worker changes in all of them against 2 to 3 chattering changes for the step baseline, zero trips in nominal conditions, the 10x-Kp fault controller tripped on oscillation at sample 25). One bound MISSED: in step_up (capacity 2.0 to 3.2) the worker count never reached 3, while its interval bounds all held (in-band 1.000). The miss is structural and is the headline finding: at 2 workers the per-worker rate is already the uncontended rate for any capacity >= 2, so the equilibrium span and saturation are identical at capacity 2.0 and 3.2 and an interval-only cascade cannot observe spare capacity; worker scale-up needs a probe element or a rate signal. Gate 5 (supervised actuated live trial, quiet window met at 1-minute load 7.97 against the predeclared 9.0 maximum): the controller actuated a separate production ComputeEngine trial workload (v512dual, target 1) for 60 samples beside the untouched live stack: all samples completed, commands in bounds, zero trips, workers 2 throughout, span adapted 9,695,762 to 23,877,035, intervals 0.91 to 3.05 s, |e| <= 0.30 for exactly 0.800 of samples after sample 15 (bound: at least 0.80), steal maximum 3.3 percent. Classification PROMISING HYPOTHESIS (the predeclaration's PROVEN branch requires all Gate 3 bounds met; its negative branch is nominal-scoped and does not apply; the gap is disclosed in the report). make test-exp058: 10 checks, ALL PASSED; neighbour make test-exp055: 23 checks, ALL PASSED; test-all becomes 48. No rate claim is made anywhere (a rate claim would need its own EXP-017 entry). No production path touched; not enabling the controller is the rollback.",
+   "evidence": [
+    "research/sha256d/exp058/EXP058_REPORT.md",
+    "research/sha256d/exp058/PREDECLARATION.md",
+    "research/sha256d/exp058/RAW_RESULTS/campaign_20261117T104627Z.json",
+    "research/sha256d/exp058/RAW_RESULTS/gate5_20261117T104657Z.json",
+    "mining/pid_control.py",
+    "tests/test_exp058_pid_control.py"
+   ],
+   "evidence_limitation": "Gate 3 is a simulation against a plant fitted to six EXP-031 loadprobe points, not a measurement of the real machine; its stability bounds are evaluated on the plant's true interval error, with measured-error statistics recorded alongside (at the predeclared sigma 10 percent noise, the 0.15 band is 1.5 sigma wide on the measured error, so a bound on the measured error would be a bound on the noise). Gate 5 is one 60-sample actuated trial of a side workload on one contended VM (AMD EPYC 9D25); the live miner was never actuated. The step_up worker-reach bound failed and is recorded as a structural negative for interval-only control, not tuned away: no gain was changed after the predeclaration was hashed.",
+   "independently_reproduced": "no",
+   "reproduced_by": "Not yet independently audited; executed under Directive 5 Stage 9 with raw results retained for audit. Build-time design completions (saturation neutral zone, integral-term accounting, material-move oscillation counting) are disclosed in the report's judgment calls; all were made before the campaign of record and none changed a recorded gain.",
+   "unresolved": [
+    "Actuation against the live production miner (UNVERIFIED: Gate 5 actuated a trial workload beside production only; integration is a separate step)",
+    "Any hash-rate effect of PID control (UNVERIFIED by design: no rate claim made; would need its own EXP-017 entry)",
+    "Worker scale-up under spare capacity (shown structurally unreachable for an interval-only cascade; a probe element or rate signal is future work, not attempted)",
+    "Behaviour on other hosts, including Intel (UNVERIFIED: all measurement is the AMD EPYC 9D25 host)",
+    "Real fleet conditions, multiple machines, real network (UNVERIFIED: no other machine contacted)",
+    "The plant model beyond its EXP-031 fit points, and long-horizon control behaviour over hours to days (UNVERIFIED)"
+   ]
   }
  ]
 }
