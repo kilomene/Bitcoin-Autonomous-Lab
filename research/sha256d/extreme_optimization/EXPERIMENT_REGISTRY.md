@@ -2769,3 +2769,77 @@ research/sha256d/exp055/EXP055_REPORT.md and
 RAW_RESULTS/.
 
 Next unreserved ID: EXP-056.
+
+## EXP-057 record (2026-11-17)
+
+EXP-057 (NOVA-ER-0017, register R-27: stratum
+aggregation tier) is COMPLETE with ALL GATES PASS,
+classification PROVEN for the tier properties
+measured on this VM. New production component
+mining/aggregation.py: an AggregationTier holding
+ONE upstream SoloServer (production job construction,
+validate_share header reconstruction and the EXP-036
+pipeline reused verbatim) and fanning workbases out
+to downstream stratum workers, plus a Stratum V1 TCP
+front end routing through the same single judgment
+path. Fleet identity inherits EXP-035 and EXP-055
+checks, not ckpool's open pool trust model: operator
+enrollment with only the token SHA-256 hash stored
+(constant-time compare), fleet id match required,
+sessions binding one worker to one tier-assigned
+extranonce1, a claimed-worker mismatch an identity
+rejection, sessions dead after a restart (epoch
+bumps). Submission authority stays out of the tier:
+verified block candidates queue as pending and are
+never submitted by the tier; the only submission
+path is an explicit operator action (operator token
+plus an explicitly configured submitter, candidate
+re-verified through EXP-036 immediately before
+submission). Gate 2: randomised differentials,
+3,240 corpus entries (3,000 random plus 240
+constructed invalid) plus 60 unknown-job entries,
+tier verdict equals direct verify_candidate verdict
+on 3,240 of 3,240 (2,823 below_target, 177 share,
+240 invalid). Gate 3: identity spoofing and stale
+injection at the predeclared 2, 4 and 8 workers on
+1 upstream connection: 7 of 7 identity injections
+rejected at each count, zero spoofed submissions
+accepted, harness tally equals tier counters
+exactly, the accounting identity holds globally and
+per worker, upstream submissions 0 throughout
+(counting spy never called). Gate 4: tier in-process
+submit median 19.0 us vs direct SoloServer submit
+12.3 us; tier TCP loopback submit round trip
+61.1 us (medians of 3 sessions), against EXP-043
+baselines (manager calls 1 to 5 us, loopback shim
+floor 33 to 55 us). Gate 5: snapshot and restore
+from a real state file: epoch 0 to 1, pre-restart
+session dead, accounting categories preserved
+exactly, dedup set and pending candidate preserved
+(planted record, labelled, for the persistence
+mechanics), fresh work accounted. Gate 6: regtest
+block at height 2375 (hash
+00000017d0df0340f2197b2eb1038090a4636cc718c83b2707d9d40bde1ebd6d)
+produced through the tier, the winning share from a
+downstream stratum worker, EXP-036 verified, queued
+with the chain tip provably unmoved, submitted only
+by the explicit operator action, chain status tip;
+the regression suite produced height 2376 the same
+way. make test-exp057: 9 checks, ALL PASSED;
+test-all becomes 47. No production path was
+touched; not deploying the tier is the rollback.
+EXP-052 stays reserved for NOVA-ER-0012 (bake-off
+hardening) and EXP-056 for NOVA-ER-0016 (H-033-02
+residual cones). An independent audit, adversarial
+on identity, is owed before any push. UNVERIFIED:
+multi-machine operation, real-network latency and
+behaviour, real upstream pool behaviour against a
+third-party pool, cross-machine scaling, real fleet
+behaviour, clock skew across machines, partial
+network failure, live deployment in the production
+mining path, and other hosts (all measurement is
+the AMD EPYC 9D25 host). Full record:
+research/sha256d/exp057/EXP057_REPORT.md and
+RAW_RESULTS/.
+
+Next unreserved ID: EXP-058.
