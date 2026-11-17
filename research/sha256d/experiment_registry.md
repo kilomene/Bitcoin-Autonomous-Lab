@@ -2190,3 +2190,86 @@ research/sha256d/exp054/EXP054_REPORT.md and
 RAW_RESULTS/.
 
 Next unreserved ID: EXP-055.
+
+## EXP-055 record (2026-11-17)
+
+EXP-055 (NOVA-ER-0015, roadmap F1: production wire
+protocol and persistent coordinator) is COMPLETE
+with ALL GATES PASS, classification PROVEN for the
+protocol-level properties measured on this VM. The
+EXP-035 design is built as a running system in
+mining/coordinator.py: a persistent coordinator
+holding the Work Lease Manager, worker registry and
+Candidate Queue behind a length-prefixed CRC32
+framed wire protocol, with an append-only operation
+journal, atomic snapshots, and the candidate
+journal's persist-before-acknowledge recovery.
+EXP-043's two named prototype defects are carried
+in as fixes: the lease store holds only active
+leases indexed per worker (starvation holds-lease
+query flat at 191 ns at history 0 and 8,000, vs the
+prototype's 531 ns growing to 637,126 ns; 1 active
+lease plus 8,000 compact tombstones after 8,000
+completions, vs 8,016 retained full records), and
+snapshots serialise live state only (512 chunks
+plus 8,000 dead issuances: 4.90 ms and 122,278
+bytes, vs the prototype's 248.0 ms deep-copying
+8,000 lease records and 16,002 events). Gate 1:
+22 of 22 targeted protocol tests PASS over
+in-process and TCP loopback transports (P1 to P6
+plus wire integrity). Gate 2: differential
+accounting against an independent interval-based
+model, 40 seeded scripts, 8,460 comparisons, ALL
+EQUAL. Gate 3: 66 randomised fault trials (60
+in-process protocol, 6 TCP), 737,792 declared
+positions completed EXACTLY in every trial, zero
+inexact trials, under 2,807 worker deaths, 2,070
+worker restarts, 1,037 expiries, 862 steals, 981
+coordinator restarts, 4,102 zombie replays (all
+STALE), 2,697 duplicate deliveries, 938 not-holder
+attempts and 1,160 duplicate candidate
+submissions, with 307,682 repeated computations
+accounted separately. Gate 4: per-operation
+protocol round trips 17 to 29 us in-process and
+34 to 56 us over TCP loopback; campaign
+per-position costs at EXP-043 geometry recorded in
+the report beside the EXP-043 baselines, with the
+fault-mix difference stated (fault-lite here
+excludes coordinator restarts, whose cost is the
+separately measured snapshot path). Gate 5:
+persistent restart over TCP with a real state
+directory: crash recovery replayed the journal
+tail past a mid-session snapshot, epoch and token
+counter preserved, pre-restart tokens STALE,
+candidate journal recovery preserved P6, job
+completed exactly (1,024 of 1,024), clean second
+restart at epoch 2. Gate 6: a regtest block at
+height 2372 (hash
+2334ac9cd173fc867bea7449852751e227104cfa7dfc511ceaed3a4687f2c4fb)
+produced through coordinator-assigned work,
+EXP-036 verdict block_candidate, chain status
+tip; the regression suite produced height 2373
+the same way. make test-exp055: 23 checks, ALL
+PASSED; test-all becomes 46. Gate 5's first
+execution caught a real recovery defect (restart
+rule applied before journal replay), fixed in the
+load path before the campaign of record and
+recorded in the report. No production path was
+touched; not deploying the coordinator is the
+rollback. EXP-052 stays reserved for NOVA-ER-0012
+(bake-off hardening, which completes only across
+host rotations). An independent audit is owed
+before any push. UNVERIFIED: multi-machine
+coordination, real-network latency and
+cross-machine scaling (no other machine was
+contacted; fleet activation is owner-gated,
+roadmap F2), real fleet behaviour, clock skew
+across machines, partial network failure,
+production template rates and chunk sizes, live
+deployment alongside the production miner, and
+other hosts (all measurement is the AMD EPYC
+9D25 host). Full record:
+research/sha256d/exp055/EXP055_REPORT.md and
+RAW_RESULTS/.
+
+Next unreserved ID: EXP-056.
