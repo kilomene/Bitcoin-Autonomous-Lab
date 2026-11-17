@@ -1529,6 +1529,30 @@
     "Long-run feed soaking (days of longpoll cycling, node restarts mid-longpoll)",
     "make test-engine (intelligence suite) on a quiet shared chain"
    ]
+  },
+  {
+   "id": "EXP-053",
+   "hypothesis": "Inside the production dual-batch walker, where the two batches already share setup, sharing the nonce-independent chunk-2 prefix (rounds 0 to 2, identical for both batches) removes duplicated work the standalone form (EXP-013) could not amortise, yielding a small significant gain (portfolio NOVA-ER-0013, register Y-098, Phase 001 H-6)",
+   "status": "REJECTED",
+   "baseline": "Production dual-batch walker bal_vd_search2 (.local/cpu/libbal_v512dual.so, from mining/cpu/bal_avx512_dual.c): both batches of a dual group execute chunk-2 rounds 0 to 2 from the same midstate broadcast, duplicating 3 of the group's 256 round steps; arithmetic ceiling for the share is log(256/253) = +0.0118 (about +1.19 percent) before second-order costs",
+   "measured_result": "Variant bal_vp_search2 (research/sha256d/exp053/src/libbal_e53prefix.so) executes the shared prefix once and forks the state. Gate 2 passed before the campaign (108,000 randomized differentials vs hashlib on variant and production control, byte-identical vp-vs-vd batch outputs over 4,194,304 digests, search agreement under the EXP-047 corrected criterion). EXP-017 campaign, 6 effect and 2 control sessions of 30,000 paired 65,536-hash blocks (240,000 pairs, threads 2, AMD EPYC 9D25): control pooled adjusted log-ratio -0.0030, CI [-0.0108, +0.0048], contains 0, machinery valid; effect pooled adjusted -0.0017, CI [-0.0059, +0.0027], no effect session significant, fraction of pairs won by the variant 0.501. The pooled CI contains 0 with its upper bound below the +0.0118 ceiling at half-width 0.0043 (predeclared target at most 0.006): ESTABLISHED NEGATIVE at the predeclared resolution; any true gain is below about +0.27 percent with 95 percent confidence. H-6 is closed for the dual walker. No integration; production files untouched; Gate 6 does not run on a negative verdict.",
+   "evidence": [
+    "research/sha256d/exp053/EXP053_REPORT.md",
+    "research/sha256d/exp053/PREDECLARATION.md",
+    "research/sha256d/exp053/RAW_RESULTS/analysis_20261116T223112Z.json",
+    "research/sha256d/exp053/RAW_RESULTS/gates.log",
+    "research/sha256d/exp053/RAW_RESULTS/sessions/",
+    "tests/test_exp053_prefix.py"
+   ],
+   "evidence_limitation": "All measurements are the AMD EPYC 9D25 host under contention from the live miner and pruned node (load average roughly 3 to 18). The verdict is a resolution-bounded negative: gains below about +0.27 percent are bounded by the interval, not excluded. The first control session's CI individually excludes 0 on the low side; the predeclared validity rule is the pooled control CI, which contains 0, and the two control sessions bracket 0 in opposite directions.",
+   "independently_reproduced": "no",
+   "reproduced_by": "Not yet independently audited; executed under Directive 5 Stage 9 with raw results retained for audit. The original builder died mid-campaign on a transport error; the orphaned campaign chain completed all 8 sessions untouched, and the completing agent re-verified the raw data pair by pair (attempted counts, return codes, log-ratio recomputation, unadjusted means) before applying the predeclared verdict mapping. An independent audit is owed before any push.",
+   "unresolved": [
+    "Effect on other hosts (the Intel Xeon Platinum 8321HC rotation host is unmeasured)",
+    "The batch entry's rate (Gate 2 correctness only; no batch rate claimed)",
+    "Thread counts other than 2",
+    "The prefix share combined with other kernel ingredients (EXP-022 flags, EXP-024 designs)"
+   ]
   }
  ]
 }
