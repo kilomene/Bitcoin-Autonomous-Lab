@@ -2981,3 +2981,81 @@ research/sha256d/exp056/EXP056_REPORT.md and
 RAW_RESULTS/.
 
 Next unreserved ID: EXP-059.
+
+## EXP-052 record (2026-11-17)
+
+EXP-052 (NOVA-ER-0012, register R-23: bake-off
+hardening into production dispatch) is PARTIAL
+COMPLETE on the AMD EPYC 9D25 host with
+classification PROMISING HYPOTHESIS, registry status
+UNDER_INVESTIGATION. The portfolio entry completes
+only across rotations of both host kinds; the
+cross-host portion (an Intel Xeon Platinum 8321HC
+rotation, a second AMD rotation) is outstanding and
+recorded as such. New mining/bakeoff_dispatch.py:
+host fingerprinting (CPU model, flags hash, logical
+CPUs), tier probing under a denotation rule (a
+requested value is eligible only when its engine
+reports the denoted backend), the EXP-017-shaped
+paired protocol (3 sessions, 150 paired
+65,536-hash blocks per comparison, the EXP-017
+adjusted bootstrap computed with the EXP-017
+analyzer's own functions), a pure decision rule
+(displacement only when the adjusted CI clears the
+predeclared 5 percent margin in every session and
+pooled and the control resolves the margin), a
+fingerprint-keyed verdict cache with strict
+validation, and a resolver that returns the static
+order on any doubt and never measures. The dispatch
+seam is mining/mainnet_live.py behind the "bakeoff"
+section of mining/endpoint_config.py (enabled False
+by default, the EXP-050 pattern); the switch was NOT
+enabled and live enablement is an owner decision.
+The C_THREADS dependency was verified fixed by
+Stage 7 (instance-scoped), not re-fixed. Gate 4
+campaign exp052-20261117T150042Z: 18 of 18 units,
+450 pairs per comparison, 0 voided, measurement
+wall 460.3 s; per-tier correctness passed for all
+six eligible tiers (1,024 of 1,024 digests, genesis
+agreement); cuda ineligible (no CUDA device).
+Static pick v512dual; pooled adjusted log ratios
+against it: v512 -0.6264 CI [-0.7375, -0.5200],
+shani -0.8221 CI [-0.9368, -0.7073], avx2 -1.4638
+CI [-1.5763, -1.3477], c -1.9559 CI [-2.0619,
+-1.8464], hashlib -3.9732 CI [-4.0737, -3.8702]:
+verdict STATIC by dominance. Control pooled CI
+[-0.1101, +0.1452] is wider than the plus or minus
+log(1.05) resolution bound, so no challenger could
+have been certified in this campaign (pooled
+resolution about 13 percent, not the percent level
+the predeclaration's sizing basis expected;
+disclosed in the report as judgment call 1, nothing
+re-run or re-sized). Gate 3: all 12 predeclared
+doubt cases plus baseline and extras fall back to
+the static order, none raises. Gate 5 (isolated):
+the campaign cache resolves to its STATIC verdict;
+a restricted run (v512 and shani, static v512, 1
+session, 40 pairs) produced a genuine STATIC cache
+the resolver honoured; corruption and fingerprint
+tamper fell back; switch off ignored the cache.
+Median category E rates (contended, descriptive):
+v512dual 8,802,838 H/s; v512 4,912,312; shani
+4,046,727; avx2 1,112,710; c 740,233; hashlib
+99,234. make test-exp052: 36 checks, ALL PASSED;
+neighbours test-exp050 (40), test-mainnet-live,
+test-exp049 (20) and test-agent-operations
+(10,309) all passed; test-all becomes 50. The live
+endpoint config's sha256 was identical before and
+after, no live cache was planted, and the live
+stack was never touched. UNVERIFIED: behaviour
+across host rotations (the headline open item), a
+measured-winner Gate 5, live enablement and any
+live-rate effect, certification power at the 5
+percent margin in a future campaign (needs a pair
+count sized from this control), the pick on any
+other host, long-horizon cache behaviour, and
+fleet conditions. Full record:
+research/sha256d/exp052/EXP052_REPORT.md and
+RAW_RESULTS/.
+
+Next unreserved ID: EXP-059.
