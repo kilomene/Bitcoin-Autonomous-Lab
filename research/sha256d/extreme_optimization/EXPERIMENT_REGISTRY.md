@@ -2843,3 +2843,75 @@ research/sha256d/exp057/EXP057_REPORT.md and
 RAW_RESULTS/.
 
 Next unreserved ID: EXP-058.
+
+## EXP-058 record (2026-11-17)
+
+EXP-058 (NOVA-ER-0018, register R-32: PID control
+for worker count and span size) is COMPLETE with
+classification PROMISING HYPOTHESIS, registry status
+EXPERIMENTAL. New additive component
+mining/pid_control.py at the autopilot seam, shipped
+DISABLED by default (one configuration value,
+pid_enabled, is the whole rollback; the step policy
+remains in code as StepPolicy and as the latching
+fallback). Cascaded PID loops on the span-interval
+error: inner velocity-form span loop over log2 span
+in [20, 26], outer absolute-form worker loop on span
+saturation with a neutral zone, integer actuation in
+[1, 4] with threshold and dwell. Gains recorded in
+the predeclaration from EXP-031 signals before any
+trial (span Kp 0.35 Ki 0.06 Kd 0.10; worker Kp 0.8
+Ki 0.04 Kd 0) and never changed afterwards. Gate 3
+(seeded simulation against the disclosed EXP-031
+plant fit, 160 samples per scenario): nominal,
+step_down, ramp_down, burst_dip, signal_loss,
+gain_faults and host_distress met every predeclared
+stability bound (true interval error in band 0.986
+to 1.000 in the capacity scenarios, zero PID worker
+changes against 2 to 3 chattering changes for the
+step baseline, zero trips in nominal conditions,
+10x-Kp fault controller tripped on oscillation at
+sample 25). One bound MISSED: in step_up (capacity
+2.0 to 3.2) the worker count never reached 3, while
+its interval bounds all held (in band 1.000). The
+miss is structural and is the headline finding: at
+2 workers the per-worker rate is already the
+uncontended rate for any capacity at or above 2, so
+the equilibrium span and saturation are identical at
+capacity 2.0 and 3.2, and an interval-only cascade
+cannot observe spare capacity; worker scale-up
+needs a probe element or a rate signal. Gate 5
+(supervised actuated live trial, quiet window met at
+1-minute load 7.97 against the predeclared 9.0
+maximum): the controller actuated a separate
+production ComputeEngine trial workload (v512dual,
+target 1) for 60 samples beside the untouched live
+stack; all samples completed, commands in bounds,
+zero trips, workers 2 throughout, span adapted
+9,695,762 to 23,877,035, intervals 0.91 to 3.05 s,
+|e| <= 0.30 for exactly 0.800 of samples after
+sample 15 (bound at least 0.80), steal maximum 3.3
+percent. The predeclaration's PROVEN branch requires
+all Gate 3 bounds met, so the classification is
+PROMISING HYPOTHESIS; its ESTABLISHED NEGATIVE
+branch is nominal-scoped and does not apply, and
+the mapping gap is disclosed in the report. No rate
+claim is made anywhere (a rate claim would need its
+own EXP-017 entry). make test-exp058: 10 checks,
+ALL PASSED; neighbour make test-exp055: 23 checks,
+ALL PASSED; test-all becomes 48. No production path
+was touched; not enabling the controller is the
+rollback. EXP-052 stays reserved for NOVA-ER-0012
+(bake-off hardening) and EXP-056 for NOVA-ER-0016
+(H-033-02 residual cones). An independent audit is
+owed before any push. UNVERIFIED: actuation against
+the live production miner, any hash-rate effect,
+worker scale-up under spare capacity (structurally
+unreachable for this signal choice, recorded in the
+report), other hosts including Intel, real fleet
+conditions, the plant model beyond its EXP-031 fit
+points, and long-horizon control behaviour. Full
+record: research/sha256d/exp058/EXP058_REPORT.md
+and RAW_RESULTS/.
+
+Next unreserved ID: EXP-059.
