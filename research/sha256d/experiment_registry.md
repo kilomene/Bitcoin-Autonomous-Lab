@@ -2117,3 +2117,76 @@ research/sha256d/exp053/EXP053_REPORT.md and
 RAW_RESULTS/.
 
 Next unreserved ID: EXP-054.
+
+## EXP-054 record (2026-11-17)
+
+EXP-054 (NOVA-ER-0014, register Y-043: dual-batch
+interleave granularity sweep) is COMPLETE with a
+CONFIRMED verdict: the production point stands,
+and the displacement hypothesis is an ESTABLISHED
+NEGATIVE at the predeclared resolution. The
+research build (bal_vg{G}_search2,
+research/sha256d/exp054/src/libbal_e54gran.so,
+generated mechanically from the production
+bal_avx512_dual.c) parameterises the alternation
+block size G in {1, 2, 4, 8}; only the order of
+the two batches' round steps changes. Gate 2
+passed before the campaign (per point: 108,000
+randomized differentials vs hashlib, byte-
+identical batch outputs vs the production binary
+over 4,194,304 digests, search agreement under the
+EXP-047 corrected criterion; the production
+library passed the same set as control). EXP-017
+campaign, 13 sessions of 30,000 paired 65,536-hash
+blocks (390,000 pairs, threads 2): control pooled
+adjusted -0.0038, 95 percent CI [-0.0146,
++0.0070], contains 0, machinery valid; build
+control (research G = 1 vs the shipped binary)
+pooled adjusted -0.0658, CI [-0.0763, -0.0550],
+excludes 0, so candidate effects at or below that
+size cannot be attributed to granularity alone.
+Candidates, Bonferroni corrected 98.333 percent
+intervals: G = 2 pooled adjusted +0.0016, CI
+[-0.0088, +0.0121], half-width 0.0105, FLAT (any
+true gain at most about +1.22 percent); G = 4
+pooled adjusted -0.0521, CI [-0.0617, -0.0425],
+SLOWDOWN (at or below the build offset, so not
+attributable to granularity alone); G = 8 pooled
+adjusted -0.1505, CI [-0.1600, -0.1408], SLOWDOWN
+beyond the build offset. No candidate displaces
+and none is promising, so Y-043 is closed: the
+production granularity (G = 1) is confirmed with a
+measured curve behind it. No integration:
+production files were never touched, Gates 1, 3, 5
+and 6 do not apply (portfolio), and make test-
+exp054 (72 checks, tallies identical to the pre-
+campaign gates.log) and make test-avx512dual
+passed after the campaign, the latter with a fresh
+regtest block at height 2370 through the
+production backend. Eleven sessions ran on AMD
+EPYC 9D25 and the final G = 4 and G = 8 sessions
+on AMD EPYC 9D64 after a VM replacement (killed
+sessions rerun per the predeclaration, never
+resumed). The original builder ended without a
+final report; the completing agent re-verified the
+raw data pair by pair (attempted counts, return
+codes, log-ratio recomputation with max error 0.0)
+before running the predeclared analysis. The
+EXP-053 audit lessons are implemented in this
+driver (steal covariate in the EXP-017 form,
+deterministic sha256-derived analysis seeds).
+EXP-052 stays reserved for NOVA-ER-0012 (bake-off
+hardening, which completes only across host
+rotations). An independent audit is owed before
+any push. UNVERIFIED: other hosts (the Intel Xeon
+Platinum 8321HC rotation host is unmeasured; the
+two AMD hosts disagree on slowdown magnitude), the
+batch entries' rates (Gate 2 only, no rate
+claimed), thread counts other than 2, intermediate
+granularity points and combinations with other
+kernel ingredients, and the mechanism of the build
+offset. Full record:
+research/sha256d/exp054/EXP054_REPORT.md and
+RAW_RESULTS/.
+
+Next unreserved ID: EXP-055.
