@@ -19,6 +19,17 @@ rhythm:
   is therefore continuous until the autopilot itself is stopped.
 - SINGLE INSTANCE: an flock on .local/autopilot.lock guarantees
   one autopilot per checkout. A second starter exits politely.
+- INCIDENT CODES: every fault, recovery action and
+  refusal this supervisor records carries a stable
+  numeric code from the append-only registry in
+  mining/incident_registry.json (NOVA-ER-0006, register
+  R-30): the log line gains a "[code] " prefix and the
+  incident is counted in a code-keyed ledger published
+  in the heartbeat as incident_counts, so post-incident
+  audit keys on codes instead of free text. The
+  registry can never kill supervision: an unresolvable
+  code degrades to the plain line and the counting is
+  failure-isolated (the SafeRecorder contract).
 - SELF-UPDATE: every UPDATE_CHECK_S (default 900 s, 15 minutes)
   it compares HEAD with origin/main. On a new version it pulls
   fast-forward only, runs the PoW engine smoke test, and only
@@ -50,6 +61,19 @@ import socket
 import subprocess
 import sys
 import time
+
+sys.path.insert(0, os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), ".."))
+try:
+    from mining import incident_codes as _incident_codes
+    from mining.mining_statistics import (
+        SafeRecorder as _SafeRecorder)
+except Exception:
+    # Incident coding is an annotation layer, never a
+    # precondition for supervision: if the package
+    # cannot be imported, the autopilot runs uncoded.
+    _incident_codes = None
+    _SafeRecorder = None
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 LOCAL = os.path.join(ROOT, ".local")
@@ -88,6 +112,34 @@ def log(msg):
             f.write(line + "\n")
     except OSError:
         pass
+
+
+_INCIDENTS = _SafeRecorder() if _SafeRecorder is not None \
+    else None
+
+
+def log_incident(code, msg):
+    """log() with the incident code for msg keyed and
+    prefixed (NOVA-ER-0006, register R-30): the line
+    gains a "[code] " token resolved against
+    mining/incident_registry.json, and the incident is
+    counted in the process incident ledger, which
+    heartbeat() publishes as incident_counts. Removing
+    the token restores the prior line byte-for-byte.
+    Supervision can never be killed by the registry: if
+    the code cannot be resolved the plain line is
+    logged instead, and the counting goes through
+    SafeRecorder, which swallows and counts its own
+    failures (a refused code is one of them)."""
+    prefix = ""
+    if _incident_codes is not None:
+        try:
+            prefix = _incident_codes.prefix(code)
+        except Exception:
+            prefix = ""
+    log(prefix + msg)
+    if _INCIDENTS is not None:
+        _INCIDENTS.record_incident(code)
 
 
 _HEAD_FP_BYTES = 8192
@@ -343,7 +395,8 @@ class Autopilot:
         self.child = subprocess.Popen(self.miner_cmd, cwd=ROOT,
                                       stdout=out, stderr=subprocess.STDOUT)
         self.child_started = time.time()
-        log(f"miner started pid={self.child.pid} cmd={' '.join(self.miner_cmd)}")
+        log_incident(1003, f"miner started pid={self.child.pid} "
+                           f"cmd={' '.join(self.miner_cmd)}")
 
     def child_state(self):
         if self.child is None:
@@ -367,6 +420,9 @@ class Autopilot:
             "shares_accepted_total": accepted,
             "evidence_age_s": round(time.time() - last_ev, 1) if last_ev else None,
         }
+        if _INCIDENTS is not None:
+            state["incident_counts"] = _INCIDENTS \
+                .incident_snapshot()["totals"]
         tmp = HB_PATH + ".tmp"
         with open(tmp, "w") as f:
             json.dump(state, f, indent=2)
@@ -386,20 +442,24 @@ class Autopilot:
         remote_sha = remote.split()[0]
         if remote_sha == local:
             return
-        log(f"update available {local[:8]} -> {remote_sha[:8]}; pulling")
+        log_incident(3001, f"update available {local[:8]} -> "
+                           f"{remote_sha[:8]}; pulling")
         old = local
         if self._git("pull", "--ff-only", "origin", "main") is None:
-            log("pull failed; keeping current version")
+            log_incident(3002, "pull failed; keeping current "
+                               "version")
             return
         smoke = subprocess.run(
             [sys.executable, "tests/test_pow_engine.py"], cwd=ROOT,
             capture_output=True, timeout=300)
         if smoke.returncode != 0:
-            log("smoke test FAILED on new code; rolling back")
+            log_incident(3003, "smoke test FAILED on new code; "
+                               "rolling back")
             self._git("reset", "--hard", old)
             return
         self.version = self._git("rev-parse", "--short", "HEAD") or self.version
-        log(f"updated to {self.version}; restarting miner onto new code")
+        log_incident(3004, f"updated to {self.version}; "
+                           f"restarting miner onto new code")
         if self.child and self.child.poll() is None:
             self.child.terminate()
 
@@ -408,7 +468,8 @@ class Autopilot:
         while not self.stop_flag:
             time.sleep(POLL_S)
             if os.path.exists(STOP_PATH):
-                log("stop file present; shutting down")
+                log_incident(2003, "stop file present; "
+                                   "shutting down")
                 break
             self.maybe_update()
             state = self.child_state()
@@ -417,8 +478,10 @@ class Autopilot:
                 self.restarts += 1
                 if lived >= MIN_HEALTHY_S:
                     self.backoff = BACKOFF_START_S
-                log(f"miner {state} after {lived:.0f}s; restart "
-                    f"#{self.restarts} in {self.backoff:.0f}s")
+                log_incident(1001, f"miner {state} after "
+                                   f"{lived:.0f}s; restart "
+                                   f"#{self.restarts} in "
+                                   f"{self.backoff:.0f}s")
                 time.sleep(self.backoff)
                 self.backoff = min(self.backoff * 2, BACKOFF_CAP_S)
                 if not self.stop_flag:
@@ -426,8 +489,9 @@ class Autopilot:
                 continue
             _acc, last_ev = evidence_stats()
             if last_ev and time.time() - last_ev > STALE_S:
-                log(f"evidence stale {time.time() - last_ev:.0f}s; "
-                    f"killing hung miner")
+                log_incident(1002, f"evidence stale "
+                                   f"{time.time() - last_ev:.0f}s; "
+                                   f"killing hung miner")
                 self.child.kill()
                 continue
             if time.time() - self.last_hb >= HEARTBEAT_S:
@@ -440,7 +504,7 @@ class Autopilot:
             except subprocess.TimeoutExpired:
                 self.child.kill()
         self.heartbeat()
-        log("autopilot stopped")
+        log_incident(2002, "autopilot stopped")
 
 
 def main():
@@ -466,7 +530,14 @@ def main():
 
     lock = acquire_lock()
     if lock is None:
-        print("another autopilot already owns this checkout; exiting")
+        msg = "another autopilot already owns this checkout; " \
+              "exiting"
+        if _incident_codes is not None:
+            try:
+                msg = _incident_codes.prefix(2004) + msg
+            except Exception:
+                pass
+        print(msg)
         return 0
     if os.path.exists(STOP_PATH):
         os.remove(STOP_PATH)
@@ -489,8 +560,9 @@ def main():
     signal.signal(signal.SIGTERM, on_signal)
     signal.signal(signal.SIGINT, on_signal)
 
-    log(f"autopilot up pid={os.getpid()} version={ap_obj.version} "
-        f"auto_update={auto_update} worker={worker}")
+    log_incident(2001, f"autopilot up pid={os.getpid()} "
+                       f"version={ap_obj.version} "
+                       f"auto_update={auto_update} worker={worker}")
     ap_obj.run()
     return 0
 
