@@ -1686,6 +1686,35 @@
     "Length-5 programs over any vocabulary larger than V: out of scope by definition, UNVERIFIED",
     "Behaviour on other hosts, including Intel: UNVERIFIED (solver verdicts are host-independent as mathematics; every run here is the AMD EPYC 9D25 host)"
    ]
+  },
+  {
+   "id": "EXP-052",
+   "hypothesis": "With an EXP-017-shaped median protocol and a margin set above the measured noise floor, the hardened bake-off never underperforms the static dispatch order beyond noise across host rotations: a challenger displaces the static pick only when its adjusted confidence interval clears the margin in every session and pooled, and every doubt path (corrupt cache, changed host, probe failure, stale or non-finite verdict) falls back to the static order (portfolio NOVA-ER-0012, register R-23).",
+   "status": "UNDER_INVESTIGATION",
+   "baseline": "The static dispatch order in gpu/engine.py ComputeEngine (cuda, v512dual, v512, shani, avx2, c, hashlib), which is today's production behaviour, and the Milestone 4 advisory bake-off (agent/intelligence/scheduler.py), which picks the argmax of medians of 3 with no margin rule and ran live once (shani nominal winner over v512 by 0.8 percent, inside contention noise). EXP-031 recorded about 20 percent run-to-run variance at fixed configuration on this VM, the noise the paired protocol exists to cancel.",
+   "measured_result": "PARTIAL COMPLETE on the AMD EPYC 9D25 host (predeclaration sha256 4dfba1104beac6de13ea6433ed68271f6f692d59657b7ea5478aeae9212f88d9, pinned in the campaign driver and the suite). New mining/bakeoff_dispatch.py (fingerprint-keyed verdict cache, strict validation, pure decision rule, a resolver that returns the static order on any doubt and never measures), the bakeoff section in mining/endpoint_config.py (enabled False by default, the EXP-050 pattern), and one conditional block at mining/mainnet_live.py's engine construction that is inert while the switch is off; the switch was not enabled. Gate 4 campaign exp052-20261117T150042Z: 3 sessions, 150 paired 65,536-hash blocks per comparison, 450 pairs per comparison, 18 of 18 units, 0 voided pairs, measurement wall 460.3 s; per-tier correctness re-run and passed for all six eligible tiers (1,024 of 1,024 digests against hashlib plus genesis agreement); cuda ineligible (no CUDA device). Static pick v512dual; pooled adjusted log ratios against it: v512 -0.6264 CI [-0.7375, -0.5200], shani -0.8221 CI [-0.9368, -0.7073], avx2 -1.4638 CI [-1.5763, -1.3477], c -1.9559 CI [-2.0619, -1.8464], hashlib -3.9732 CI [-4.0737, -3.8702]: verdict STATIC by dominance. Control pooled adjusted CI [-0.1101, +0.1452] is wider than the plus or minus log(1.05) resolution bound, so under the predeclared rule no challenger could have been certified in this campaign (pooled resolution about 13 percent, not the percent level the predeclaration's sizing basis expected; disclosed as judgment call 1, nothing re-run or re-sized). Gate 3: all 12 predeclared doubt cases plus baseline and extras resolve to the static order, none raises. Gate 5 (isolated): the campaign cache resolves to its STATIC verdict; a restricted protocol run (v512 and shani, static v512, 1 session, 40 pairs) produced a genuine STATIC cache the resolver honoured; corruption and fingerprint tamper fell back; switch off ignored the cache. Median category E rates (contended, descriptive): v512dual 8,802,838 H/s, v512 4,912,312, shani 4,046,727, avx2 1,112,710, c 740,233, hashlib 99,234. make test-exp052: 36 checks, ALL PASSED; neighbours test-exp050 (40), test-mainnet-live, test-exp049 (20), test-agent-operations (10,309) all passed; test-all becomes 50. Classification PROMISING HYPOTHESIS: the mechanism is proven at gate level on this host; the portfolio hypothesis is cross-rotation and stays unproven.",
+   "evidence": [
+    "research/sha256d/exp052/EXP052_REPORT.md",
+    "research/sha256d/exp052/PREDECLARATION.md",
+    "research/sha256d/exp052/RAW_RESULTS/campaign_exp052-20261117T150042Z.json",
+    "research/sha256d/exp052/RAW_RESULTS/bakeoff-dispatch-cache.json",
+    "research/sha256d/exp052/exp052_campaign.py",
+    "research/sha256d/exp052/exp052_analyze.py",
+    "mining/bakeoff_dispatch.py",
+    "tests/test_exp052_bakeoff_dispatch.py"
+   ],
+   "evidence_limitation": "One host only (AMD EPYC 9D25): the portfolio entry completes only across rotations of both host kinds, so this is an explicit partial verdict. The campaign's control resolution (about plus or minus 13 percent pooled) was coarser than the 5 percent margin, so the campaign could certify the static order's dominance (every challenger decisively slower) but could not have certified a challenger advantage below about 13 percent. Both genuine protocol runs produced STATIC verdicts, so the seam's winner path is verified with a schema-valid winner cache from the module's own writer and by decision-rule units, not by a measured winner. All measurement ran beside the live miner and the syncing node; contention is recorded per pair and handled by the paired design and covariates, and rates are contended figures.",
+   "independently_reproduced": "no",
+   "reproduced_by": "Not yet independently audited; executed under Directive 5 Stage 9 with raw session units retained for audit. The campaign driver resumes from RAW_RESULTS/sessions/ and never repeats a completed unit, so an auditor can re-derive the analysis and decision from the recorded pairs.",
+   "unresolved": [
+    "Behaviour across host rotations (an Intel Xeon Platinum 8321HC rotation, a second AMD rotation): UNVERIFIED, outstanding; the entry completes only there or stays partial",
+    "A measured-winner Gate 5 (a genuine challenger winning and dispatch following it): UNVERIFIED",
+    "Live enablement of the dispatch switch and any effect of a bake-off pick on the live mining rate: UNVERIFIED, not attempted; enablement is an owner decision",
+    "Certification power at the 5 percent margin in a future campaign: UNVERIFIED at 150 pairs per session (this campaign resolved about 13 percent); a rotation campaign needs its own predeclaration with a pair count sized from this control",
+    "The pick on any host other than this one: UNVERIFIED (the cache voids itself elsewhere by design, but correct picking on an unseen host is the cross-rotation claim)",
+    "Long-horizon cache behaviour inside the 7-day bound: UNVERIFIED; the bound is a design value",
+    "Behaviour under real fleet conditions: UNVERIFIED; no other machine was contacted"
+   ]
   }
  ]
 }
