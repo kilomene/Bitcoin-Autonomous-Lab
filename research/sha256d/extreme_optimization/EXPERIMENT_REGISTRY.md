@@ -2546,3 +2546,70 @@ Full record: research/sha256d/exp051/EXP051_REPORT.md
 and RAW_RESULTS/.
 
 Next unreserved ID: EXP-052.
+
+## EXP-053 record (2026-11-16)
+
+EXP-053 (NOVA-ER-0013, register Y-098, Phase 001
+H-6: chunk-2 prefix sharing inside the dual-batch
+walker) is COMPLETE with an ESTABLISHED NEGATIVE
+verdict at the predeclared resolution. The variant
+(bal_vp_search2, research/sha256d/exp053/src/
+libbal_e53prefix.so, generated from the production
+bal_avx512_dual.c) executes chunk-2 rounds 0 to 2
+once for the two batches of a dual group and forks
+the state, removing 3 of 256 round steps
+(arithmetic ceiling log(256/253) = +0.0118, about
++1.19 percent). The predeclaration
+(research/sha256d/exp053/PREDECLARATION.md, written
+before any variant timing, its sha256 recorded in
+every session manifest) fixed the design: Gate 2
+correctness first, then an EXP-017 campaign of 6
+effect sessions and 2 control sessions of 30,000
+paired 65,536-hash blocks each (240,000 pairs, the
+budget cap), randomized AB/BA, threads 2, the
+EXP-017 statistic computed by the imported
+analyzer code. Gate 2 passed before the campaign
+and again on rerun (make test-exp053: ALL PASSED;
+108,000 randomized differentials vs hashlib on
+variant and production control, byte-identical
+vp-vs-vd batch outputs over 4,194,304 digests,
+search agreement under the EXP-047 corrected
+criterion). The completing agent re-verified the
+raw campaign data pair by pair: every arm of every
+pair attempted exactly 65,536 with rc 0, and every
+stored log-ratio recomputes from the recorded
+rates. Control pooled adjusted mean -0.0030, CI
+[-0.0108, +0.0048]: contains 0, machinery valid
+under the predeclared rule. Effect pooled adjusted
+mean -0.0017, CI [-0.0059, +0.0027]; no effect
+session significant; fraction of pairs won by the
+variant 0.501. The pooled CI contains 0, its upper
+bound is below the +0.0118 ceiling and its
+half-width 0.0043 is at most the predeclared 0.006:
+ESTABLISHED NEGATIVE at the predeclared
+resolution. Any true gain is below +0.0027 log
+units (about +0.27 percent) with 95 percent
+confidence, which cannot be the small significant
+gain hypothesised; H-6 is closed for the dual
+walker (the standalone form remains EXP-013's
+straddle, neither accepted nor refuted). No
+integration: production files were never touched,
+Gate 6 does not run on a negative verdict, and
+make test-avx512dual passed after the campaign
+with a fresh regtest block at height 2368 through
+the production backend. The original builder died
+mid-campaign on a transport error; the orphaned
+campaign chain completed all 8 sessions untouched,
+and a VM replacement killed the first analysis run
+before output, so the analysis was rerun detached.
+EXP-052 stays reserved for NOVA-ER-0012 (bake-off
+hardening, which completes only across host
+rotations). An independent audit is owed before
+any push. UNVERIFIED: other hosts, the batch
+entry's rate (Gate 2 only, no rate claimed),
+thread counts other than 2, combinations with
+other kernel ingredients. Full record:
+research/sha256d/exp053/EXP053_REPORT.md and
+RAW_RESULTS/.
+
+Next unreserved ID: EXP-054.
