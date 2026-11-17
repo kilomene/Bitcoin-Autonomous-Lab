@@ -90,6 +90,24 @@ EXP-035 completed-chunks rule and the same rule the EXP-038
 checkpoint frontier follows across restarts. The counters a
 process records are that process's session scope; the
 evidence census remains the lifetime source for pool shares.
+
+NOVA-ER-0006 incident keying (register R-30): alongside
+the category counters, this engine keeps a code-keyed
+incident ledger. Every incident carries a stable
+numeric code from the append-only registry in
+mining/incident_registry.json (access via
+mining/incident_codes.py), so recurring fault classes
+are countable by code instead of by free text. The
+three refusal and loss categories get their codes
+keyed automatically by record() (see
+CATEGORY_INCIDENT_CODES), and any caller may key an
+incident directly with record_incident(), which
+resolves the code against the registry and refuses an
+unknown code with ValueError, changing no counter.
+The ledger is exposed by incident_snapshot(), NOT by
+snapshot(): the snapshot's key set is pinned by
+EXP-037 and its categories are never merged with
+anything, and incidents are not categories.
 """
 
 CATEGORIES = (
@@ -127,6 +145,41 @@ CATEGORIES = (
 
 _CATEGORY_SET = frozenset(CATEGORIES)
 
+# NOVA-ER-0006 (register R-30): the incident code each
+# refusal or loss category keys in the incident ledger
+# when it is recorded. These are module constants, not
+# runtime registry reads, so record() behaves exactly
+# as before even if the registry file is unreadable;
+# tests/test_incident_codes.py pins every value to
+# mining/incident_registry.json.
+CATEGORY_INCIDENT_CODES = {
+    "stale_reports": 4001,        # REPORT_STALE
+    "duplicate_deliveries": 4002,  # REPORT_DUPLICATE
+    "leases_abandoned": 4003,     # WORK_ABANDONED
+}
+
+_incident_codes_module = None
+_incident_codes_failed = False
+
+
+def _incident_codes():
+    """The mining.incident_codes module, imported lazily
+    so importing this module never depends on the
+    registry file; None if it cannot be imported."""
+    global _incident_codes_module, _incident_codes_failed
+    if _incident_codes_module is None and \
+            not _incident_codes_failed:
+        try:
+            from mining import incident_codes
+            _incident_codes_module = incident_codes
+        except ImportError:
+            try:
+                import incident_codes
+                _incident_codes_module = incident_codes
+            except ImportError:
+                _incident_codes_failed = True
+    return _incident_codes_module
+
 
 class MiningStatistics:
     """Separated mining counters with per-worker and
@@ -137,6 +190,9 @@ class MiningStatistics:
         self._totals = {c: 0 for c in CATEGORIES}
         self._per_worker = {}
         self._per_backend = {}
+        self._incident_totals = {}
+        self._incident_per_worker = {}
+        self._incident_per_backend = {}
 
     def record(self, category, count=1, worker=None, backend=None):
         if category not in _CATEGORY_SET:
@@ -158,6 +214,69 @@ class MiningStatistics:
             slot = self._per_backend.setdefault(
                 backend, {c: 0 for c in CATEGORIES})
             slot[category] += count
+        code = CATEGORY_INCIDENT_CODES.get(category)
+        if code is not None:
+            self._key_incident(code, count, worker, backend)
+
+    def _key_incident(self, code, count, worker, backend):
+        self._incident_totals[code] = \
+            self._incident_totals.get(code, 0) + count
+        if worker is not None:
+            slot = self._incident_per_worker.setdefault(
+                worker, {})
+            slot[code] = slot.get(code, 0) + count
+        if backend is not None:
+            slot = self._incident_per_backend.setdefault(
+                backend, {})
+            slot[code] = slot.get(code, 0) + count
+
+    def record_incident(self, code, count=1, worker=None,
+                        backend=None):
+        """Key one incident by its registry code
+        (NOVA-ER-0006, register R-30). The code is
+        resolved against mining/incident_registry.json
+        at call time: an unknown code raises ValueError
+        and changes no counter (Gate 3 refusal). Counts
+        follow the same rules as record()."""
+        module = _incident_codes()
+        if module is None:
+            raise ValueError(
+                "incident code registry is not "
+                "importable; refusing to key an "
+                "unvalidated code")
+        module.resolve(code)
+        if not isinstance(count, int) or count < 0:
+            raise ValueError("count must be a non-negative "
+                             "int")
+        if count == 0:
+            return
+        self._key_incident(code, count, worker, backend)
+
+    def incident_total(self, code):
+        """Count keyed under one incident code (0 if
+        never keyed). A read of the ledger, not an
+        emission, so the code is not validated."""
+        return self._incident_totals.get(code, 0)
+
+    def incident_snapshot(self):
+        """The code-keyed incident ledger (NOVA-ER-0006):
+        totals per incident code with per-worker and
+        per-backend breakdowns, codes as string keys so
+        the view is JSON-safe. Separate from snapshot()
+        by design: incidents are not categories and the
+        EXP-037 snapshot shape is pinned."""
+        def view(mapping):
+            return {str(code): n for code, n
+                    in sorted(mapping.items())}
+        return {
+            "totals": view(self._incident_totals),
+            "per_worker": {w: view(m) for w, m
+                           in self._incident_per_worker
+                           .items()},
+            "per_backend": {b: view(m) for b, m
+                            in self._incident_per_backend
+                            .items()},
+        }
 
     def total(self, category):
         if category not in _CATEGORY_SET:
@@ -261,6 +380,21 @@ class SafeRecorder:
                               backend=backend)
         except Exception:
             self.errors += 1
+
+    def record_incident(self, code, count=1, worker=None,
+                        backend=None):
+        """Failure-isolated record_incident(), under the
+        same contract as record(): a refused or failing
+        keying is swallowed here and counted in
+        self.errors, never propagated into a caller."""
+        try:
+            self.stats.record_incident(
+                code, count, worker=worker, backend=backend)
+        except Exception:
+            self.errors += 1
+
+    def incident_snapshot(self):
+        return self.stats.incident_snapshot()
 
     def snapshot(self):
         return self.stats.snapshot()
