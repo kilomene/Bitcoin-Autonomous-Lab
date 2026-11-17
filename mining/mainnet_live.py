@@ -241,7 +241,29 @@ def main():
         print("authorization failed"); return 3
     print(f"authorized as {user}", flush=True)
 
-    engine = ComputeEngine()
+    # Bake-off dispatch (EXP-052, R-23): only when the
+    # operator enabled the "bakeoff" section of the
+    # endpoint config. The resolver returns the cached
+    # bake-off winner for this host's fingerprint, or
+    # "auto" on any doubt; disabled (the default) the
+    # resolver is never consulted and the engine is
+    # constructed exactly as before, with the static
+    # dispatch order.
+    engine_requested = "auto"
+    from mining.endpoint_config import bakeoff_config
+    bakeoff_cfg = bakeoff_config(endpoint_cfg)
+    if bakeoff_cfg["enabled"]:
+        from mining.bakeoff_dispatch import \
+            resolve_requested
+        engine_requested, bakeoff_reason = \
+            resolve_requested(bakeoff_cfg)
+        print(f"bake-off dispatch: requested "
+              f"{engine_requested} ({bakeoff_reason})",
+              flush=True)
+        ev.log("bakeoff_dispatch",
+               requested=engine_requested,
+               reason=bakeoff_reason)
+    engine = ComputeEngine(requested=engine_requested)
     desc = engine.describe()
     reason_label, reason = backend_reason(desc)
     backend_line = (f"compute backend: {desc['backend']} "
