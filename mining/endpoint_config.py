@@ -107,6 +107,31 @@ POOL_HEALTH_DEFAULTS = {
     "probe_timeout_s": 5.0,
 }
 
+# Bake-off dispatch parameters (EXP-052 hardening of
+# register R-23, portfolio NOVA-ER-0012). The decision
+# rule and the resolver live in
+# mining/bakeoff_dispatch.py; these are its declared
+# operating point. Disabled by default: until an
+# operator enables it here, the miner's engine is
+# constructed with requested "auto" (the static
+# dispatch order), exactly today's behaviour, and the
+# resolver is never consulted. With "enabled" true, the
+# resolver reads the verdict cache at cache_path (null
+# means the module default, .local/bakeoff-dispatch
+# .json) and returns its certified winner for this
+# host's fingerprint, or "auto" on any doubt. margin is
+# the minimum displacement margin the cache must have
+# been produced under (the resolver refuses a cache
+# recorded below the predeclared 0.05); max_age_s
+# bounds the verdict's age before it is treated as
+# stale doubt.
+BAKEOFF_DEFAULTS = {
+    "enabled": False,
+    "cache_path": None,
+    "max_age_s": 604800.0,
+    "margin": 0.05,
+}
+
 DEFAULT_CONFIG = {
     "mode": "pool",
     "pool": {"host": POOL_HOST, "port": POOL_PORT},
@@ -122,6 +147,7 @@ DEFAULT_CONFIG = {
     "solo": {"host": SOLO_HOST, "port": SOLO_PORT,
              "share_difficulty": SOLO_SHARE_DIFFICULTY,
              "vardiff": dict(SOLO_VARDIFF_DEFAULTS)},
+    "bakeoff": dict(BAKEOFF_DEFAULTS),
     "payout_address": LAB_PAYOUT_ADDRESS,
 }
 
@@ -155,6 +181,24 @@ def pool_health_config(cfg=None):
     if cfg is None:
         cfg = load_config()
     section = cfg.get("pool_health") if isinstance(cfg, dict) else None
+    if isinstance(section, dict):
+        for key, val in section.items():
+            if key in out and val is not None:
+                out[key] = val
+    return out
+
+
+def bakeoff_config(cfg=None):
+    """The merged bake-off dispatch settings from an
+    endpoint config (defaults when cfg is None or
+    carries no bakeoff section). Pure data;
+    mining/mainnet_live.py hands it to
+    mining/bakeoff_dispatch.resolve_requested when the
+    section is enabled."""
+    out = dict(BAKEOFF_DEFAULTS)
+    if cfg is None:
+        cfg = load_config()
+    section = cfg.get("bakeoff") if isinstance(cfg, dict) else None
     if isinstance(section, dict):
         for key, val in section.items():
             if key in out and val is not None:
