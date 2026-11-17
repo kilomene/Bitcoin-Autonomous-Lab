@@ -1606,6 +1606,34 @@
     "Live deployment of the coordinator alongside the production miner (UNVERIFIED, not attempted)",
     "Effect on other hosts (all measurement is the AMD EPYC 9D25 host)"
    ]
+  },
+  {
+   "id": "EXP-057",
+   "hypothesis": "A stratum-speaking aggregation tier can hold few upstream connections, fan workbases out to fleet workers, validate shares through EXP-036 verify_candidate, and keep per-worker accounting through EXP-037, without becoming a trust hole; the solo server machinery generalises to the aggregation role and the genuinely new work is fleet identity inheriting EXP-035/EXP-055 checks rather than ckpool's open pool trust model (portfolio NOVA-ER-0017, register R-27).",
+   "status": "PROVEN",
+   "baseline": "mining/solo_server.py (the lab's own Stratum V1 solo server: job construction, validate_share header reconstruction, EXP-036 exact verification, per-worker accounting) and the EXP-043 loopback overhead figures (prototype manager calls 1 to 5 us in-process; loopback wire shim floor about 33 to 55 us per round trip at 1 worker). Identity semantics from EXP-035 and the EXP-055 coordinator (fleet id binding, per-worker registration, foreign fleet rejection, restart rule).",
+   "measured_result": "New production component mining/aggregation.py: an AggregationTier holding ONE upstream SoloServer (production job, reconstruction and verification code reused verbatim) fanning workbases to downstream stratum workers, plus a Stratum V1 TCP front end routing through the same single judgment path. Fleet identity: operator enrollment with only the token SHA-256 hash stored (constant-time compare), fleet id match required, sessions binding one worker to one tier-assigned extranonce1, claimed-worker mismatch an identity rejection, sessions dead after a restart (epoch bumps). Submission authority stays out of the tier: verified block candidates queue as pending and are never submitted by the tier; the only submission path is operator_submit_pending (operator token plus an explicitly configured submitter, candidate re-verified through EXP-036 immediately before submission). Gate 2: randomised differentials, 3,240 corpus entries (3,000 random plus 240 constructed invalid) plus 60 unknown-job entries, tier verdict equals direct verify_candidate verdict on 3,240 of 3,240 (tally 2,823 below_target, 177 share, 240 invalid). Gate 3: identity spoofing and stale injection at 2, 4 and 8 workers on 1 upstream connection: 7 of 7 identity injections rejected at each count, zero spoofed submissions accepted, harness tally equals tier counters exactly, accounting identity holds globally and per worker, upstream submissions 0 throughout (counting spy never called). Gate 4: tier in-process submit median 19.0 us vs direct SoloServer submit 12.3 us; tier TCP loopback submit round trip 61.1 us (medians of 3 sessions). Gate 5: snapshot and restore with a real state file: epoch 0 to 1, pre-restart session dead, accounting categories preserved exactly, dedup set and pending candidate preserved (planted record, labelled, for the persistence mechanics), fresh work accounted. Gate 6: regtest block at height 2375 (hash 00000017d0df0340f2197b2eb1038090a4636cc718c83b2707d9d40bde1ebd6d) produced through the tier: winning share from a downstream stratum worker, EXP-036 verified, queued with the chain tip provably unmoved, submitted only by the explicit operator action, chain status tip; the regression suite produced height 2376 the same way. make test-exp057: 9 checks, ALL PASSED; test-all becomes 47. No production path touched; not deploying the tier is the rollback.",
+   "evidence": [
+    "research/sha256d/exp057/EXP057_REPORT.md",
+    "research/sha256d/exp057/PREDECLARATION.md",
+    "research/sha256d/exp057/RAW_RESULTS/campaign_20261117T100445Z.json",
+    "research/sha256d/exp057/RAW_RESULTS/overhead_20261117T100544Z.json",
+    "research/sha256d/exp057/RAW_RESULTS/gate6_20261117T100554Z.json",
+    "research/sha256d/exp057/RAW_RESULTS/gates.log",
+    "mining/aggregation.py",
+    "tests/test_exp057_aggregation.py"
+   ],
+   "evidence_limitation": "All evidence is one contended VM (AMD EPYC 9D25) with loopback and in-process workers only and one upstream connection to the lab's own node machinery. Gates 2 and 3 use a synthetic FakeRPC template source for reproducibility (production SoloServer and EXP-036 code under test; Gate 6 runs the same tier against the real regtest node). Gate 5's pending-candidate persistence is exercised with a labelled planted record because a verified block candidate cannot be produced on demand on the synthetic workbase. An independent audit, adversarial on identity, is owed before any push.",
+   "independently_reproduced": "no",
+   "reproduced_by": "Not yet independently audited; executed under Directive 5 Stage 9 with raw results retained for audit.",
+   "unresolved": [
+    "Multi-machine operation (UNVERIFIED: no other machine contacted; fleet activation is owner-gated, roadmap F2)",
+    "Real-network latency and behaviour (UNVERIFIED: loopback is not a network measurement)",
+    "Real upstream pool behaviour against a third-party pool (UNVERIFIED, not attempted)",
+    "Cross-machine scaling, real fleet behaviour, clock skew across machines, partial network failure (UNVERIFIED)",
+    "Live deployment of the tier in the production mining path (UNVERIFIED, not attempted)",
+    "Effect on other hosts (all measurement is the AMD EPYC 9D25 host)"
+   ]
   }
  ]
 }
