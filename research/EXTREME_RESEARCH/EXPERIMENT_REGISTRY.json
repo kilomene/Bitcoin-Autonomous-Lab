@@ -1333,16 +1333,23 @@
   {
    "id": "R-30",
    "hypothesis": "Stable numeric incident code registry for faults, recoveries and backend refusals (Whatsminer documentation lineage)",
-   "status": "NEW",
+   "status": "INTEGRATED",
    "baseline": "free-text incident records",
-   "measured_result": "New; not started",
+   "measured_result": "INTEGRATED by NOVA-ER-0006 (2026-11-17): append-only incident code registry mining/incident_registry.json (20 coarse codes, groups 1xxx miner lifecycle, 2xxx supervisor lifecycle, 3xxx self-update, 4xxx work and report integrity, 5xxx upstream and verification) with mining/incident_codes.py as the validation layer (unknown codes refused with ValueError, check_append_only enforces the append-only discipline). Emission wired at 11 predeclared sites in mining/autopilot.py (log lines gain a [code] prefix token; heartbeat.json gains an incident_counts field) and as statistics keying in mining/mining_statistics.py (record() of stale_reports, duplicate_deliveries and leases_abandoned keys 4001, 4002 and 4003; record_incident API; incident_snapshot() view, with snapshot() shape unchanged under its EXP-037 pin). Gate 3 (refusal, append-only enforcement, site coverage) and Gate 5 (isolated byte-copy autopilot instance end to end, plus a replay over the recorded corpus: all 165 autopilot log lines and every evidence fault class mapped to exactly one code) passed; tests/test_incident_codes.py 34 checks, neighbours test-autopilot, test-mainnet-live, test-exp037, test-exp057 passed. Codes annotate records and change no behaviour; removing the field restores prior shapes. Design note and full record: research/EXTREME_RESEARCH/NOVA_ER_0006_DESIGN.md and NOVA_ER_0006_REPORT.md.",
    "independently_reproduced": "no",
    "reproduced_by": null,
    "evidence": [
-    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md"
+    "research/master_build/HISTORICAL_OPPORTUNITY_REGISTER.md",
+    "research/EXTREME_RESEARCH/NOVA_ER_0006_DESIGN.md",
+    "research/EXTREME_RESEARCH/NOVA_ER_0006_REPORT.md",
+    "mining/incident_registry.json",
+    "mining/incident_codes.py",
+    "tests/test_incident_codes.py"
    ],
    "unresolved": [
-    "Codes must be append-only and coarse at first"
+    "Codes 2005 and 5001 to 5005 are assigned in the registry with producers outside this change (the keeper, which is not repo code, and the miner evidence writer in mining/mainnet_live.py); their classes are replay-mapped but emission at those producers is not wired",
+    "Live records carry codes only after the next natural autopilot restart; no restart was forced",
+    "Backend refusal (5003) has no instance in the operational evidence corpus, which records selections only; the class is coded from the portfolio and the EXP-039 probe record"
    ]
   },
   {
