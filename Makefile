@@ -116,6 +116,9 @@ test-exp057:
 test-exp058:
 	python3 tests/test_exp058_pid_control.py
 
+test-exp056:
+	.local/z3venv/bin/python tests/test_exp056_cones.py
+
 test-exp036:
 	python3 tests/test_exp036_verification.py
 
@@ -149,7 +152,7 @@ test-agent-controller:
 test-stage8:
 	python3 tests/test_stage8_demonstration.py
 
-test-all: test test-regtest test-engine test-pow test-gpu test-gpu-correction test-mining test-adversarial test-deepening test-cpu test-cpu-correction test-rtl test-solo test-solo-vardiff test-solo-cutover test-research test-autopilot test-judgement test-installer test-task003 test-task0038 test-task0039 test-avx512 test-avx512dual test-mainnet-live test-template-cache test-avx512flags test-exp036 test-exp034 test-exp037 test-exp038 test-probability test-exp039 test-exp040 test-agent-intelligence test-agent-awareness test-agent-operations test-agent-security test-agent-controller test-stage8 test-exp049 test-exp050 test-exp051 test-exp053 test-exp054 test-exp055 test-exp057 test-exp058
+test-all: test test-regtest test-engine test-pow test-gpu test-gpu-correction test-mining test-adversarial test-deepening test-cpu test-cpu-correction test-rtl test-solo test-solo-vardiff test-solo-cutover test-research test-autopilot test-judgement test-installer test-task003 test-task0038 test-task0039 test-avx512 test-avx512dual test-mainnet-live test-template-cache test-avx512flags test-exp036 test-exp034 test-exp037 test-exp038 test-probability test-exp039 test-exp040 test-agent-intelligence test-agent-awareness test-agent-operations test-agent-security test-agent-controller test-stage8 test-exp049 test-exp050 test-exp051 test-exp053 test-exp054 test-exp055 test-exp057 test-exp058 test-exp056
 
 cuda-build:
 	python3 gpu/cuda/build.py
