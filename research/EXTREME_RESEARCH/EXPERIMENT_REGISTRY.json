@@ -1553,6 +1553,31 @@
     "Thread counts other than 2",
     "The prefix share combined with other kernel ingredients (EXP-022 flags, EXP-024 designs)"
    ]
+  },
+  {
+   "id": "EXP-054",
+   "hypothesis": "Inside the production dual-batch walker, the two batches' rounds alternate at round granularity (G = 1). Coarser alternation blocks (G = 2, 4, 8 rounds of one batch before switching) trade latency hiding against instruction-cache and register locality; a coarser point may measure better than the production point through the real search path (portfolio NOVA-ER-0014, register Y-043). The portfolio prior, by analogy with EXP-005's flat geometry curve on the SHA-NI family, is that the curve is flat near the production point.",
+   "status": "REJECTED",
+   "baseline": "Production dual-batch walker bal_vd_search2 (.local/cpu/libbal_v512dual.so, from mining/cpu/bal_avx512_dual.c): inside the dual compress, the two batches' rounds alternate at round granularity (A round t, B round t), G = 1. No round work is added or removed at any granularity point, so there is no arithmetic ceiling; any effect is a second-order scheduling effect (latency hiding, spill and instruction-cache behaviour).",
+   "measured_result": "Research build bal_vg{G}_search2 (research/sha256d/exp054/src/libbal_e54gran.so, generated mechanically from the production source) parameterises the alternation block size G in {1, 2, 4, 8}; only the order of the two batches' round steps changes. Gate 2 passed before the campaign (per point: 108,000 randomized differentials vs hashlib, batch outputs byte-identical to the production binary over 4,194,304 digests, search agreement under the EXP-047 corrected criterion; the production library passed the same set as control). EXP-017 campaign, 13 sessions of 30,000 paired 65,536-hash blocks (390,000 pairs, threads 2): control pooled adjusted log-ratio -0.0038, 95 percent CI [-0.0146, +0.0070], contains 0, machinery valid. Build control (research G = 1 vs the shipped binary) pooled adjusted -0.0658, CI [-0.0763, -0.0550], excludes 0: the research build itself measures about 6.4 percent slower at the identical algorithm, so candidate effects at or below that size cannot be attributed to granularity alone (predeclaration). Candidates, Bonferroni corrected 98.333 percent intervals: G = 2 pooled adjusted +0.0016, CI [-0.0088, +0.0121], half-width 0.0105 at most the predeclared 0.012, FLAT (any true gain at most about +1.22 percent); G = 4 pooled adjusted -0.0521, CI [-0.0617, -0.0425], entirely below 0 pooled and in every session, SLOWDOWN (at or below the build offset, so not attributable to granularity alone); G = 8 pooled adjusted -0.1505, CI [-0.1600, -0.1408], entirely below 0 pooled and in every session, SLOWDOWN beyond the build offset. Overall verdict CONFIRMED: no candidate displaces or is promising, every candidate is FLAT or SLOWDOWN, so the Y-043 displacement hypothesis is an ESTABLISHED NEGATIVE at the predeclared resolution and the production point (G = 1) stands with a measured curve behind it. No integration; production files untouched; Gates 1, 3, 5 and 6 do not apply (portfolio).",
+   "evidence": [
+    "research/sha256d/exp054/EXP054_REPORT.md",
+    "research/sha256d/exp054/PREDECLARATION.md",
+    "research/sha256d/exp054/RAW_RESULTS/analysis_20261117T065523Z.json",
+    "research/sha256d/exp054/RAW_RESULTS/gates.log",
+    "research/sha256d/exp054/RAW_RESULTS/sessions/",
+    "tests/test_exp054_granularity.py"
+   ],
+   "evidence_limitation": "Eleven of thirteen sessions ran on the AMD EPYC 9D25 host and the final G = 4 and G = 8 sessions on AMD EPYC 9D64 after a VM replacement (killed sessions rerun per the predeclaration, never resumed or edited); the pooled G = 4 and G = 8 magnitudes are mixtures across the two hosts, though every session's direction agrees on both hosts. All measurements are under contention from the live miner and pruned node. The research build carries a measured -0.0658 layout offset against the shipped binary, which bounds granularity attribution as recorded in measured_result.",
+   "reproduced_by": "Not yet independently audited; executed under Directive 5 Stage 9 with raw results retained for audit. The original builder ended without a final report after the campaign completed; the completing agent re-verified the raw data pair by pair (attempted counts, return codes, log-ratio recomputation with max error 0.0, coverage assertions, manifest hashes) before running the predeclared analysis and applying the predeclaration's verdict mapping, including its Bonferroni correction. The EXP-053 audit lessons are implemented and verified in this driver (steal covariate in the EXP-017 form; deterministic sha256-derived analysis seeds). An independent audit is owed before any push.",
+   "independently_reproduced": "no",
+   "unresolved": [
+    "Effect on other hosts (the Intel Xeon Platinum 8321HC rotation host is unmeasured; the two AMD hosts measured disagree on slowdown magnitude)",
+    "The batch entries' rates (Gate 2 correctness only; no batch rate claimed)",
+    "Thread counts other than 2",
+    "Granularity points between the swept ones (G = 3, 5, 6, 7) or beyond 8, and granularity combined with other kernel ingredients",
+    "The mechanism of the research build's -0.0658 offset against the shipped binary (code layout vs build flags; measured, not isolated)"
+   ]
   }
  ]
 }
