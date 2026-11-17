@@ -1578,6 +1578,34 @@
     "Granularity points between the swept ones (G = 3, 5, 6, 7) or beyond 8, and granularity combined with other kernel ingredients",
     "The mechanism of the research build's -0.0658 offset against the shipped binary (code layout vs build flags; measured, not isolated)"
    ]
+  },
+  {
+   "id": "EXP-055",
+   "hypothesis": "The EXP-035 work distribution design can be built as a persistent coordinator with a wire protocol that preserves the prototype's exactness properties (proof obligations P1 to P6) at the protocol level, passes a randomised fault campaign at the EXP-035 standard, and has its overhead measured before any scaling claim; the open risk is overhead and EXP-043's two named prototype defects (unpruned lease table, unbounded snapshot cost), not the design (portfolio NOVA-ER-0015, roadmap F1).",
+   "status": "PROVEN",
+   "baseline": "EXP-035 research prototype (lease_manager.py, candidate_queue.py): exact in-process semantics proven over 60 trials and 609,280 positions, with EXP-043 overhead baselines and its two defects measured (lease() starvation path scanning every lease ever issued, 67 percent of fault-campaign CPU; snapshot() deep-copying all retained state including the unbounded event log, 420.3 ms at 8,192 chunks). Single-machine semantics from agent/intelligence/resources.py.",
+   "measured_result": "New production component mining/coordinator.py: persistent coordinator, length-prefixed CRC32-framed wire protocol (registration, leases, progress, completion, candidate hand-off), operation journal plus atomic snapshots, candidate journal with persist-before-acknowledge. Both EXP-043 defects carried in as fixes: the lease store holds only active leases indexed per worker (after 8,000 completions: 1 active lease plus 8,000 compact tombstones, vs the prototype's 8,016 full records; the starvation holds-lease query is flat at 191 ns at history 0 and 8,000, vs prototype 531 ns growing to 637,126 ns), and snapshots serialise live state only (512 chunks plus 8,000 dead issuances: 4.90 ms and 122,278 bytes, vs prototype 248.0 ms deep-copying 8,000 lease records and 16,002 events). Gate 1: 22 of 22 targeted protocol tests PASS over in-process and TCP loopback transports (P1 to P6, wire integrity). Gate 2: differential accounting against an independent interval-based model, 40 seeded scripts, 8,460 comparisons, ALL EQUAL. Gate 3: 66 randomised fault trials (60 in-process protocol, 6 TCP), 737,792 declared positions completed EXACTLY in every trial, zero inexact trials, under 2,807 deaths, 2,070 worker restarts, 1,037 expiries, 862 steals, 981 coordinator restarts, 4,102 zombie replays (all STALE), 2,697 duplicate deliveries, 938 not-holder attempts and 1,160 duplicate candidate submissions, with 307,682 repeated computations accounted separately. Gate 4: per-operation protocol round trips 17 to 29 us in-process and 34 to 56 us over TCP loopback on this VM; campaign per-position costs at EXP-043 geometry recorded in the report beside the EXP-043 table, with the fault-mix difference stated. Gate 5: persistent restart over TCP with a real state directory: crash recovery replayed the journal tail past a mid-session snapshot, epoch and token counter preserved, pre-restart tokens STALE, candidate journal recovery preserved P6, job completed exactly (1,024 of 1,024), clean second restart at epoch 2. Gate 6: regtest block at height 2372 (hash 2334ac9cd173fc867bea7449852751e227104cfa7dfc511ceaed3a4687f2c4fb) produced through coordinator-assigned work, EXP-036 verdict block_candidate, chain status tip; the regression suite produced height 2373 the same way. make test-exp055: 23 checks, ALL PASSED; test-all becomes 46. No production path touched; not deploying the coordinator is the rollback.",
+   "evidence": [
+    "research/sha256d/exp055/EXP055_REPORT.md",
+    "research/sha256d/exp055/PREDECLARATION.md",
+    "research/sha256d/exp055/RAW_RESULTS/campaign_20261117T093000Z.json",
+    "research/sha256d/exp055/RAW_RESULTS/overhead_20261117T094237Z.json",
+    "research/sha256d/exp055/RAW_RESULTS/gate6_20261117T094316Z.json",
+    "research/sha256d/exp055/RAW_RESULTS/gates.log",
+    "mining/coordinator.py",
+    "tests/test_exp055_coordinator.py"
+   ],
+   "evidence_limitation": "All evidence is one contended VM (AMD EPYC 9D25, load average roughly 3 to 16 across the runs) with in-process and loopback workers only. Gate 4's fault-lite campaign points exclude coordinator restarts (their cost is the separately measured snapshot path) where EXP-043's fault mix included a 40-restart budget, and the TCP per-operation figures come from a sequential driver where EXP-043's shim used concurrent processes; both differences are stated in the report. Gate 6 used a single-slice, single-chunk job declared from a real template. An independent audit is owed before any push.",
+   "independently_reproduced": "no",
+   "reproduced_by": "Not yet independently audited; executed under Directive 5 Stage 9 with raw results retained for audit. Gate 5's first execution caught a real recovery defect (restart rule applied before journal replay), fixed in the load path before the campaign of record and recorded in the report's judgment calls. Gate 4 reached its record on the fourth run after a VM replacement interruption and two discarded harness-defect runs, all retained in RAW_RESULTS.",
+   "unresolved": [
+    "Multi-machine coordination (UNVERIFIED: no other machine contacted; fleet activation is owner-gated, roadmap F2)",
+    "Real-network latency (UNVERIFIED: loopback is not a network measurement)",
+    "Cross-machine scaling (UNVERIFIED: worker counts are simulated workers on one VM)",
+    "Real fleet behaviour, clock skew across machines, partial network failure, production template rates and chunk sizes (UNVERIFIED)",
+    "Live deployment of the coordinator alongside the production miner (UNVERIFIED, not attempted)",
+    "Effect on other hosts (all measurement is the AMD EPYC 9D25 host)"
+   ]
   }
  ]
 }
