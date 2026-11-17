@@ -2419,3 +2419,69 @@ record: research/sha256d/exp058/EXP058_REPORT.md
 and RAW_RESULTS/.
 
 Next unreserved ID: EXP-059.
+## EXP-056 record (2026-11-17)
+
+EXP-056 (NOVA-ER-0016: the H-033-02 residual cone
+closure attempt) is INCONCLUSIVE at its predeclared
+budget, registry status UNDER_INVESTIGATION.
+Hypothesis H-033-02 (a 5-instruction straight-line
+program over V = {ADD, LUT(any imm), ROTR(any k),
+SHR(any k)} computes a full round cone) stays
+UNPROVEN BREAKTHROUGH, narrowed by 7 closed op-kind
+profiles per cone. The attack was the full length-5
+space with no decomposition assumptions, under a
+canonicalised CEGIS encoding (C1 unused-slot fixing,
+C2 ADD commutativity, C3 output distinctness, C4
+every-instruction-used, C5 profile split;
+predeclaration sha256
+95b39893c5e13fa7559c33dc3696ce05b6e17baadbd5c603f22b4165259b50a6).
+Gates passed both cones (1,000,000-sample incumbent
+differentials, 0 mismatches; incumbents exact in
+z3) and the SAT control passed (a program was
+found and proven exactly equivalent to the
+planted control program as implemented;
+correction 2026-11-17, audit defect D-1: the
+implemented plant deviated from the
+predeclaration in its i4 selectors, (6, 5)
+instead of (7, 5), its only SHR is never read,
+and its function is computable by 4 instructions,
+so the control demonstrated SAT-capability
+against the implemented, easier target, and a
+re-run against the corrected predeclared plant
+is owed if the campaign resumes), so the
+encoding is demonstrated SAT-capable and its
+UNSAT verdicts are believed.
+Stage A full-space queries returned unknown at
+iteration 0 for both cones (1,502.7 s and 1,506.1 s
+at the 1,500 s timeout), as in EXP-033 and EXP-042.
+Stage B exhausted 12 of 56 profiles per cone at
+240 s per query before the 6,600 s solver box was
+spent (6,519.3 s consumed): profiles (5,0,0,0),
+(4,1,0,0), (4,0,1,0), (4,0,0,1), (3,0,2,0),
+(3,0,1,1) and (3,0,0,2) are UNSAT (closed) for BOTH
+cones; (3,2,0,0), (3,1,1,0), (3,1,0,1), (2,3,0,0)
+and (2,2,1,0) returned unknown; profiles 12 to 55
+were never queried. Stage C (encoding B) was not
+run: 80.7 s of the box remained. A dated exp056
+note is appended to the H-033-02 entry in the
+EXP-033 hypothesis registry. No SAT construction
+was found, no production code changed, and no rate
+is claimed. make test-exp056: 16 checks, ALL
+PASSED; neighbour make test-exp055: 23 checks, ALL
+PASSED; test-all becomes 49. The campaign drivers
+resume from the checkpoint in RAW_RESULTS and
+never repeat a completed query, so the profile
+split can continue from profile 12 under a future
+predeclaration. An independent audit is owed
+before any push. EXP-052 stays reserved for
+NOVA-ER-0012 (bake-off hardening) as the standing
+reservation. UNVERIFIED: the full-space question at
+budgets above 1,500 s per query and under encoding
+B; the 5 unknown profiles per cone at budgets
+above 240 s; profiles 12 to 55 per cone, never
+queried; any vocabulary larger than V; other
+hosts, including Intel. Full record:
+research/sha256d/exp056/EXP056_REPORT.md and
+RAW_RESULTS/.
+
+Next unreserved ID: EXP-059.
