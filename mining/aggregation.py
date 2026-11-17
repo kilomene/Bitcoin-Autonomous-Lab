@@ -426,7 +426,9 @@ class AggregationTier:
         in this module that submits anything. The
         candidate's stored header is re-verified through
         EXP-036 immediately before submission, so nothing
-        unverified can be submitted even here."""
+        unverified can be submitted even here. On any
+        failure the candidate stays queued (D-2 fix); it
+        is removed only once the submitter has returned."""
         if self._operator_hash is None:
             raise IdentityError("no operator token configured")
         if not hmac.compare_digest(
@@ -439,8 +441,15 @@ class AggregationTier:
             raise RuntimeError(
                 "no upstream submitter configured; the tier "
                 "does not submit on its own authority")
+        # D-2 fix (EXP-057 audit): peek, do not pop. The
+        # candidate is removed only after the submitter
+        # returns successfully (below); a failed job
+        # lookup, a failed re-verification or a submitter
+        # exception retains it in the queue, so a genuine
+        # verified candidate is never silently discarded
+        # by a transient failure.
         with self.lock:
-            cand = self.pending_candidates.pop(index)
+            cand = self.pending_candidates[index]
         job, _stale = self._find_job(cand["job_id"])
         if job is None and self.solo.current is not None \
                 and self.solo.current["job_id"] == cand["job_id"]:
@@ -460,6 +469,13 @@ class AggregationTier:
                "digest": v["digest"], "value": v["value"]}
         rec = self.submitter(job, res, v, cand["worker"])
         with self.lock:
+            # Submission happened: remove exactly this
+            # candidate (by identity, so an equal record
+            # queued twice is not removed by mistake).
+            for i, queued in enumerate(self.pending_candidates):
+                if queued is cand:
+                    del self.pending_candidates[i]
+                    break
             self.upstream_submissions += 1
             self.stats.record("blocks_submitted", 1,
                               worker=cand["worker"])
@@ -635,7 +651,17 @@ class _AggHandler(socketserver.StreamRequestHandler):
                     self._send({"id": mid, "result": False,
                                 "error": [24, str(exc), None]})
                     return
+                # D-1 fix (EXP-057 audit): a successful
+                # re-authorize on this connection closes the
+                # previous session before the new one is
+                # bound, so no session is orphaned to
+                # outlive its connection (handle() only ever
+                # had the final session id to close).
+                previous_sid = self._session_id
                 self._session_id = sid
+                if previous_sid is not None \
+                        and previous_sid != sid:
+                    tier.close_session(previous_sid)
                 self._en1_hex = en1.hex()
                 # Re-send the subscribe-shaped binding: the
                 # client learns its extranonce1 here, bound
