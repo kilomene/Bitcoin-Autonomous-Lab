@@ -3059,3 +3059,59 @@ research/sha256d/exp052/EXP052_REPORT.md and
 RAW_RESULTS/.
 
 Next unreserved ID: EXP-059.
+
+## NOVA-ER-0006 record (2026-11-17)
+
+NOVA-ER-0006 (register R-30: incident code registry;
+no EXP identity, engineering change). New files
+mining/incident_registry.json (the append-only
+registry: 20 coarse codes in five groups, 1xxx miner
+lifecycle, 2xxx supervisor lifecycle, 3xxx
+self-update, 4xxx work and report integrity, 5xxx
+upstream and verification) and
+mining/incident_codes.py (the validation layer:
+resolve, annotate and prefix refuse unknown codes
+with ValueError; check_append_only proves a registry
+edit was a pure append). Emission wired additively
+at 11 predeclared sites in mining/autopilot.py: the
+incident log lines gain a "[code] " prefix token and
+heartbeat.json gains an incident_counts field keyed
+by code. Statistics keying in
+mining/mining_statistics.py: record() of
+stale_reports, duplicate_deliveries and
+leases_abandoned also keys 4001, 4002 and 4003 in a
+new code-keyed incident ledger (record_incident API,
+incident_snapshot() view); snapshot() itself is
+unchanged, its key set being pinned by EXP-037.
+Gate 3 (unknown codes refused with no counter
+change, append-only enforcement against mutation,
+removal, reorder, reuse and insertion, site coverage
+scan) and Gate 5 (isolated byte-copy autopilot
+instance: coded lines for supervisor start, miner
+start, stale-evidence kill, miner exit, restart,
+operator stop, supervisor stop, a second starter
+refused with [2004], heartbeat counts matching the
+coded log; plus a replay over the recorded corpus
+mapping all 165 real autopilot log lines and every
+evidence fault class to exactly one code) passed:
+tests/test_incident_codes.py 34 checks; neighbours
+test-autopilot, test-mainnet-live, test-exp037 and
+test-exp057 passed; test-all becomes 51. Codes
+annotate records and change no behaviour; removing
+the field restores prior shapes byte-for-byte.
+Registry-only codes: 2005 (keeper-detected
+supervisor loss; the keeper is not repo code) and
+5001 to 5005 (miner evidence classes: share
+rejected 8 instances, upstream disconnect 214,
+candidate refused 18, template refused 2, backend
+refused coded with no instance in the operational
+corpus, which records selections only) are assigned
+and replay-mapped, but emission at those producers
+is not wired by this change. Live records carry
+codes only after the next natural autopilot restart;
+no restart was forced and the live endpoint config
+is untouched. Full record:
+research/EXTREME_RESEARCH/NOVA_ER_0006_DESIGN.md and
+NOVA_ER_0006_REPORT.md.
+
+Next unreserved ID: EXP-059.
