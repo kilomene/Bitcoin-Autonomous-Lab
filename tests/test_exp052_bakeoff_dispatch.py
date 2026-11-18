@@ -25,6 +25,10 @@ Layers, in order:
      order without raising, and a winner contradicted
      by the cache's own tier rows (ineligible, missing,
      or resolved to a different backend) is doubt.
+     Plus the DEF-9.2-1 regression (Stage 9 fixes
+     batch, 2026-11-18): a host_fingerprint() that
+     raises resolves to the doubt verdict and never
+     propagates out of the resolver.
   4. Gate 5 (dispatch seam, isolated): the restricted
      protocol run (tiers v512 and shani, static v512,
      1 session, 40 pairs) through the campaign driver
@@ -32,7 +36,12 @@ Layers, in order:
      cache; the resolver honours it; corrupting it or
      tampering its fingerprint falls back to static;
      the switch off ignores it. The real campaign
-     cache, when present, resolves per its verdict.
+     cache, when present, resolves per its verdict;
+     when this host instance's fingerprint does not
+     match the campaign cache's fingerprint, Gate 5a
+     instead asserts the proven fail-closed doubt
+     fallback (D-93-3 test-design change, Stage 9
+     fixes batch, 2026-11-18; see the Gate 5a code).
   5. Seam defaults: the endpoint config's bake-off
      section defaults to disabled, and the resolver
      with no configuration returns "auto".
@@ -362,6 +371,30 @@ def main():
                  "D-2c (winner row resolved to a "
                  "different backend)")
 
+    # DEF-9.2-1 regression (Stage 9 fixes batch,
+    # 2026-11-18): a host_fingerprint() that raises
+    # must resolve to the doubt verdict; the exception
+    # must never escape resolve_requested (the
+    # resolver's documented never-raises contract,
+    # which miner startup relies on once the switch
+    # is enabled).
+    write(cache_path, valid_record(winner="v512"))
+    saved_host_fingerprint = bd.host_fingerprint
+
+    def raising_fingerprint():
+        raise RuntimeError("cpuinfo vanished")
+    bd.host_fingerprint = raising_fingerprint
+    try:
+        requested, reason = bd.resolve_requested(
+            cfg, cache_path=cache_path, now=NOW + 60)
+    finally:
+        bd.host_fingerprint = saved_host_fingerprint
+    check(requested == "auto" and
+          reason.startswith("doubt:"),
+          "DEF-9.2-1: raising host_fingerprint "
+          "resolves to the doubt verdict, never "
+          f"raises ({reason})")
+
     # Layer 4: Gate 5, isolated restricted run.
     g5 = os.path.join(tmp, "gate5")
     os.makedirs(g5)
@@ -460,7 +493,40 @@ def main():
          "margin": bd.PREDECLARED_MARGIN},
         fingerprint=live_fp)
     real = json.load(open(real_cache))
-    if real["winner"] is None:
+    cache_fp = real["fingerprint"]
+    fingerprint_matches = all(
+        cache_fp.get(k) == live_fp.get(k)
+        for k in ("cpu_model", "flags_hash",
+                  "logical_cpus"))
+    if not fingerprint_matches:
+        # D-93-3 test-design change (Stage 9 fixes
+        # batch, 2026-11-18; owner-approved): Gate 5a
+        # is host-instance-keyed, because the campaign
+        # cache is keyed to the fingerprint of the host
+        # instance that ran the campaign. On any other
+        # instance the resolver cannot honour the
+        # verdict; what it must do, and what this gate
+        # now asserts as the passing outcome, is the
+        # designed fail-closed fallback: the static
+        # order with a doubt reason that names the
+        # fingerprint mismatch. The mismatch itself is
+        # asserted above (cache fingerprint compared
+        # field by field against the live one) and the
+        # returned reason must report it. A resolver
+        # that returned a measured winner on a
+        # mismatched host would fail the requested ==
+        # "auto" assertion: honouring a foreign cache
+        # is exactly the failure this gate exists to
+        # catch. When the fingerprint does match, the
+        # original verdict assertions below apply
+        # unchanged.
+        check(requested == "auto" and
+              reason.startswith("doubt:") and
+              "fingerprint mismatch" in reason,
+              "Gate 5a: foreign campaign cache resolves "
+              "to the proven fail-closed doubt fallback "
+              f"on fingerprint mismatch ({reason})")
+    elif real["winner"] is None:
         check(requested == "auto" and
               reason.startswith("static:"),
               "Gate 5a: campaign cache resolves to its "
