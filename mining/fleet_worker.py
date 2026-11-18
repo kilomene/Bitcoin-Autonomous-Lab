@@ -271,6 +271,12 @@ def main():
     ap.add_argument("--gateway-host", default="127.0.0.1")
     ap.add_argument("--gateway-port", type=int, default=4033)
     ap.add_argument("--fleet", default="nova-fleet")
+    ap.add_argument("--fleet-id-file", default=None,
+                    help="read the fleet id from this file "
+                         "instead of --fleet; for production "
+                         "use, so the id never appears on a "
+                         "command line (it is read once at "
+                         "startup, stripped, and never logged)")
     ap.add_argument("--worker-id", required=True)
     ap.add_argument("--log", required=True)
     ap.add_argument("--duration", type=int, default=0,
@@ -280,6 +286,9 @@ def main():
     ap.add_argument("--lease-ttl", type=float, default=300.0)
     ap.add_argument("--exit-on-complete", action="store_true")
     args = ap.parse_args()
+    if args.fleet_id_file:
+        with open(args.fleet_id_file) as fh:
+            args.fleet = fh.read().strip()
     worker = FleetWorker(args)
     try:
         return worker.run()
