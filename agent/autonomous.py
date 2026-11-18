@@ -41,15 +41,52 @@ TARGET_BATCH_SECONDS = 0.25
 
 class AutonomousMiner:
     def __init__(self, rpc, payout_address, store=None, compute=None,
-                 allow_mainnet=False):
+                 allow_mainnet=False, use_prefetch=True):
         self.rpc = rpc
         self.store = store or BlockStore()
         self.compute = compute or ComputeEngine()
+        # EXP-051 live enablement (Stage 9 enablements,
+        # 2026-11-18, owner decision "enable all five"): the
+        # agent path now constructs its MiningEngine with the
+        # prepared-work prefetch queue enabled. The mechanism
+        # was VERIFIED at regtest difficulty in EXP-051 (the
+        # queue removed 57.1 percent of the median non-search
+        # overhead per loaded block, zero stale serves in 84
+        # campaign runs and the adversarial suite); the
+        # engine's own default stays use_prefetch=False, so
+        # every other MiningEngine caller is byte-for-byte
+        # historical. Rollback is this one value:
+        # use_prefetch=False restores the historical agent
+        # path exactly (no queue is constructed, no feed
+        # thread exists). At mainnet difficulty the EXP-051
+        # record claims the effect is nil and measures
+        # nothing there; this agent refuses mainnet without
+        # allow_mainnet=True regardless.
+        # Known semantic consequence, accepted with the
+        # mechanism's design: a queue-served template is a
+        # prepared snapshot. Its tip and identity are
+        # re-verified at serve time, but its transaction set
+        # is the set the feed prepared, so a transaction
+        # that reaches the mempool after that preparation
+        # enters the NEXT cycle's work, not the served
+        # block. Blocks stay valid and fully verified
+        # (EXP-036); only inclusion timing shifts by at
+        # most one cycle. tests/test_mining_engine.py
+        # encodes this explicitly.
         self.engine = MiningEngine(
             rpc, payout_address, self.compute,
-            checkpoint_path=WORK_CHECKPOINT_PATH)
+            checkpoint_path=WORK_CHECKPOINT_PATH,
+            use_prefetch=use_prefetch)
+        self.use_prefetch = use_prefetch
         self.allow_mainnet = allow_mainnet
         self.decisions = []
+
+    def close(self):
+        """Stop the engine's prefetch feed thread, if any
+        (EXP-051 enablement). Safe when prefetch is disabled
+        or was never started; the queue and its counters
+        remain inspectable afterwards."""
+        self.engine.close_prefetch()
 
     def _decide(self, kind, detail):
         entry = {"kind": kind, "detail": detail, "ts": time.time()}
