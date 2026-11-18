@@ -759,3 +759,24 @@ class, count or id changed.
   (address_script_pubkey, build_coinbase, strip_witness) at
   two deferred import sites (lines 536 and 574).
 
+## Registry repair applied (2026-11-18)
+
+The section 6 registry staleness repair has been applied to
+research/EXTREME_RESEARCH/EXPERIMENT_REGISTRY.json as one
+separate, tested change, including the enablement annotation.
+The annotation is encoded as a single composite string field
+named enablement, joining the applicable values and scope in
+this section's phrasing: R-26 "default-off"; R-12
+"default-off, path-scoped (solo)"; EXP-022 "path-scoped
+(batch)"; EXP-025, EXP-034, EXP-038, PHASE001-H-1,
+PHASE001-H-5, R-08 and R-10 "path-scoped (GBT and agent
+path)". No other record or field changed. Registry sha256
+after the repair:
+c333c8ef59c81a4b18ddad84674429eca7d84cd3ed27e039af8cddb07cb85f24.
+The derived registry was regenerated with
+agent.intelligence.integrations.write_registry and is
+byte-identical to before (the generator does not carry the
+enablement field); the Stage 9.1 ledger validator still reads
+VALID at 109 entries and test-agent-intelligence passes
+against the repaired registry.
+
