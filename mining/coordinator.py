@@ -284,8 +284,8 @@ class CoordinatorCore:
     def register_worker(self, worker_id, fleet_id, now):
         if fleet_id != self.fleet_id:
             raise ForeignFleetError(
-                "worker %s presented fleet %r, expected %r"
-                % (worker_id, fleet_id, self.fleet_id))
+                "worker %s presented a foreign fleet id"
+                % (worker_id,))
         rec = self.workers.get(worker_id)
         if rec is None:
             self.workers[worker_id] = {
