@@ -26,6 +26,13 @@ the 2026-11-18 production soak attempt (plan H.4):
   coordinator returns on the wire itself contains
   neither the presented nor the expected fleet id.
 
+A third scenario pins the production fleet id delivery
+used by the 2026-11-18 cutover (plan section L):
+gateway and worker accept --fleet-id-file and read the
+id from a file at startup, so the id appears on no
+command line (asserted against the live gateway's
+/proc cmdline) and in no output file.
+
 Everything runs on loopback against an in-process stub
 pool; every output lives in a temporary directory. No
 real pool, no live stack, no .local state.
@@ -369,6 +376,89 @@ def fix1_and_fix2_full_run(tmp):
               f"{name}")
 
 
+def fleet_id_file_delivery(tmp):
+    """(d) Production fleet id delivery: gateway and
+    worker both take --fleet-id-file and never --fleet,
+    so the id is on no command line (proven against the
+    live gateway's /proc cmdline), while registration,
+    leasing, and completion all work exactly as with
+    --fleet, and the id reaches no output file."""
+    fid_path = os.path.join(tmp, "fleet_id.txt")
+    with open(fid_path, "w") as fh:
+        fh.write(DUMMY + "\n")
+    stub, pool_port = start_stub()
+    coord_port = free_port()
+    ev = os.path.join(tmp, "gw.jsonl")
+    gw_out_path = os.path.join(tmp, "gw.stdout")
+    gw_out = open(gw_out_path, "w")
+    gw = subprocess.Popen(
+        [sys.executable, GATEWAY,
+         "--pool-host", "127.0.0.1",
+         "--pool-port", str(pool_port),
+         "--coord-host", "127.0.0.1",
+         "--coord-port", str(coord_port),
+         "--fleet-id-file", fid_path,
+         "--worker", "testgw",
+         "--state-dir", os.path.join(tmp, "state"),
+         "--evidence", ev,
+         "--nonce-count", "65536",
+         "--chunk-size", "4096",
+         "--n-slots", "1",
+         "--duration", "300"],
+        stdout=gw_out, stderr=subprocess.STDOUT)
+    try:
+        check(wait_for(ev, "coordinator_listening"),
+              "file: gateway started via --fleet-id-file "
+              "reaches coordinator_listening")
+        with open(f"/proc/{gw.pid}/cmdline", "rb") as fh:
+            cmdline = fh.read().decode("utf-8", "replace")
+        check("--fleet-id-file" in cmdline
+              and fid_path in cmdline,
+              "file: the gateway command line names the "
+              "id file, as designed")
+        check(DUMMY not in cmdline,
+              "file: the fleet id itself is NOT on the "
+              "gateway command line")
+        wlog = os.path.join(tmp, "worker.log")
+        w_out_path = os.path.join(tmp, "worker.stdout")
+        with open(w_out_path, "w") as out:
+            w = subprocess.run(
+                [sys.executable, WORKER,
+                 "--gateway-host", "127.0.0.1",
+                 "--gateway-port", str(coord_port),
+                 "--fleet-id-file", fid_path,
+                 "--worker-id", "w-test-file",
+                 "--log", wlog,
+                 "--duration", "90",
+                 "--exit-on-complete"],
+                stdout=out, stderr=subprocess.STDOUT,
+                timeout=120)
+        check(w.returncode == 0,
+              "file: a worker delivering the id by file "
+              f"registers and completes the job (got "
+              f"{w.returncode})")
+        wtext = read(wlog)
+        check('"registered"' in wtext
+              and "job_complete" in wtext,
+              "file: the file-delivered worker registered "
+              "and completed through the coordinator")
+    finally:
+        gw.terminate()
+        try:
+            gw.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            gw.kill()
+            gw.wait(timeout=10)
+        gw_out.close()
+        stub.shutdown()
+    check(DUMMY not in read(ev)
+          and DUMMY not in read(gw_out_path)
+          and DUMMY not in read(wlog),
+          "file: the fleet id is absent from the "
+          "evidence, gateway stdout, and worker log of "
+          "the file-delivered run")
+
+
 def main():
     # Each scenario gets its own directory so evidence
     # files never share a path.
@@ -378,6 +468,9 @@ def main():
     with tempfile.TemporaryDirectory(
             prefix="fleet-gw-test-b-") as tmp:
         fix1_and_fix2_full_run(tmp)
+    with tempfile.TemporaryDirectory(
+            prefix="fleet-gw-test-c-") as tmp:
+        fleet_id_file_delivery(tmp)
     print(f"Fleet gateway hardening suite: {CHECKS} "
           f"checks, ALL PASSED", flush=True)
     return 0
