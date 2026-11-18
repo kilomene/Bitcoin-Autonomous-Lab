@@ -24,7 +24,6 @@ from gpu.engine import ComputeEngine
 from mining.mining_statistics import (FrontierAccountant,
                                       MiningStatistics)
 from mining.pow import coinbase_subsidy, merkle_root, dsha256
-from mining.prefetch import PrefetchFeed, PrefetchQueue
 from mining.work_checkpoint import WorkCheckpoint
 
 log = logging.getLogger("bal.mining.engine")
@@ -666,6 +665,14 @@ class MiningEngine:
         self.prefetch_queue = None
         self._prefetch_feed = None
         if use_prefetch:
+            # DEF-9.2-2 (Stage 9 fixes batch, 2026-11-18):
+            # the prefetch import lives inside the opt-in
+            # branch, not at module top level, so a broken
+            # mining/prefetch.py cannot break the import of
+            # this module for callers that never enable
+            # prefetch. Behaviour with prefetch present and
+            # enabled is unchanged.
+            from mining.prefetch import PrefetchQueue
             self.prefetch_queue = PrefetchQueue(
                 max_entries=prefetch_depth,
                 recorder=lambda category:
@@ -718,6 +725,10 @@ class MiningEngine:
             return
         feed = self._prefetch_feed
         if feed is None:
+            # DEF-9.2-2: lazy import, as in __init__ above;
+            # this path is reachable only when prefetch is
+            # enabled and usable.
+            from mining.prefetch import PrefetchFeed
             fetch = self.prefetch_fetcher
             if fetch is None:
                 fetch = lambda lp: self.wait_template(lp)  # noqa: E731
