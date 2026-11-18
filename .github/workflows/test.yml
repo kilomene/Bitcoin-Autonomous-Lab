@@ -12,7 +12,7 @@
 # passed there are included. See research/STAGE9/
 # CURRENT_HEAD_TEST_AUDIT.md for the full record.
 #
-# INCLUDED (cleanroom-verified, 8 suites):
+# INCLUDED (cleanroom-verified, 4 suites):
 #   test-exp037        mining statistics and evidence census
 #                      (its real-log check reads the tracked,
 #                      static evidence/mainnet-live.jsonl, so
@@ -20,12 +20,6 @@
 #   test-exp038        work checkpointing
 #   test-probability   probability percentiles (pure Python)
 #   test-exp049        bench mode harness
-#   test-exp051        prefetch queue (ComputeEngine degrades
-#                      to its fallback tier without native libs)
-#   test-exp053        prefix experiment suite (its harness
-#                      builds what it needs with the host gcc)
-#   test-exp054        granularity experiment suite (same)
-#   test-exp058        PID controller
 #
 # EXCLUDED, with the reason verified in the cleanroom or in
 # the Stage 9.3 audit:
@@ -35,9 +29,10 @@
 #     test-research, test-solo, test-solo-vardiff,
 #     test-solo-cutover, test-mainnet-live, test-template-cache,
 #     test-exp034, test-exp036, test-exp039, test-exp040,
-#     test-stage8, test-task003, and the Gate 6 portions of
-#     test-exp055 and test-exp057 (both call
-#     node.node_manager.start()).
+#     test-exp051 (its Gate 6, test_gate6_real_node, calls
+#     node_manager.start()), test-stage8, test-task003, and
+#     the Gate 6 portions of test-exp055 and test-exp057
+#     (both call node.node_manager.start()).
 #   Suites that read live-stack or .local state:
 #     test-autopilot (supervision of the live checkout),
 #     test-incident-codes (its replay reads the live
@@ -48,6 +43,13 @@
 #     fingerprint; on any other host the resolver correctly
 #     falls back to static with a fingerprint-mismatch doubt
 #     and the check cannot pass. Host-keyed by design.
+#   Suites bound to this lab VM by a hardcoded absolute
+#     path (ROOT = /home/hatch/workspace/bitcoin-autonomous-lab
+#     in their test files, which does not exist on a clean
+#     runner): test-exp053 and test-exp054 (which also load
+#     the production library .local/cpu/libbal_v512dual.so
+#     with ctypes), and test-exp058 (its imports resolve
+#     only through that hardcoded path).
 #   test-exp056: needs the lab's local z3 virtualenv
 #     (.local/z3venv), which does not exist on a clean runner.
 #   test-rtl: needs iverilog, which this workflow does not
@@ -89,12 +91,11 @@ jobs:
         run: |
           set -e
           for t in test-exp037 test-exp038 test-probability \
-                   test-exp049 test-exp051 test-exp053 \
-                   test-exp054 test-exp058; do
+                   test-exp049; do
             echo "=== $t ==="
             make "$t"
           done
       - name: Summary
         run: |
-          echo "Ran 8 cleanroom-verified Makefile suites on a clean runner." >> "$GITHUB_STEP_SUMMARY"
-          echo "Excluded: suites needing Bitcoin Core binaries, .local state or built libraries, the local z3 venv, iverilog, a campaign-host CPU fingerprint, or live-stack state. See the comments at the top of this workflow file and research/STAGE9/CURRENT_HEAD_TEST_AUDIT.md." >> "$GITHUB_STEP_SUMMARY"
+          echo "Ran 4 cleanroom-verified Makefile suites on a clean runner." >> "$GITHUB_STEP_SUMMARY"
+          echo "Excluded: suites needing Bitcoin Core binaries, .local state or built libraries, hardcoded lab-VM paths, the local z3 venv, iverilog, a campaign-host CPU fingerprint, or live-stack state. See the comments at the top of this workflow file and research/STAGE9/CURRENT_HEAD_TEST_AUDIT.md." >> "$GITHUB_STEP_SUMMARY"
