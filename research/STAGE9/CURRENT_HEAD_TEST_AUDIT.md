@@ -516,3 +516,76 @@ failures.
   change).
 - Progress log:
   ~/workspace/goals/bitcoin-autonomous-lab-private-bitcoin-mining-lab/hidden_files/stage9-3-progress.md
+
+## Corrections (2026-11-18)
+
+Section 6 recorded that the new CI workflow's first run
+would happen on the parent's push and that any failure would
+be fixed locally first. That first run has now happened, and
+it failed; this section is the dated correction record. The
+earlier sections are unchanged.
+
+CI failure: GitHub Actions run 44245744149 at HEAD 00ad09ae
+(job 134604145275, "clean-runner-suites") failed at the step
+"Run the clean-runner suite subset". From the full job log:
+test-exp037, test-exp038, test-probability and test-exp049
+ran and passed; test-exp051 then failed, and because the
+step runs under set -e, test-exp053, test-exp054 and
+test-exp058 were never reached.
+
+Root cause: test-exp051 is node-dependent and was wrongly
+included in the clean-runner subset. Its Gate 6
+(test_gate6_real_node in tests/test_exp051_prefetch.py)
+calls node.node_manager.start(), which raised
+"RuntimeError: bitcoind not found. Run
+scripts/setup-bitcoin-core.sh first or set BAL_BITCOIND."
+on the runner, where no Bitcoin Core binaries exist. The
+Stage 9.3 cleanroom simulation missed this because it ran
+on the lab VM, where Core is discoverable through
+node_manager's normal lookup (the BAL_BITCOIND variable,
+the .local/regtest node config, the
+~/workspace/bitcoin-core-dist distribution directory, and
+PATH), so Gate 6 found a bitcoind and passed. The cleanroom
+isolated the file tree but not the host's binary discovery.
+
+Follow-up inspection of the three suites CI never reached
+found the same class of host dependency in each, also
+invisible to the cleanroom because they resolve against
+the real tree on this VM:
+
+- test-exp053 (tests/test_exp053_prefix.py) and
+  test-exp054 (tests/test_exp054_granularity.py) hardcode
+  ROOT = "/home/hatch/workspace/bitcoin-autonomous-lab"
+  and load the production library
+  .local/cpu/libbal_v512dual.so with ctypes.CDLL,
+  unguarded, in main(); their module imports also resolve
+  only through that hardcoded path. Neither the path nor
+  the .local library exists on a clean runner.
+- test-exp058 (tests/test_exp058_pid_control.py) hardcodes
+  the same ROOT and resolves its imports
+  (exp058_campaign, mining.pid_control) only through it.
+  The campaign module itself is path-clean (it derives its
+  root from its own file location); the dependency is in
+  the test file.
+
+Fix: .github/workflows/test.yml now removes test-exp051,
+test-exp053, test-exp054 and test-exp058 from the run
+subset and documents each in the exclusions with its
+reason (test-exp051 with the suites that start or require
+a Bitcoin Core node; test-exp053, test-exp054 and
+test-exp058 under a new exclusion for suites bound to this
+lab VM by hardcoded absolute paths). The YAML was
+re-validated after the edit. The corrected subset was then
+verified locally from the real tree in a scrubbed
+environment (env -i, minimal PATH, HOME set to an empty
+temporary directory, BAL_BITCOIND unset) so that bitcoind
+is not discoverable through node_manager's env-controlled
+lookup paths: all four remaining suites passed.
+
+Corrected included subset (4 suites): test-exp037,
+test-exp038, test-probability, test-exp049. These are also
+exactly the suites the failed CI run verified green before
+the failure, so the corrected subset is CI-proven as well
+as locally verified. The full 51-target Makefile test-all
+run on the lab VM remains the complete record; the
+excluded suites keep their section 2 results there.
