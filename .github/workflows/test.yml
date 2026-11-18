@@ -1,0 +1,100 @@
+# Stage 9.3 CI record (closes discrepancy D-10: the repository
+# previously had no CI configuration at all).
+#
+# This workflow runs, on every push to main, the subset of the
+# Makefile test suites that pass on a clean checkout with no
+# Bitcoin Core binaries, no .local state (no built lab
+# libraries, no z3 virtualenv, no live logs), no bal-miner
+# binary and no .so files. The subset was determined
+# empirically in Stage 9.3: every candidate suite was run in a
+# cleanroom copy of the repository (the full tree minus .local,
+# minus every .so, minus bal-miner) and only the suites that
+# passed there are included. See research/STAGE9/
+# CURRENT_HEAD_TEST_AUDIT.md for the full record.
+#
+# INCLUDED (cleanroom-verified, 8 suites):
+#   test-exp037        mining statistics and evidence census
+#                      (its real-log check reads the tracked,
+#                      static evidence/mainnet-live.jsonl, so
+#                      it is deterministic without a live miner)
+#   test-exp038        work checkpointing
+#   test-probability   probability percentiles (pure Python)
+#   test-exp049        bench mode harness
+#   test-exp051        prefetch queue (ComputeEngine degrades
+#                      to its fallback tier without native libs)
+#   test-exp053        prefix experiment suite (its harness
+#                      builds what it needs with the host gcc)
+#   test-exp054        granularity experiment suite (same)
+#   test-exp058        PID controller
+#
+# EXCLUDED, with the reason verified in the cleanroom or in
+# the Stage 9.3 audit:
+#   Suites that start or require a Bitcoin Core node
+#     (bitcoind is not installed by this workflow):
+#     test, test-regtest, test-engine, test-pow, test-mining,
+#     test-research, test-solo, test-solo-vardiff,
+#     test-solo-cutover, test-mainnet-live, test-template-cache,
+#     test-exp034, test-exp036, test-exp039, test-exp040,
+#     test-stage8, test-task003, and the Gate 6 portions of
+#     test-exp055 and test-exp057 (both call
+#     node.node_manager.start()).
+#   Suites that read live-stack or .local state:
+#     test-autopilot (supervision of the live checkout),
+#     test-incident-codes (its replay reads the live
+#     .local/autopilot.log), test-exp050 (its Gate 5 isolated
+#     instance copies the built libraries in .local/cpu).
+#   test-exp052: Gate 5a reads the EXP-052 campaign cache,
+#     whose verdict is keyed to the campaign host's CPU
+#     fingerprint; on any other host the resolver correctly
+#     falls back to static with a fingerprint-mismatch doubt
+#     and the check cannot pass. Host-keyed by design.
+#   test-exp056: needs the lab's local z3 virtualenv
+#     (.local/z3venv), which does not exist on a clean runner.
+#   test-rtl: needs iverilog, which this workflow does not
+#     install (the suite fails with "iverilog: not found" on
+#     any machine without it, including the lab VM).
+#   Native-kernel and timing-sensitive suites whose results
+#     on a shared hosted runner would not be meaningful:
+#     test-gpu, test-gpu-correction, test-cpu,
+#     test-cpu-correction, test-avx512, test-avx512dual,
+#     test-avx512flags, test-task0038, test-task0039,
+#     test-deepening, test-adversarial, test-judgement,
+#     test-installer, and the test-agent-* suites (long
+#     sandbox, scheduler and timing behaviour tied to the
+#     lab VM).
+#
+# The full 51-target suite remains the Makefile test-all run
+# on the lab VM; this workflow is the repeatable clean-runner
+# record, not a replacement for it. One run per push: if this
+# workflow fails, the fix is made and verified locally first,
+# never by re-firing CI.
+name: test
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  clean-runner-suites:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The repository has no requirements.txt, pyproject.toml
+      # or setup.py: the lab runs on the Python standard library
+      # alone, so there is nothing to install.
+      - name: Run the clean-runner suite subset
+        run: |
+          set -e
+          for t in test-exp037 test-exp038 test-probability \
+                   test-exp049 test-exp051 test-exp053 \
+                   test-exp054 test-exp058; do
+            echo "=== $t ==="
+            make "$t"
+          done
+      - name: Summary
+        run: |
+          echo "Ran 8 cleanroom-verified Makefile suites on a clean runner." >> "$GITHUB_STEP_SUMMARY"
+          echo "Excluded: suites needing Bitcoin Core binaries, .local state or built libraries, the local z3 venv, iverilog, a campaign-host CPU fingerprint, or live-stack state. See the comments at the top of this workflow file and research/STAGE9/CURRENT_HEAD_TEST_AUDIT.md." >> "$GITHUB_STEP_SUMMARY"
