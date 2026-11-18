@@ -51,9 +51,26 @@ def push_data(data):
 
 
 def script_num_push(value):
-    """CScript push of a small integer, as Core encodes block height."""
+    """CScript push of a small integer, as Core encodes block height.
+
+    Mirrors CScript::operator<<(int64_t) exactly: 0 is OP_0,
+    -1 is OP_1NEGATE, and 1 to 16 are the single opcodes
+    OP_1 to OP_16; every other value is a push of its minimal
+    CScriptNum byte serialization. The push-data form for
+    heights 1 to 16 (for example 01 01 for height 1) does NOT
+    match Core's expected coinbase prefix: Bitcoin Core 28.1
+    rejected a block built that way at regtest height 1 with
+    bad-cb-height (Stage 9.3 B2 evidence, 2026-11-18), while
+    Core's own generatetoaddress coinbase for height 1 carries
+    the OP_1 form. Heights of 17 and above are unaffected
+    because the two encodings coincide there, which is why the
+    defect only ever fired on a fresh chain."""
     if value == 0:
         return b"\x00"
+    if value == -1:
+        return b"\x4f"
+    if 1 <= value <= 16:
+        return bytes([0x50 + value])
     neg = value < 0
     absval = -value if neg else value
     out = bytearray()
