@@ -926,3 +926,687 @@ for the D-1 gate on plan F steps 5 and 6 are met on
 the code side. Activation itself remains subject to
 the coordinator hosting decision and the rest of the
 cutover procedure.
+
+## K. Owner architecture decision, 2026-11-18: each fleet machine mines its own pool session
+
+Date: 2026-11-18. The owner decided the fleet
+architecture question left open in sections F, G, and
+H.7: each fleet machine mines its own pool session.
+This section records the decision, what it supersedes,
+the revised cutover for this machine, the revised
+enrollment, and the updated UNVERIFIED register. The
+loopback end-to-end soak that proves the local half of
+this architecture is specified at K.6; its results are
+filled in there after the run.
+
+### K.1 The decision
+
+Each fleet machine runs the full bundle locally: one
+gateway process holding that machine's own Stratum
+session to the pool under that machine's own pool
+worker name, hosting its own coordinator bound to
+loopback only (127.0.0.1, port 4033), and one worker
+process per core leasing chunks from that local
+coordinator. Cross-machine coordination is retired as
+a requirement. No machine connects to another
+machine's coordinator, and no machine accepts inbound
+fleet connections.
+
+Disjointness across machines no longer comes from one
+coordinator partitioning one session's search space.
+It comes from the pool itself: each machine's session
+receives its own extranonce1 from the pool, so the
+machines' search spaces are disjoint by construction,
+exactly the property section A.3 recorded for the
+direct-connection baseline. What the bundle adds over
+that baseline, per machine, is the lab-side machinery
+the baseline lacks: coordinator chunk accounting with
+fencing inside the machine, examination honesty (the
+threads=1 worker of section B.3), EXP-036 candidate
+re-verification in the gateway before anything is
+submitted, and per-worker EXP-037 statistics and
+evidence on the machine itself.
+
+### K.2 The Tailscale bind step is superseded; the H.7 blocker is moot
+
+Section F step 1 (confirm this VM's Tailscale
+address), step 3's Tailscale-bound soak, section D's
+bind decision, and the NEW BLOCKER at the head of
+section H.7 all assumed one coordinator hosted on
+this VM and reached by other machines over the
+tailnet. Under K.1 no coordinator is reached over any
+network: the only bind is 127.0.0.1. The blocker
+itself stands as a fact (this VM's Tailscale provides
+no bindable in-namespace interface, section H.4), but
+it no longer blocks anything, because the architecture
+does not need the bind. The bind decision of section
+D survives in reduced form: a coordinator binds
+loopback only, never 0.0.0.0 and never any external
+interface, on any fleet machine.
+
+### K.3 Revised cutover for this machine
+
+Section F step 5 is revised in one respect: the
+coordinator address in the autopilot's miner command
+is loopback, not the Tailscale address. When the
+parent executes the cutover, the BAL_AP_MINER_CMD
+line added to scripts/bal-autopilot.service points
+at the gateway with the loopback coordinator and the
+section I evidence path:
+
+  mining/fleet_gateway.py --duration 86400
+    --coord-host 127.0.0.1 --coord-port 4033
+    --state-dir .local/fleet
+    --evidence .local/fleet/fleet-gateway.jsonl
+
+plus the gateway's production parameters from section
+D (--nonce-count 4294967296, --chunk-size 16777216,
+--n-slots 32, --heartbeat-timeout 120,
+--starvation-window 120). The evidence path is the
+section I correction: .local/fleet/fleet-gateway.jsonl,
+never a repo-relative path. Two details of that step
+are recorded here so they are not lost: the production
+fleet id must reach the gateway without appearing in
+the unit file or on any command line (the soak
+launchers under .local/fleet show the in-process
+pattern; the cutover must use the same or an
+equivalent mechanism), and this machine's worker
+processes are separate from the autopilot's miner
+child: after the cutover the operator starts them
+against 127.0.0.1:4033 under whatever supervisor this
+machine uses, one per core, as in K.4. Rollback is
+unchanged from section F step 7.
+
+### K.4 Revised enrollment
+
+Section E is superseded. A fleet machine enrolls by
+running the same bundle locally:
+
+1. Install this repo at the activation HEAD (as
+   section E step 1: native CPU backend libraries
+   present or built, with the engine's fallback tiers
+   as the slower alternative). No wallet, no pool
+   account, no keys, no Bitcoin node on the machine.
+2. The machine's operator chooses, or is issued out
+   of band, the fleet id for that machine's local
+   bundle, and keeps it in protected local state on
+   that machine only (the .local/fleet/fleet_id.txt
+   pattern, mode 0600, read in-process by launchers).
+   No inbound connection to this VM is needed or
+   used; nothing is registered with this VM; this VM
+   learns of the machine only from the pool-side
+   presence of its worker name and whatever its
+   operator reports.
+3. Start the gateway on that machine: its own pool
+   session, authorized as <payout address>.<worker
+   name> exactly as the live miner authorizes today,
+   under its own worker name (the <hostname>-fleetgw
+   convention or the operator's chosen name),
+   coordinator on 127.0.0.1:4033, state dir and
+   evidence under that machine's .local/fleet.
+4. Start one worker process per core against
+   127.0.0.1:4033, each with a unique local worker id
+   (<machine>-<index>), kept running under the
+   machine's own supervisor. Failure behaviour is the
+   worker behaviour of section E step 4, now entirely
+   local: coordinator restart reclaims leases and the
+   worker recovers in place; a wiped coordinator state
+   or an unreachable (local) gateway exits the worker
+   and its supervisor restarts it.
+5. Payout needs nothing on the machine beyond the
+   payout address in its endpoint configuration: its
+   gateway submits every verified share under the lab
+   wallet bc1q528egeqsvv8aa382j43edxskqw6x7zxc2xpcf3.
+   Leaving the fleet is stopping the processes.
+
+### K.5 UNVERIFIED register, updated for this architecture
+
+Retired by K.1:
+
+- Multi-machine operation over a shared coordinator:
+  RETIRED as a requirement. Machines are independent
+  by design; there is no cross-machine behaviour left
+  to verify.
+- Real-network behaviour of the coordinator protocol
+  (latency, partial failure, clock skew across
+  machines): RETIRED with it. The coordinator protocol
+  now runs only on loopback.
+- Tailscale reachability of this VM and the
+  coordinator bind blocker: MOOT (K.2).
+- Declaration cost at production width: already
+  CLOSED in H.2.
+
+What remains UNVERIFIED, honestly:
+
+- The loopback end-to-end path against the real pool
+  on this machine (gateway plus workers, the real
+  difficulty floor of 1, real job churn): addressed by
+  the K.6 soak; see K.6 for the outcome.
+- This VM's autopilot cutover to the gateway path
+  (K.3): NOT PERFORMED. The gateway has not yet run
+  as the autopilot's miner child, and the fleet id
+  delivery into that child without a unit-file or
+  command-line appearance is an open detail of that
+  step.
+- Remote-machine enrollment (K.4): NOT EXERCISED. No
+  second machine has run the bundle. Enrollment is a
+  specification, not an observation.
+- Fleet width beyond 2 workers and 2 slots on one
+  machine: UNVERIFIED, unchanged. The binding
+  constraint measured so far is this host's roughly 2
+  effective CPUs, not the slot count.
+- Block candidate path through the gateway:
+  UNVERIFIED, unchanged from section G. No block
+  candidate has occurred through the gateway; at
+  difficulty 1, shares are the expected traffic.
+- Coordinator restart recovery in the gateway-hosted
+  form: PARTIALLY EXERCISED. The H soak's unclean
+  stop left a journal in .local/fleet that the K.6
+  soak's gateway replays on start (epoch bump, leases
+  reclaimed), so recovery across an unclean stop is
+  exercised by K.6; a restart-and-resume cycle in the
+  middle of a run is not.
+- Aggregation tier register: unchanged from EXP-057
+  and section G. Its fleet role is unaffected by K.1
+  and still begins only when a synced node can serve
+  it current templates.
+
+### K.6 Loopback end-to-end real-pool soak: results
+
+Run 2026-11-18, 13:12:25Z to 13:42:28Z (gateway
+duration 1,800 s; the soak ran its full configured
+length). Configuration, exactly as specified: the
+gateway started by hand, NOT under the autopilot,
+coordinator bound to 127.0.0.1 port 4033 only
+(verified with ss at start: one listener, on
+127.0.0.1, and the port free again after shutdown),
+state dir .local/fleet, evidence
+.local/fleet/fleet-gateway.jsonl, its own pool
+session to public-pool.io:21496 resolved by
+mining/endpoint_config exactly as the live miner
+resolves it, authorized as
+bc1q528egeqsvv8aa382j43edxskqw6x7zxc2xpcf3.htch-runtime-fleetgw,
+the pool setting difficulty 1 against the gateway's
+0.001 suggestion. Production declaration parameters:
+nonce_count 2^32, chunk_size 2^24, n_slots 32. Two
+workers, soak-local-0 and soak-local-1, each 1,740 s,
+each on the v512dual backend pinned to one search
+thread, fleet id read in-process by the launchers
+from .local/fleet/fleet_id.txt. At start the gateway
+replayed the H soak's leftover journal (coordinator_up:
+replayed 5, epoch 1), so recovery across the earlier
+unclean stop was exercised on the way in. The live
+miner ran untouched throughout.
+
+Verdict: PASS. The success criterion is met, with
+numbers:
+
+- Jobs: 66 pool jobs received and 66 declared, all
+  distinct job ids, generations 1 to 66 (first
+  6dd7f2 at 13:12:26Z, last 70ca5a at 13:42:25Z), a
+  job change roughly every 27 s. Every job was
+  declared at production width in step with its
+  arrival.
+- Chunks: 756 leased (soak-local-0 381, soak-local-1
+  375). Completed 649 (324 and 325), every completion
+  accepted by the coordinator with result OK.
+  Abandoned 107 (57 and 50), every one after a STALE
+  progress refusal: the chunk's job generation had
+  been superseded during its scan, and the space was
+  re-leased under the new job. No completion for a
+  superseded job was ever accepted.
+- Attempts accounting: EXACT on every slice. All 649
+  completed chunks report attempts exactly equal to
+  hi - lo (16,777,216), with zero mismatches; the 107
+  abandoned chunks also report the full span examined
+  (the engine's counted call covers the span before
+  the progress check runs, so supersession is learned
+  just after the scan, not during it). Total examined:
+  12,683,575,296 hashes (soak-local-0 6,392,119,296,
+  soak-local-1 6,291,456,000), about 7.3 MH/s combined
+  while sharing the host with the live miner.
+- Candidates and shares: exactly 1 candidate found
+  (soak-local-1, lease L149, nonce 51,313,885, at
+  13:18:36Z, about 6 minutes in). The candidate queue
+  accepted it, the gateway's EXP-036 verifier
+  classified it "share", the gateway submitted it on
+  its own session, and the pool accepted it
+  (share_result accepted, error null, 13:18:37Z).
+  Gateway totals: submitted 1, accepted 1, rejected
+  0. Expected shares for the run at difficulty 1:
+  12,683,575,296 / 2^32 = 2.95; observing 1 is
+  ordinary variation, and the criterion asked for at
+  least 1.
+- Duplicates: ZERO. One candidate existed, one
+  submission was made, the queue recorded 0
+  duplicates, and the coordinator recorded 0
+  duplicate deliveries, 0 repeated computations, 0
+  not-holder attempts, and 0 unknown-lease reports.
+- Stale handling: at the gateway's candidate drain,
+  0 stale drops and 0 invalid drops, because the
+  run's only candidate belonged to the then-current
+  generation when drained. Supersession pressure
+  appeared where this design meets it first, at the
+  worker progress check: 107 STALE refusals across 66
+  job generations, each handled by abandoning the
+  chunk uncompleted. One honest cost follows: about
+  14 percent of examined chunks (107 of 756) were
+  refused after examination because their generation
+  had turned over during the roughly 4 s scan. The
+  work is bounded, the space is re-leased, and no
+  stale result can be submitted; a smaller chunk size
+  would trade this fraction against lease traffic,
+  and is a tuning question, not a defect.
+- Shutdown: clean. Both workers logged
+  duration_complete; the gateway logged gateway_stop
+  (submitted 1, accepted 1, rejected 0) and wrote its
+  clean-exit snapshot (.local/fleet/snapshot.json),
+  the step the H soak could not perform.
+- Live stack, read-only checks only, undisturbed:
+  before (heartbeat 2026-11-18T13:12:17Z) autopilot
+  pid 4349, miner pid 4352, miner_state running,
+  restarts 0, shares_accepted_total 1,161. After
+  (heartbeat 2026-11-18T13:43:30Z) the same pids,
+  running, restarts 0, shares_accepted_total 1,163
+  (the live miner's own two shares during the
+  window). Nothing was restarted or reconfigured;
+  the endpoint config and the solo cutover state
+  were not touched.
+- Anomalies: none in the fleet path. Two recording
+  notes: the coordinator accounting in the gateway's
+  final status event is a snapshot up to 10 s old at
+  shutdown and trails the worker logs by one
+  completion (648 chunks counted against 649 logged),
+  a cadence artifact, with the worker logs the
+  authoritative per-chunk record; and the launch
+  itself hit this VM's known exec file-visibility
+  flakiness twice (a transient redirect error and
+  two transient reads of not-yet-visible log files),
+  an environment quirk, verified as such at the time,
+  with both workers confirmed running by process
+  listing and their own logs.
+
+What this proves for the local architecture of K.1:
+the full loop on one machine against the real pool
+is now VERIFIED end to end: gateway session at the
+real difficulty floor, production-width declaration
+under real job churn, loopback coordinator leasing
+with exact examination accounting, EXP-036
+verification in the gateway, submission on the
+gateway's own session, and a pool-accepted share,
+with clean shutdown and snapshot, all beside the
+untouched live miner. The section H scorecard items
+2, 3, and 4 (worker leasing and hashing, candidate
+verification and submission, pool acceptance for the
+fleetgw session) are CLOSED by this run, as is the
+gateway-hosted coordinator's clean-exit snapshot.
+
+What remains UNVERIFIED, unchanged from K.5: this
+VM's autopilot cutover to the gateway path (K.3) has
+not happened, and the fleet id delivery into the
+autopilot's miner child is still an open detail of
+that step; remote-machine enrollment (K.4) has not
+been exercised by any real second machine; fleet
+width beyond 2 workers on one machine is unmeasured;
+the block candidate path through the gateway has
+still never occurred (no block candidate arose; at
+difficulty 1, shares are the expected traffic); and
+a coordinator restart in the middle of a run, as
+opposed to the replay-on-start exercised here,
+remains unexercised.
+
+## L. Production cutover executed, 2026-11-18: this VM mines through the fleet gateway
+
+Date: 2026-11-18. The K.3 cutover for this machine was
+executed and verified live. Verdict: CUTOVER COMPLETE,
+with one rollback and one re-attempt on the way, both
+recorded at L.4. Since 14:00:25Z the autopilot's miner
+child on this VM is the fleet bundle (gateway plus two
+local workers) in place of mining/mainnet_live.py,
+mining on this machine's own pool session under the
+same pool worker name, htch-runtime. This section is
+the record: the fleet id delivery mechanism (L.1), the
+launcher (L.2), the service change (L.3), the first
+attempt, rollback, diagnosis, and re-attempt (L.4),
+the live verification numbers (L.5), the endpoint
+config interaction stated from the code (L.6), and
+the updated UNVERIFIED register (L.7).
+
+### L.1 Fleet id delivery: --fleet-id-file
+
+Both fleet modules previously took the fleet id only
+as a --fleet command line value, which would have put
+the production id in the unit's process listing and in
+the autopilot's own miner-start log line. Both now
+also accept --fleet-id-file PATH: the value is read
+once at startup from the given path, stripped of
+surrounding whitespace, used in process, and never
+logged (mining/fleet_gateway.py and
+mining/fleet_worker.py, in main()). Production passes
+--fleet-id-file /home/hatch/workspace/bitcoin-autonomous-lab/.local/fleet/fleet_id.txt
+(the stored file, mode 0600) to the gateway and to
+both workers; the launcher never reads the value at
+all. Coverage: tests/test_fleet_gateway.py grew from
+24 to 30 checks; the new scenario (d) starts gateway
+and worker by file only, asserts against the live
+gateway's /proc cmdline that the command line names
+the file and not the id, and asserts the id reaches
+no evidence or output file. All 30 checks pass. At
+the live verification (L.5) the same property was
+proven against the production processes: an in-process
+scan of every /proc cmdline found the production id
+in none of them, and the id appears in no unit file
+and no autopilot log.
+
+### L.2 The launcher: mining/fleet_local.py
+
+The autopilot supervises one miner command, so the
+three-process bundle runs under a small launcher,
+mining/fleet_local.py (standard library only). It:
+
+- starts the gateway with --duration 86400,
+  --worker htch-runtime (the same pool worker name
+  the live miner used, so pool-side accounting
+  continues under the one identity), --coord-host
+  127.0.0.1, --coord-port 4033, --state-dir and
+  --evidence under .local/fleet, --fleet-id-file as
+  at L.1, and the section D production declaration
+  parameters (--nonce-count 4294967296, --chunk-size
+  16777216, --n-slots 32, --heartbeat-timeout 120,
+  --starvation-window 120);
+- waits until the coordinator port accepts a TCP
+  connection (bounded at 15 s) before starting
+  workers, so a bundle start does not spend a worker
+  restart on the bind race (a worker started against
+  a not-yet-bound coordinator exits on connection
+  refused by design; the first smoke run showed
+  exactly one such crash-restart, and the wait
+  removed it);
+- starts two workers, local-0 and local-1, each with
+  --fleet-id-file, --duration 0 (until stopped), and
+  --lease-ttl 300, logging to
+  .local/fleet/worker-<id>.jsonl;
+- restarts a worker that dies while the gateway
+  lives, with a per-worker backoff (2 s doubling to a
+  60 s cap);
+- mirrors the gateway's evidence into the production
+  evidence log (next paragraph);
+- when the gateway exits, stops the workers and
+  exits with the gateway's exit status (128 + signal
+  if the gateway was killed by one); when the
+  launcher itself receives SIGTERM or SIGINT, stops
+  the whole bundle and exits 0. The autopilot's
+  restart and stop semantics therefore apply to the
+  bundle as a unit, exactly as they applied to
+  mainnet_live.py.
+
+Evidence discipline: the autopilot's liveness
+contract (heartbeat accepted-share totals and the
+evidence-staleness watchdog that kills a miner whose
+log is silent for 300 s) reads
+evidence/mainnet-live.jsonl. The gateway keeps its
+own evidence under .local/fleet (section I), so the
+launcher mirrors every line the gateway appends
+there into evidence/mainnet-live.jsonl, verbatim and
+exactly once (the mirror starts at the gateway
+file's size when the launcher starts, follows
+appends, and drains once more at shutdown). The
+gateway's event vocabulary is the same one
+mainnet_live.py wrote (same Evidence class, same
+share_result events), so the autopilot counts
+gateway shares and judges gateway liveness with no
+code change on its side.
+
+Smoke proof before the cutover (throwaway state
+under /tmp, stub pool, dummy fleet id, production
+state untouched): clean start with no worker
+connection-refused crash; a worker killed mid-run
+was restarted by the launcher; candidates flowed
+through the gateway to the stub and the mirror file
+ended byte-identical to the gateway evidence;
+SIGTERM to the launcher exited 0 with no surviving
+children; and a 20 s gateway run exited naturally,
+wrote its coordinator snapshot, and the launcher
+propagated exit status 0 and stopped the worker.
+
+### L.3 The service change
+
+Exactly one line was added to
+scripts/bal-autopilot.service (and installed to
+/etc/systemd/system/bal-autopilot.service by
+scripts/autopilot.sh install-service):
+
+  Environment=BAL_AP_MINER_CMD="[\"/usr/bin/python3\",\"/home/hatch/workspace/bitcoin-autonomous-lab/mining/fleet_local.py\"]"
+
+One correction to section F step 5's recorded form
+was necessary and is recorded here: as written there
+(unquoted JSON), systemd's Environment parsing
+consumes the inner double quotes as grouping, and
+the autopilot would have received
+[/usr/bin/python3,/home/...] with the quotes
+stripped, which json.loads rejects. The installed
+line wraps the value in double quotes and escapes
+the inner quotes with backslashes, the systemd form
+that delivers the JSON intact. This was proven
+before the cutover on a throwaway unit (the process
+received exactly the JSON array and it parsed) and
+confirmed on the installed unit with systemctl show.
+The diff to the template is the single line above
+and nothing else.
+
+Context worth recording: until this cutover the
+autopilot on this VM ran as a detached process
+started by scripts/autopilot.sh start; no
+bal-autopilot unit was installed. The cutover
+installed the unit (install-service also enables
+it), so the autopilot now runs under systemd with
+Restart=always, as the template always intended.
+The keeper cron's contract is unchanged (it checks
+the same heartbeat and lock).
+
+### L.4 First attempt, rollback, diagnosis, re-attempt
+
+First attempt, 13:53:53Z: the unit started, the
+launcher started the gateway and both workers, the
+coordinator bound and listened on 127.0.0.1:4033,
+and the gateway connected TCP to public-pool.io.
+It then never received a subscribe response: three
+consecutive gateway starts each died at about 31 s
+with TimeoutError (no subscribe response from pool)
+from mining/stratum_client.py _wait_for_subscribe
+(the connect path's fixed 30 s subscribe deadline),
+the launcher propagated exit code 1 each time, and
+the autopilot restarted the bundle twice. No job
+was ever declared. Per the rollback rule (no pool
+connection and no declared job within about 3
+minutes), the cutover was rolled back at 13:56Z:
+the Environment line was removed, the unit was
+reinstalled, the service was restarted, and
+mainnet_live.py resumed as the miner child under
+the same autopilot (heartbeat fresh, evidence
+flowing, shares continuing from 1,165).
+
+Diagnosis, from evidence rather than conjecture:
+the gateway and mainnet_live.py use the identical
+connect path (same StratumClient, same
+connect_initial then reader thread sequence;
+mainnet_live.py lines 238 to 239 are the same two
+calls the gateway makes). At 13:57Z a throwaway
+probe handshake as the production worker, run while
+mainnet_live mined, was answered in full in 0.62 s
+(subscribe, authorize accepted, difficulty and job
+notify). So the code path was sound and the pool
+was answering again within minutes; the first
+attempt had met a roughly two-minute window in
+which the pool (or the path to it) accepted TCP
+but did not answer subscribe requests. Whether that
+window was the pool reaping the just-stopped
+htch-runtime session or a brief pool-side silence
+cannot be proven from this host; both candidate
+causes are transient, and neither implicates the
+fleet code. On the successful re-attempt the pool
+still answered subscribe slowly (about 13 s,
+inside the 30 s deadline), which is consistent
+with a pool under load that morning rather than a
+hard failure mode.
+
+Re-attempt, 14:00:25Z: the line was restored and
+the unit reinstalled; the service was stopped, a
+90 s pause was taken before starting it (bounded
+insurance against the session-reap explanation),
+and on start the gateway authorized as
+bc1q528egeqsvv8aa382j43edxskqw6x7zxc2xpcf3.htch-runtime
+and declared its first job within about 15 s. The
+rollback of L.4 paragraph 1 stands in the record
+as executed; it is superseded by this re-attempt,
+and the standing rollback from the current state
+remains the section F step 7 one-line removal.
+
+### L.5 Live verification, 2026-11-18 14:00:25Z to 14:16:03Z
+
+Window: the first 15 minutes 38 seconds of the
+production run, read from the gateway evidence
+(.local/fleet/fleet-gateway.jsonl), the worker logs
+(.local/fleet/worker-local-0.jsonl and
+worker-local-1.jsonl), the autopilot heartbeat, and
+the process table.
+
+- Processes: autopilot 69115 (systemd unit active),
+  its miner child the launcher 69118, gateway 69119,
+  workers local-0 69142 and local-1 69143, all
+  running at the final read; miner uptime 937.7 s
+  with autopilot restarts 0 and no incident entries
+  after the start.
+- Coordinator listener: exactly one, on
+  127.0.0.1:4033 only (ss), owned by the gateway.
+- Gateway: authorized on its own pool session as
+  htch-runtime, difficulty set to 1 by the pool.
+  Jobs received and declared at production width:
+  34, generations 1 to 34, each declared in step
+  with its arrival. Coordinator replayed 583 journal
+  operations at start (epoch 2), the recovery path
+  exercised again on the way in.
+- Workers: both registered (REREGISTERED against
+  the resumed coordinator state) and selected the
+  v512dual backend, one search thread each. Chunks
+  completed 578, abandoned 58, every abandonment
+  after a
+  STALE progress refusal on a superseded generation,
+  and every completed and abandoned chunk reporting
+  attempts exactly equal to its span (hi - lo =
+  16,777,216). Total examined in the window:
+  10,670,309,376 hashes, about 11.4 MH/s combined.
+- Candidates and shares: 4 candidates, all from
+  local-0, all classified share by the gateway's
+  EXP-036 verifier and submitted on the gateway's
+  session; the pool accepted 4, rejected 0.
+  Gateway totals at the final read: submitted 4,
+  accepted 4, rejected 0, dropped stale 0, dropped
+  invalid 0, block candidates 0. Candidate queue:
+  duplicates 0, stale-generation drops 0. The
+  first accepted share landed at 14:02:05Z, about
+  86 seconds after authorization. Expected shares
+  for the window at difficulty 1 were about 2.5;
+  observing 4 is ordinary variation. The strong
+  success criterion (at least one pool-accepted
+  share through the production gateway path) is
+  met.
+- Heartbeat and evidence: heartbeat fresh
+  throughout (evidence age never above about 11 s
+  at any read), miner_state running, restarts 0.
+  The mirror wrote 200 gateway lines into
+  evidence/mainnet-live.jsonl during the first 14
+  minutes, including all of the window's
+  share_result lines. One counting nuance, recorded
+  so the heartbeat total is never misread: each
+  gateway submission produces two share_result
+  lines in the evidence (one from the StratumClient
+  response handler and one from the gateway's
+  verdict collector, the fleet audit's note N-1),
+  and the autopilot's evidence census counts lines,
+  so the heartbeat's shares_accepted_total rose
+  1,165 to 1,173 for the window's 4 gateway-accepted
+  shares. The gateway's own counters (submitted 4,
+  accepted 4) are the accurate per-path count; the
+  pool's verdicts behind them are real.
+
+### L.6 Endpoint config interaction, from the code
+
+The flipped endpoint config (bakeoff and
+pool_health sections enabled 2026-11-18, file
+.local/mining-endpoint.json, sha256 09b04010...) is
+read by the gateway path only in part, and the
+boundary is exact: mining/fleet_gateway.py resolves
+its endpoint through mining/endpoint_config.py
+resolve_endpoint, the same loader mainnet_live.py
+uses, and consumes from it the mode (pool), the
+pool host and port (public-pool.io:21496), and, in
+solo mode only, the solo share difficulty. The
+gateway imports neither mining/bakeoff_dispatch.py
+nor mining/endpoint_health.py, and a tree-wide
+search shows mining/mainnet_live.py is the only
+consumer of either. The gateway's StratumClient
+therefore runs with no endpoint policy, and its
+backend choice is the workers' ComputeEngine
+dispatch, not the bake-off. Conclusion: in the
+gateway path, the flipped config's endpoint
+resolution is live and the bakeoff and pool_health
+sections are NOT live; they take effect only when
+mainnet_live.py runs (as it did during the L.4
+rollback interval, and would again after any
+future rollback). Nothing in the cutover changed
+the config file; its hash is unchanged.
+
+### L.7 UNVERIFIED register, updated
+
+Closed by this cutover:
+
+- This VM's autopilot cutover to the gateway path
+  (K.3): PERFORMED AND VERIFIED, L.5.
+- Fleet id delivery into the autopilot's miner
+  child with no unit-file or command-line
+  appearance: CLOSED, L.1.
+- Gateway-hosted coordinator restart recovery in
+  the replay-on-start form: exercised again
+  (583 operations replayed at the production
+  start), in addition to K.6.
+
+Still UNVERIFIED, honestly:
+
+- Remote-machine enrollment (K.4): NOT EXERCISED.
+  No second machine has run the bundle. Each
+  machine mining its own session makes enrollment
+  a per-machine repetition of this cutover, but a
+  repetition performed nowhere is still
+  unperformed.
+- Fleet width beyond 2 workers on one machine:
+  UNVERIFIED, unchanged. Two workers roughly
+  saturate this host's roughly 2 effective CPUs
+  (about 11.4 MH/s combined in the window).
+- Block candidate path through the gateway:
+  UNVERIFIED, unchanged. No block candidate
+  occurred in the window; at difficulty 1, shares
+  are the expected traffic.
+- A coordinator restart in the middle of a run,
+  as opposed to replay-on-start: still
+  unexercised.
+
+Operational notes added by this cutover:
+
+- Pool subscribe latency is a real startup risk
+  for the gateway path: connect_initial without an
+  endpoint policy raises on the 30 s subscribe
+  deadline, so a pool-side silence longer than
+  30 s at gateway start costs one autopilot
+  restart cycle (about 35 s) and self-heals on a
+  later attempt, as the first attempt's loop and
+  the re-attempt's 13 s subscribe both show. The
+  exposure is bounded by the autopilot backstop
+  and needs no action; it is recorded so a future
+  restart gap is diagnosed correctly.
+- The heartbeat accepted-share total counts
+  evidence lines, and gateway submissions write
+  two share_result lines each (L.5). Anyone
+  reconciling the heartbeat total against the
+  pool should use the gateway's own counters for
+  gateway-path shares.
