@@ -337,3 +337,30 @@ changes no production code.
   (S_D24 produced one, S_D16 and denser many).
 - Nothing in this campaign measures performance; no hash
   rate is reported as a result.
+
+## 8. Owner acceptance (2026-11-18)
+
+Addendum recorded by the Stage 9 enablements workstream,
+2026-11-18. Documentation only: this addendum changes no
+production code, no campaign result and no verdict above.
+
+The integration question left open in section 6 (accept
+and document first-publisher-wins, or pay for a minimum
+reduction inside the production search context) is
+decided: on 2026-11-18 the owner accepted
+first-publisher-wins (search_first_counted) as the
+production search semantics. It supersedes the original
+minimum-identity criterion (criterion S-C as first
+predeclared), which remains an ESTABLISHED NEGATIVE: a
+multithreaded native search returns the first genuine hit
+its thread partitions publish (mining/cpu/bal_search.h,
+bal_ctx_publish over bal_partition thread spans), not the
+span minimum, and no minimum reduction will be paid for
+in the production search context. The corrected-criterion
+re-verification stands as recorded above (search VERIFIED
+under the corrected criterion: found-flag agreement and
+hit genuineness on every backend, with minimum identity
+recorded as a statistic). A caller that needs the span
+minimum uses batch_search enumeration (exact here and in
+the batch campaign) or a single-threaded search, which
+returns the minimum.
