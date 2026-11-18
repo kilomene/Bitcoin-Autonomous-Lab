@@ -395,6 +395,12 @@ def main():
     ap.add_argument("--pool-host", default=None)
     ap.add_argument("--pool-port", type=int, default=None)
     ap.add_argument("--fleet", default="nova-fleet")
+    ap.add_argument("--fleet-id-file", default=None,
+                    help="read the fleet id from this file "
+                         "instead of --fleet; for production "
+                         "use, so the id never appears on a "
+                         "command line (it is read once at "
+                         "startup, stripped, and never logged)")
     ap.add_argument("--coord-host", default="127.0.0.1")
     ap.add_argument("--coord-port", type=int, default=4033)
     ap.add_argument("--state-dir",
@@ -407,6 +413,9 @@ def main():
     ap.add_argument("--starvation-window", type=float,
                     default=120.0)
     args = ap.parse_args()
+    if args.fleet_id_file:
+        with open(args.fleet_id_file) as fh:
+            args.fleet = fh.read().strip()
     if not args.worker:
         from mining.autopilot import default_worker
         args.worker = default_worker()
