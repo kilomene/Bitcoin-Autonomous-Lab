@@ -78,7 +78,7 @@ Scope: hypotheses that arise specifically from reading the 0.1.3 implementation 
 | H-5 | Padding precomputation | PROVEN IDENTITY / EXACT OPTIMIZATION | Closed, in both codebases |
 | H-6 | Chunk 2 prefix sharing (rounds 0 to 2) | PROVEN IDENTITY (facts) / HYPOTHESIS REQUIRING EXPERIMENT (rate) | Open only as combination ingredient (EXP-013, EXP-027 C7) |
 | H-7 | K+W folding | n/a | Closed, refuted (EXP-014) |
-| H-8 | 29 vs 28 op codegen gap | Engineering, not a hypothesis | Open as engineering (EXP-020) |
-| H-9 | Single-batch mask search | Verified kernel (EXP-017) | Open as integration decision (EXP-024 design C) |
+| H-8 | 29 vs 28 op codegen gap | Engineering, not a hypothesis | Closed, REJECTED (EXP-041) |
+| H-9 | Single-batch mask search | Verified kernel (EXP-017) | PROVEN (EXP-024b); superseded by EXP-026 as the integration candidate; not integrated |
 
 The honest headline: the genesis deconstruction produced no new open mathematical hypothesis. Its five candidate ideas resolve to two proven identities already in production, two representation identities already decided per engine, one explained historical cost, and one sub-noise ingredient. The genuinely open mathematical item in the programme remains E2 (Deliverable 15), which predates this phase.
