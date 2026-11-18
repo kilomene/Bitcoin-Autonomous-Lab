@@ -1610,3 +1610,42 @@ Operational notes added by this cutover:
   reconciling the heartbeat total against the
   pool should use the gateway's own counters for
   gateway-path shares.
+
+## M. Per-machine enrollment instructions published, 2026-11-18
+
+Date: 2026-11-18. The K.4 enrollment specification now
+has operator-facing instructions: docs/FLEET_ENROLLMENT.md,
+written from the code at the cutover HEAD (7cb12782) and
+from sections K and L of this plan. It covers the
+per-machine architecture, prerequisites, fleet id
+generation and handling (the --fleet-id-file mechanism
+of L.1), the per-machine pool worker name and worker
+topology (both are mining/fleet_local.py arguments,
+--worker and --worker-ids; no code edit), the endpoint
+and payout defaults (no .local file needed on a fresh
+machine), running the bundle directly or under the
+autopilot, a six-item verification checklist, leaving
+the fleet, and the honest limits.
+
+Two per-machine edits the code forces are recorded in
+the doc exactly: the bal-autopilot.service template's
+BAL_AP_MINER_CMD line carries this VM's absolute
+launcher path literally (install-service substitutes
+only REPLACE_REPO and REPLACE_DIST), so a machine whose
+repo lives elsewhere must edit the installed unit's
+path; and the same line must be extended with the
+machine's own --worker and --worker-ids values, since
+the launcher defaults are this VM's (htch-runtime,
+local-0,local-1). The doc also carries the standing
+warning proven by the post-cutover VM replacement: a
+supervisor that restarts the autopilot without
+BAL_AP_MINER_CMD silently reverts the machine to plain
+mainnet_live mining.
+
+UNVERIFIED register, restated briefly (unchanged from
+L.7): remote-machine enrollment is NOT EXERCISED (no
+second machine has run the bundle or completed the
+checklist); fleet width beyond 2 workers on one machine
+is UNVERIFIED; the gateway block-candidate path has
+never occurred; a coordinator restart in the middle of
+a run, as opposed to replay-on-start, is unexercised.
