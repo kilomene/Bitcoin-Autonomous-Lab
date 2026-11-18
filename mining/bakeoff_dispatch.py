@@ -563,8 +563,21 @@ def resolve_requested(bakeoff_cfg=None, cache_path=None,
                         f"{margin!r} is not finite and "
                         "non-negative")
     min_margin = max(PREDECLARED_MARGIN, margin)
-    fp = fingerprint if fingerprint is not None else \
-        host_fingerprint()
+    if fingerprint is not None:
+        fp = fingerprint
+    else:
+        # DEF-9.2-1 (Stage 9 fixes batch, 2026-11-18): the
+        # fingerprint resolution is guarded so a host where
+        # host_fingerprint() raises resolves to the doubt
+        # verdict instead of propagating an exception into
+        # miner startup, keeping the resolver's documented
+        # never-raises contract.
+        try:
+            fp = host_fingerprint()
+        except Exception as exc:
+            return "auto", ("doubt: host fingerprint "
+                            f"unavailable ({exc}); "
+                            "static order")
     ok, reason, winner = read_cache(
         path, fp, now=now, max_age_s=max_age,
         min_margin=min_margin)
