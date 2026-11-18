@@ -60,17 +60,42 @@ def main():
     assert rpc.call("getmempoolinfo")["size"] == 0
     dest = wallet.call("getnewaddress", "", "bech32")
     txid = wallet.call("sendtoaddress", dest, 0.1)
-    out2 = agent.run_cycles(1)
-    cyc = out2["cycles"][0]
-    assert cyc["accepted"] and cyc["tx_count"] == 2, cyc
+    # EXP-051 enablement (2026-11-18): the agent path now
+    # runs with the prefetch queue on. A queue-served
+    # template is a prepared snapshot whose transaction set
+    # predates this spend, so the spend is mined by the
+    # NEXT cycle's work at the latest, not necessarily by
+    # the immediately following block (the historical
+    # synchronous path fetched its template after the spend
+    # arrived and always included it in the next block).
+    # The property under test is unchanged (the engine
+    # mines the segwit spend, witness commitment path,
+    # fees collected); only the inclusion timing bound
+    # moves from "next block" to "within 3 cycles". See
+    # agent/autonomous.py and
+    # research/STAGE9/ENABLEMENTS_REPORT.md.
+    cyc = None
+    extra_cycles = 0
+    for _ in range(3):
+        out2 = agent.run_cycles(1)
+        extra_cycles += 1
+        cand = out2["cycles"][0]
+        assert cand["accepted"], cand
+        if cand["tx_count"] == 2:
+            cyc = cand
+            break
+    assert cyc is not None, "spend not mined within 3 cycles"
     block = rpc.get_block(cyc["hash"], 1)
     assert txid in block["tx"]
     assert cyc["fees"] > 0
     print(f"ok: segwit spend mined by the engine at height "
-          f"{cyc['height']} with fees {cyc['fees']} sats")
+          f"{cyc['height']} with fees {cyc['fees']} sats "
+          f"(after {extra_cycles} cycle(s))")
 
     summary = store.mining_summary()
-    assert summary["cycles"] == 3 and summary["accepted"] == 3, summary
+    total_cycles = 2 + extra_cycles
+    assert summary["cycles"] == total_cycles \
+        and summary["accepted"] == total_cycles, summary
     import json as _json
     kinds = []
     for e in store.events("agent_decision", 50):
