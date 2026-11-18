@@ -589,3 +589,48 @@ the failure, so the corrected subset is CI-proven as well
 as locally verified. The full 51-target Makefile test-all
 run on the lab VM remains the complete record; the
 excluded suites keep their section 2 results there.
+
+## Fixes batch resolutions (2026-11-18)
+
+D-93-2 and D-93-3, recorded open in section 7 as owner or
+auditor decisions, were resolved in the Stage 9 fixes batch
+(owner approval 2026-11-18). Both are test-design changes
+only; no production code changed for either, and neither
+resolution loosens a correctness assertion.
+
+D-93-2 (test-task0039 early-exit bound): the audits offered
+two options, a quiet-host run or a thread bound inside the
+check, with no recommendation between them. The batch
+implements the thread bound, the least-invasive option:
+test_early_exit_accounting in tests/test_task0039_accounting.py
+now constructs its ComputeEngine with threads=1, so the
+native search's attempted count on the genesis hit is exact
+on any host, loaded or quiet. The promptness bound
+(attempted below 10,000) is unchanged and every
+exact-accounting identity in the suite is still asserted.
+Rationale, recorded in the test itself: with the default
+multi-thread search, sibling threads race past the hit
+before the stop lands, and under live-miner contention the
+overshoot (32,519 observed in section 2) measured host
+scheduling, not early-exit promptness. Post-change result on
+this loaded VM with the live miner running: test-task0039
+PASS, all checks including the regtest block.
+
+D-93-3 (test-exp052 Gate 5a): the gate now accepts the
+proven fail-closed doubt fallback as the passing outcome
+when the host instance's fingerprint does not match the
+campaign cache's fingerprint. The test compares the cache
+fingerprint against the live fingerprint field by field; on
+a proven mismatch it asserts the resolver returns the
+static order ("auto") with a doubt reason naming the
+fingerprint mismatch. It still fails if the resolver
+returns a measured winner on a mismatched host, and when
+the fingerprint matches, the original verdict assertions
+(STATIC or winner) apply unchanged. Post-change result on
+this host instance (live flags_hash c86584c209897fb5 vs
+campaign 51d3e983ddf6ac93): test-exp052 PASS, 46 checks,
+Gate 5a passing through the mismatch branch. The same batch
+also added the DEF-9.2-1 regression case to that suite (a
+raising host_fingerprint resolves to the doubt verdict) and
+fixed DEF-9.2-1 and DEF-9.2-2 in production code; those
+fixes are recorded in the batch report, not here.
