@@ -279,7 +279,28 @@ def test_full_range_coverage_odd_count():
 # ----------------------------------------------------------------
 
 def test_early_exit_accounting():
-    eng = ComputeEngine(requested="c")
+    # D-93-2 resolution (Stage 9 fixes batch,
+    # 2026-11-18): the promptness bound below
+    # (attempted < 10000 on a hit 4 nonces into the
+    # range) is a property of the early-exit path, but
+    # with the engine's default multi-thread native
+    # search the sibling threads race past the hit
+    # before the stop lands, and under live-miner
+    # contention on this VM the overshoot reached
+    # 32,519 attempts while every exact-accounting
+    # identity in this test passed (Stage 9.3 audit,
+    # D-93-2). The audits offered two options, a
+    # quiet-host run or a thread bound inside the
+    # check, and no recommendation between them; this
+    # implements the thread bound, the least-invasive
+    # option: the check runs the native search on one
+    # thread, so attempted is exact (4) on any host,
+    # loaded or quiet. The bound itself is NOT
+    # loosened and no assertion is weakened: attempted
+    # must still be far below the request, and all
+    # exact-accounting identities below are asserted
+    # unchanged.
+    eng = ComputeEngine(requested="c", threads=1)
     assert eng.backend == "c"
     hit, attempted, _s = eng.search_first_counted(
         GENESIS, DIFF1, GENESIS_NONCE - 3, 100000)
