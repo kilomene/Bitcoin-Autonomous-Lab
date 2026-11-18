@@ -17,6 +17,7 @@ import logging
 import struct
 import threading
 import time
+from collections import deque
 
 from blockchain.transactions import btc_to_sats
 from gpu.engine import ComputeEngine
@@ -488,12 +489,78 @@ class TemplateCache:
             return prep, False
 
 
+class StatusPublisher(threading.Thread):
+    """Periodic status republication for the GBT path
+    (Stage 9.4, closing DEF-9.2-4).
+
+    The pool path (mining/mainnet_live.py) publishes a status
+    event every 10 s from its main loop. The GBT search cycle
+    in mine_cycle below can run for minutes under contention,
+    and consumers of status (the awareness layer's rate
+    observation needs two distinct status events bracketing
+    its window) saw nothing between cycle start and cycle
+    completion: the Stage 8 run-1 finding. The Stage 8 demo
+    miner (research/EXTREME_RESEARCH/stage8_regtest_miner.py)
+    fixed it locally with a publisher thread; this class is
+    that shape promoted into the engine, opt-in.
+
+    The thread republishes the engine's MiningStatistics
+    totals every interval_s seconds to a sink callable. A
+    status dict carries the same fields the pool path's
+    status event carries: hashes (the statistics
+    backend_hashes total), rate (hashes over the cycle's
+    elapsed wall time), submitted (blocks_submitted),
+    the full statistics totals and the statistics error
+    count. MiningStatistics snapshots are plain dict copies,
+    so a republished snapshot can lag the search thread's
+    counters but never corrupts them. A sink that raises is
+    counted on self.errors and never kills the thread or the
+    cycle: publication is observability, not mining.
+    """
+
+    def __init__(self, statistics, errors_fn, sink, t0,
+                 interval_s=10.0):
+        super().__init__(daemon=True)
+        self._statistics = statistics
+        self._errors_fn = errors_fn
+        self._sink = sink
+        self._t0 = t0
+        self._interval = float(interval_s)
+        self._stop_event = threading.Event()
+        self.published = 0
+        self.errors = 0
+
+    def run(self):
+        while not self._stop_event.wait(self._interval):
+            totals = self._statistics.snapshot()["totals"]
+            hashes = totals.get("backend_hashes", 0)
+            status = {
+                "event": "status",
+                "hashes": hashes,
+                "rate": hashes / max(time.time() - self._t0,
+                                     1e-9),
+                "submitted": totals.get("blocks_submitted", 0),
+                "statistics": totals,
+                "statistics_errors": self._errors_fn(),
+            }
+            try:
+                self._sink(status)
+                self.published += 1
+            except Exception:
+                self.errors += 1
+
+    def stop(self):
+        self._stop_event.set()
+
+
 class MiningEngine:
     def __init__(self, rpc, payout_address, compute=None, batch_size=65536,
                  use_template_cache=True, extranonce_space=(0, 64),
                  checkpoint_path=None, statistics=None,
                  use_prefetch=False, prefetch_depth=2,
-                 prefetch_fetcher=None):
+                 prefetch_fetcher=None,
+                 status_publish=False, status_interval_s=10.0,
+                 status_sink=None):
         self.rpc = rpc
         self.payout = payout_address
         self.compute = compute or ComputeEngine()
@@ -576,6 +643,24 @@ class MiningEngine:
         # harness uses it to give the feed its own RPC
         # connection so stage timing stays on the mining
         # thread.
+        # Stage 9.4 status publication (opt-in, DEF-9.2-4):
+        # with status_publish=True, each mine_cycle runs a
+        # StatusPublisher thread that republishes the
+        # statistics totals every status_interval_s seconds
+        # (default 10, the pool path's cadence) to status_sink.
+        # The default sink appends to self.status_events, a
+        # bounded deque the caller can drain. Default
+        # status_publish=False is exactly the historical
+        # behaviour and is the rollback surface: no thread is
+        # constructed and mine_cycle is the historical code
+        # path. No production caller enables it yet; enabling
+        # it on a live path is an operator decision.
+        self.status_publish = bool(status_publish)
+        self.status_interval_s = float(status_interval_s)
+        self.status_events = deque(maxlen=1024)
+        self.status_sink = (status_sink if status_sink is not None
+                            else self.status_events.append)
+        self._status_publisher = None
         self.use_prefetch = use_prefetch
         self.prefetch_fetcher = prefetch_fetcher
         self.prefetch_queue = None
@@ -771,6 +856,33 @@ class MiningEngine:
         return min(batch_size, (1 << 32) - start)
 
     def mine_cycle(self, max_batches=200, deadline_seconds=120):
+        """One full cycle; see _mine_cycle for the cycle
+        itself. This wrapper owns the Stage 9.4 status
+        publisher's lifetime: when status_publish is enabled,
+        a StatusPublisher thread runs for exactly the cycle's
+        duration and is stopped and joined before the result
+        returns, on every exit path including exceptions.
+        With the publisher disabled (the default) this is a
+        plain pass-through and the behaviour is the historical
+        one byte-for-byte."""
+        if not self.status_publish:
+            return self._mine_cycle(max_batches=max_batches,
+                                    deadline_seconds=deadline_seconds)
+        publisher = StatusPublisher(
+            self.statistics, lambda: self._accountant.errors,
+            self.status_sink, time.time(),
+            interval_s=self.status_interval_s)
+        self._status_publisher = publisher
+        publisher.start()
+        try:
+            return self._mine_cycle(max_batches=max_batches,
+                                    deadline_seconds=deadline_seconds)
+        finally:
+            publisher.stop()
+            publisher.join(timeout=5)
+            self._status_publisher = None
+
+    def _mine_cycle(self, max_batches=200, deadline_seconds=120):
         """One full cycle. Returns a result dict; accepted means the
         block was submitted and is the node's best block.
 
